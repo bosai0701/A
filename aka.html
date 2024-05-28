@@ -25,7 +25,7 @@
             ];
 
             const weatherPromises = prefectures.map(prefecture => {
-                return fetch(`https://api.openweathermap.org/data/2.5/weather?q=${prefecture},jp&units=metric&appid=${apiKey}`)
+                return fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(prefecture)},jp&units=metric&appid=${apiKey}`)
                     .then(response => response.json())
                     .then(data => {
                         return {
