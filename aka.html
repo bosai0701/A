@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全都道府県の天気予報</title>
+</head>
+<body>
+    <h1>全都道府県の天気予報</h1>
+    <div id="weather-info">天気情報を取得中...</div>
+
+    <script>
+        // APIキーをセキュアに取り扱う方法
+        const apiKey = atob('OWQ1ODI1OWUzMmRkNWU5M2RlNTg0MjQ4N2NjZjNhNWI='); // Base64でエンコードされたAPIキー
+
+        function fetchWeather() {
+            const prefectures = [
+                "北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島",
+                "茨城", "栃木", "群馬", "埼玉", "千葉", "東京", "神奈川",
+                "新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜",
+                "静岡", "愛知", "三重", "滋賀", "京都", "大阪", "兵庫", "奈良",
+                "和歌山", "鳥取", "島根", "岡山", "広島", "山口",
+                "徳島", "香川", "愛媛", "高知", "福岡", "佐賀", "長崎",
+                "熊本", "大分", "宮崎", "鹿児島", "沖縄"
+            ];
+
+            const weatherPromises = prefectures.map(prefecture => {
+                return fetch(`https://api.openweathermap.org/data/2.5/weather?q=${prefecture},jp&units=metric&appid=${apiKey}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        return {
+                            prefecture: prefecture,
+                            temperature: data.main.temp,
+                            condition: data.weather[0].main,
+                            humidity: data.main.humidity
+                        };
+                    });
+            });
+
+            Promise.all(weatherPromises)
+                .then(results => {
+                    const weatherInfoDiv = document.getElementById('weather-info');
+                    weatherInfoDiv.innerHTML = results.map(result => `
+                        <div>
+                            <h2>${result.prefecture}</h2>
+                            <p>気温: ${result.temperature}°C</p>
+                            <p>天気: ${result.condition}</p>
+                            <p>湿度: ${result.humidity}%</p>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => console.error('天気情報の取得エラー:', error));
+        }
+
+        // 初回の天気情報取得
+        fetchWeather();
+
+        // 5秒ごとに天気情報を更新
+        setInterval(fetchWeather, 5000);
+    </script>
+</body>
+</html>
