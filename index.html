@@ -6,57 +6,99 @@
     <title>全都道府県の天気予報</title>
 </head>
 <body>
-    <h1>全都道府県の天気予報</h1>
-    <div id="weather-info">天気情報を取得中...</div>
+import re
+import requests
+from bs4 import BeautifulSoup
+import json
 
-    <script>
-        // APIキーをセキュアに取り扱う方法
-        const apiKey = atob('OWQ1ODI1OWUzMmRkNWU5M2RlNTg0MjQ4N2NjZjNhNWI='); // Base64でエンコードされたAPIキー
+#----------------------------------------
+#copyed by https://kinformation.sakura.ne.jp/20170715-01
+#----------------------------------------
 
-        function fetchWeather() {
-            const prefectures = [
-                "北海道", "青森", "岩手", "宮城", "秋田", "山形", "福島",
-                "茨城", "栃木", "群馬", "埼玉", "千葉", "東京", "神奈川",
-                "新潟", "富山", "石川", "福井", "山梨", "長野", "岐阜",
-                "静岡", "愛知", "三重", "滋賀", "京都", "大阪", "兵庫", "奈良",
-                "和歌山", "鳥取", "島根", "岡山", "広島", "山口",
-                "徳島", "香川", "愛媛", "高知", "福岡", "佐賀", "長崎",
-                "熊本", "大分", "宮崎", "鹿児島", "沖縄"
-            ];
+def main(url):
+    # bs4でパース
+    s = soup(url)
 
-            const weatherPromises = prefectures.map(prefecture => {
-                return fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(prefecture)},jp&units=metric&appid=${apiKey}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        return {
-                            prefecture: prefecture,
-                            temperature: data.main.temp,
-                            condition: data.weather[0].main,
-                            humidity: data.main.humidity
-                        };
-                    });
-            });
+    dict = {}
 
-            Promise.all(weatherPromises)
-                .then(results => {
-                    const weatherInfoDiv = document.getElementById('weather-info');
-                    weatherInfoDiv.innerHTML = results.map(result => `
-                        <div>
-                            <h2>${result.prefecture}</h2>
-                            <p>気温: ${result.temperature}°C</p>
-                            <p>天気: ${result.condition}</p>
-                            <p>湿度: ${result.humidity}%</p>
-                        </div>
-                    `).join('');
-                })
-                .catch(error => console.error('天気情報の取得エラー:', error));
-        }
+    # 予測地点
+    l_pattern = r"(.+)の今日明日の天気"
+    l_src = s.title.text
+    dict['location'] = re.findall(l_pattern, l_src)[0]
+    print(dict['location'] + "の天気")
 
-        // 初回の天気情報取得
-        fetchWeather();
+    soup_tdy = s.select('.today-weather')[0]
+    soup_tmr = s.select('.tomorrow-weather')[0]
 
-        // 5秒ごとに天気情報を更新
-        setInterval(fetchWeather, 5000);
-    </script>
+    dict["today"] = forecast2dict(soup_tdy)
+    dict["tomorrow"] = forecast2dict(soup_tmr)
+
+    # JSON形式で出力
+    # print(json.dumps(dict, ensure_ascii=False))
+
+def soup(url):
+    r = requests.get(url)
+    html = r.text.encode(r.encoding)
+    return BeautifulSoup(html, 'lxml')
+
+def forecast2dict(soup):
+    data = {}
+
+    # 日付処理
+    d_pattern = r"(\d+)月(\d+)日\(([土日月火水木金])+\)"
+    d_src = soup.select('.left-style')
+    date = re.findall(d_pattern, d_src[0].text)[0]
+    data["date"] = "%s-%s(%s)" % (date[0], date[1], date[2])
+    print("=====" + data["date"] + "=====")
+
+    # ## 取得
+    weather           = soup.select('.weather-telop')[0]
+    high_temp         = soup.select("[class='high-temp temp']")[0]
+    high_temp_diff    = soup.select("[class='high-temp tempdiff']")[0]
+    low_temp          = soup.select("[class='low-temp temp']")[0]
+    low_temp_diff     = soup.select("[class='low-temp tempdiff']")[0]
+    rain_probability  = soup.select('.rain-probability > td')
+    wind_wave         = soup.select('.wind-wave > td')[0]
+
+    # ## 格納
+    data["forecasts"] = []
+    forecast = {}
+    forecast["weather"] = weather.text.strip()
+    forecast["high_temp"] = high_temp.text.strip()
+    forecast["high_temp_diff"] = high_temp_diff.text.strip()
+    forecast["low_temp"] = low_temp.text.strip()
+    forecast["low_temp_diff"] = low_temp_diff.text.strip()
+    every_6h = {}
+    for i in range(4):
+        time_from = 0+6*i
+        time_to   = 6+6*i
+        itr       = '{:02}-{:02}'.format(time_from,time_to)
+        every_6h[itr] = rain_probability[i].text.strip()
+    forecast["rain_probability"] = every_6h
+    forecast["wind_wave"] = wind_wave.text.strip()
+
+    data["forecasts"].append(forecast)
+
+    print(
+        "天気              ： " + forecast["weather"] + "\n"
+        "最高気温(C)       ： " + forecast["high_temp"] + "\n"
+        "最高気温差(C)     ： " + forecast["high_temp_diff"] + "\n"
+        "最低気温(C)       ： " + forecast["low_temp"] + "\n"
+        "最低気温差(C)     ： " + forecast["low_temp_diff"] + "\n"
+        "降水確率[00-06]   ： " + forecast["rain_probability"]['00-06'] + "\n"
+        "降水確率[06-12]   ： " + forecast["rain_probability"]['06-12'] + "\n"
+        "降水確率[12-18]   ： " + forecast["rain_probability"]['12-18'] + "\n"
+        "降水確率[18-24]   ： " + forecast["rain_probability"]['18-24'] + "\n"
+        "風向              ： " + forecast["wind_wave"] + "\n"
+    )
+
+    return data
+
+if __name__ == '__main__':
+    # 世田谷区の一時間ごとの気象情報URL
+    # URL = 'https://tenki.jp/forecast/3/16/4410/13112/1hour.html'
+    URL = 'https://tenki.jp/forecast/3/16/4410/13112/'
+    main(URL)
+
 </body>
 </html>
