@@ -3,665 +3,470 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>EEW MONITOR // 緊急地震速報受信盤</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>EEW</title>
 
 <style>
-/* ============================================================
-   TOKENS — dark instrument-panel palette
-   ============================================================ */
-:root{
-    --bg-deep:      #05080c;
-    --bg-panel:     #0d131b;
-    --bg-panel-2:   #10182233;
-    --line:         #1c2733;
-    --line-bright:  #2a3a4c;
-    --text-hi:      #dfe9f2;
-    --text-mid:     #8fa3b3;
-    --text-dim:     #4f5f6d;
-    --cyan:         #2ee6ff;
-    --cyan-dim:     #0f4a57;
-    --amber:        #ffb020;
-    --amber-dim:    #4a3410;
-    --p-wave:       #3fb6ff;
-    --s-wave:       #ff5d4a;
-    --grid:         #101a24;
-
-    /* JMA 震度階級 標準配色（気象庁配色ガイドラインに準拠した近似値） */
-    --i0:  #7d8a94;
-    --i1:  #f2f2ff;
-    --i2:  #00aaff;
-    --i3:  #0041ff;
-    --i4:  #fae696;
-    --i5w: #ffe600;
-    --i5s: #ff9900;
-    --i6w: #ff2800;
-    --i6s: #a50021;
-    --i7:  #b40068;
+:root {
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --border-color: #e2e8f0;
+    --primary: #2563eb;
+    --primary-light: #eff6ff;
+    --danger: #dc2626;
+    --danger-light: #fef2f2;
+    --success: #16a34a;
+    --success-light: #f0fdf4;
 }
 
-*{ box-sizing:border-box; }
-
-body{
-    margin:0;
-    padding:14px;
-    background:
-        radial-gradient(ellipse at top, #0b1119 0%, var(--bg-deep) 60%);
-    color:var(--text-hi);
-    font-family:'JetBrains Mono', ui-monospace, monospace;
-    font-size:13px;
-    line-height:1.5;
-    min-height:100vh;
+body {
+    margin: 0;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    line-height: 1.5;
 }
 
-.container{ max-width:920px; margin:0 auto; }
-
-/* ---------------- header / status strip ---------------- */
-.rig-header{
-    display:flex; align-items:center; justify-content:space-between;
-    gap:12px; flex-wrap:wrap;
-    padding:14px 18px;
-    margin-bottom:14px;
-    background:linear-gradient(180deg, #0f1620, #0a0f16);
-    border:1px solid var(--line-bright);
-    border-radius:4px;
-    position:relative;
-    overflow:hidden;
-}
-.rig-header::before{
-    content:"";
-    position:absolute; inset:0;
-    background:repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0 1px, transparent 1px 3px);
-    pointer-events:none;
-}
-.rig-title{
-    font-family:'Rajdhani', sans-serif;
-    font-weight:700;
-    font-size:1.5rem;
-    letter-spacing:0.06em;
-    color:var(--text-hi);
-    display:flex; align-items:center; gap:10px;
-}
-.rig-title .tag{
-    font-family:'JetBrains Mono', monospace;
-    font-size:0.62rem;
-    font-weight:500;
-    letter-spacing:0.12em;
-    color:var(--bg-deep);
-    background:var(--cyan);
-    padding:3px 7px;
-    border-radius:2px;
-}
-.rig-sub{ color:var(--text-dim); font-size:0.72rem; letter-spacing:0.05em; }
-
-#ws-status{
-    font-family:'Rajdhani',sans-serif;
-    font-weight:600;
-    font-size:0.85rem;
-    letter-spacing:0.05em;
-    padding:6px 12px;
-    border-radius:3px;
-    border:1px solid var(--line-bright);
-    display:flex; align-items:center; gap:8px;
-    white-space:nowrap;
-}
-.led{
-    width:8px; height:8px; border-radius:50%;
-    display:inline-block;
-    box-shadow:0 0 6px currentColor;
-}
-.status-ok{ color:var(--cyan); background:rgba(46,230,255,0.06); border-color:rgba(46,230,255,0.35); }
-.status-bad{ color:var(--s-wave); background:rgba(255,93,74,0.06); border-color:rgba(255,93,74,0.4); }
-.status-warn{ color:var(--amber); background:rgba(255,176,32,0.06); border-color:rgba(255,176,32,0.4); }
-
-/* ---------------- warning banner ---------------- */
-#warn-banner{
-    display:none;
-    padding:12px 18px;
-    margin-bottom:14px;
-    border-radius:4px;
-    border:1px solid var(--s-wave);
-    background:linear-gradient(90deg, rgba(255,93,74,0.16), rgba(255,93,74,0.03));
-    color:#ffd8d2;
-    font-family:'Rajdhani',sans-serif;
-    font-weight:700;
-    font-size:1.05rem;
-    letter-spacing:0.04em;
-    animation:banner-pulse 1.4s ease-in-out infinite;
-}
-@keyframes banner-pulse{
-    0%,100%{ box-shadow:0 0 0px rgba(255,93,74,0); }
-    50%{ box-shadow:0 0 22px rgba(255,93,74,0.35); }
+.container {
+    max-width: 800px;
+    margin: 0 auto;
 }
 
-/* ---------------- panels ---------------- */
-.panel{
-    background:var(--bg-panel);
-    border:1px solid var(--line);
-    border-radius:4px;
-    margin-bottom:14px;
-    overflow:hidden;
-}
-.panel-head{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:9px 14px;
-    background:#0a0f16;
-    border-bottom:1px solid var(--line);
-}
-.panel-head .num{
-    font-family:'Rajdhani',sans-serif;
-    font-weight:700;
-    color:var(--cyan);
-    font-size:0.72rem;
-    letter-spacing:0.1em;
-    margin-right:8px;
-}
-.panel-head h2{
-    all:unset;
-    font-family:'Rajdhani',sans-serif;
-    font-weight:600;
-    font-size:0.92rem;
-    letter-spacing:0.03em;
-    color:var(--text-hi);
-}
-.panel-body{ padding:12px 14px; }
-
-/* key/value readout table */
-.kv{ width:100%; border-collapse:collapse; }
-.kv tr{
-    display:grid; grid-template-columns:1fr; gap:1px;
-    border-bottom:1px dashed var(--line);
-    padding:6px 0;
-}
-.kv tr:last-child{ border-bottom:none; }
-.kv th,.kv td{ padding:0; text-align:left; font-weight:400; }
-.kv th{ color:var(--text-dim); font-size:0.72rem; letter-spacing:0.03em; }
-.kv td{ color:var(--text-hi); font-size:0.82rem; word-break:break-word; }
-@media (min-width:600px){
-    .kv tr{ grid-template-columns:230px 1fr; padding:7px 2px; }
+h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 16px 0;
+    padding-left: 12px;
+    border-left: 4px solid var(--primary);
+    display: flex;
+    align-items: center;
 }
 
-/* badges */
-.badge{
-    display:inline-flex; align-items:center;
-    padding:2px 9px; border-radius:2px;
-    font-size:0.7rem; font-weight:600; letter-spacing:0.03em;
-    border:1px solid transparent;
-}
-.badge-true{ color:var(--s-wave); background:rgba(255,93,74,0.1); border-color:rgba(255,93,74,0.4); }
-.badge-false{ color:var(--text-dim); background:rgba(255,255,255,0.03); border-color:var(--line); }
-
-/* ---------------- intensity dial ---------------- */
-.intensity-wrap{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
-.intensity-dial{
-    width:76px; height:76px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:1.9rem;
-    background:var(--i0); color:#0a0f16;
-    border:3px solid rgba(255,255,255,0.15);
-    box-shadow:0 0 0 rgba(0,0,0,0);
-    transition:background 0.3s ease, box-shadow 0.3s ease;
-    flex-shrink:0;
-}
-.intensity-legend{ display:flex; flex-wrap:wrap; gap:6px; font-size:0.68rem; }
-.intensity-legend span{
-    padding:2px 7px; border-radius:2px; color:#0a0f16; font-weight:600;
+.status-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
 }
 
-/* ---------------- seismograph canvas ---------------- */
-.seismo-box{
-    border:1px solid var(--line);
-    border-radius:3px;
-    background:#050a10;
-    position:relative;
-    overflow:hidden;
-}
-.seismo-box canvas{ display:block; width:100%; }
-.seismo-label{
-    position:absolute; top:6px; left:10px;
-    font-size:0.65rem; letter-spacing:0.08em; color:var(--text-dim);
-    text-transform:uppercase;
+.section {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 4px 6px -1px rgba(0,0,0,0.05);
 }
 
-/* ---------------- radar (P/S propagation) ---------------- */
-.radar-wrap{ display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
-.radar-svg-box{ flex-shrink:0; }
-.radar-stats{ flex:1; min-width:220px; }
-.radar-stat-row{
-    display:flex; justify-content:space-between;
-    padding:7px 0; border-bottom:1px dashed var(--line);
-    font-size:0.8rem;
-}
-.radar-stat-row:last-child{ border-bottom:none; }
-.radar-stat-row .lab{ color:var(--text-dim); display:flex; align-items:center; gap:6px; }
-.radar-stat-row .val{ color:var(--text-hi); font-weight:600; }
-.dotcyan{ width:9px; height:9px; border-radius:50%; background:var(--p-wave); box-shadow:0 0 5px var(--p-wave); display:inline-block; }
-.dotred{ width:9px; height:9px; border-radius:50%; background:var(--s-wave); box-shadow:0 0 5px var(--s-wave); display:inline-block; }
-.eta-box{
-    margin-top:10px; padding:10px 12px;
-    border:1px solid var(--line-bright); border-radius:3px;
-    background:rgba(255,176,32,0.04);
-    font-family:'Rajdhani',sans-serif;
-}
-.eta-box .eta-num{ font-size:1.6rem; font-weight:700; color:var(--amber); }
-.eta-box .eta-tag{ font-size:0.7rem; color:var(--text-dim); letter-spacing:0.05em; }
-
-/* ---------------- area table ---------------- */
-.est-container{
-    width:100%; overflow-x:auto;
-    border:1px solid var(--line); border-radius:3px;
-}
-.est-table{ width:100%; border-collapse:collapse; white-space:nowrap; min-width:600px; }
-.est-table th,.est-table td{
-    padding:9px 12px; font-size:0.78rem;
-    border-bottom:1px solid var(--line); text-align:left;
-}
-.est-table th{
-    background:#0a0f16; color:var(--text-dim); font-weight:600;
-    font-size:0.68rem; letter-spacing:0.06em; text-transform:uppercase;
-}
-.est-table tr:last-child td{ border-bottom:none; }
-.est-table .ipill{
-    display:inline-block; padding:2px 9px; border-radius:2px; font-weight:700; color:#0a0f16;
+.section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding-bottom: 8px;
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border-color);
 }
 
-pre{
-    background:#050a10; color:#8fe6d8;
-    border:1px solid var(--line);
-    border-radius:3px; padding:12px;
-    white-space:pre-wrap; word-break:break-word;
-    font-family:'JetBrains Mono', monospace;
-    font-size:0.72rem; margin:0; max-height:220px; overflow:auto;
+/* レスポンシブ対応テーブル（スマホでは縦並び、PCでは横並び） */
+.info-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.info-table tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.info-table tr:last-child {
+    border-bottom: none;
+}
+.info-table th, .info-table td {
+    padding: 2px 0;
+    border: none;
+    text-align: left;
+    font-size: 0.875rem;
+}
+.info-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.info-table td {
+    color: var(--text-main);
+    word-break: break-word;
 }
 
-.empty-note{ padding:16px; color:var(--text-dim); font-size:0.8rem; text-align:center; }
+/* PC環境（576px以上）での2カラム表示への切り替え */
+@media (min-width: 576px) {
+    body { padding: 24px; }
+    .section { padding: 20px; }
+    .info-table tr {
+        grid-template-columns: 240px 1fr;
+        padding: 10px 4px;
+    }
+    .info-table th, .info-table td { padding: 0; }
+}
 
-#no-data{
-    text-align:center; color:var(--text-dim); font-size:0.85rem;
-    padding:60px 20px; border:1px dashed var(--line); border-radius:4px;
+/* 地域別詳細の横スクロールコンテナ */
+.est-container {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-top: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+.est-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+    min-width: 600px; /* スマホで潰れないように最低横幅を確保 */
+}
+.est-table th, .est-table td {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+}
+.est-table th {
+    background-color: #f1f5f9;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.est-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* 計算セクション用テーブル */
+.calc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+}
+.calc-table tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.calc-table tr:last-child {
+    border-bottom: none;
+}
+.calc-table th, .calc-table td {
+    padding: 2px 0;
+    border: none;
+    text-align: left;
+    font-size: 0.875rem;
+}
+.calc-table th {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+.calc-table td {
+    color: var(--text-main);
+    word-break: break-word;
+}
+
+@media (min-width: 576px) {
+    .calc-table tr {
+        grid-template-columns: 240px 1fr;
+        padding: 10px 4px;
+    }
+    .calc-table th, .calc-table td { padding: 0; }
+}
+
+.calculation-area {
+    background-color: #f8fafc;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+    font-size: 0.85rem;
+}
+
+.calculation-result {
+    background-color: var(--primary-light);
+    border-left: 3px solid var(--primary);
+    padding: 10px 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+/* バッジデザイン */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+.badge-true { 
+    background-color: var(--danger-light); 
+    color: var(--danger); 
+}
+.badge-false { 
+    background-color: #f1f5f9; 
+    color: var(--text-muted); 
+}
+
+#d-maxIntensity {
+    font-size: 1.5rem !important;
+    line-height: 1;
 }
 </style>
 </head>
 <body>
 
 <div class="container">
+    <h1>緊急地震速報 (EEW) 受信モニター</h1>
+    
+    <div class="status-box" id="ws-status">接続中...</div>
 
-    <div class="rig-header">
-        <div>
-            <div class="rig-title"><span class="tag">EEW</span>緊急地震速報 受信モニター</div>
-            <div class="rig-sub">JMA EARTHQUAKE EARLY WARNING RECEIVER — REAL-TIME TELEGRAM DECODE</div>
+    <div id="eew-content" style="display: none;">
+        
+        <div class="section">
+            <div class="section-title">1. 基本・発表情報 (parse / title / issue / type)</div>
+            <table class="info-table">
+                <tr><th>解析ステータス (parse.status)</th><td id="d-parse-status">-</td></tr>
+                <tr><th>解析バージョン (parse.version)</th><td id="d-parse-version">-</td></tr>
+                <tr><th>タイトルコード (title.code)</th><td id="d-title-code">-</td></tr>
+                <tr><th>タイトル (title.string)</th><td id="d-title-string">-</td></tr>
+                <tr><th>タイトル詳細 (title.detail)</th><td id="d-title-detail">-</td></tr>
+                <tr><th>発表タイプコード (issue.type.code)</th><td id="d-issue-type-code">-</td></tr>
+                <tr><th>発表タイプ (issue.type.string)</th><td id="d-issue-type-string">-</td></tr>
+                <tr><th>発表機関コード (issue.agency.code)</th><td id="d-issue-agency-code">-</td></tr>
+                <tr><th>発表機関 (issue.agency.string)</th><td id="d-issue-agency-string">-</td></tr>
+                <tr><th>発表時刻 (issue.time)</th><td id="d-issue-time">-</td></tr>
+                <tr><th>タイプコード (type.code)</th><td id="d-type-code">-</td></tr>
+                <tr><th>タイプ (type.string)</th><td id="d-type-string">-</td></tr>
+            </table>
         </div>
-        <div id="ws-status" class="status-warn"><span class="led"></span>接続中...</div>
-    </div>
 
-    <div id="warn-banner">⚠ 警報発表中 — 強い揺れに警戒してください</div>
+        <div class="section">
+            <div class="section-title">2. メタ識別情報 (eventID / serial / flags)</div>
+            <table class="info-table">
+                <tr><th>地震ID (eventID)</th><td id="d-eventID">-</td></tr>
+                <tr><th>速報番号 (serial)</th><td id="d-serial">-</td></tr>
+                <tr><th>キャンセル報フラグ (isCancel)</th><td id="d-isCancel">-</td></tr>
+                <tr><th>警報フラグ (isWarn)</th><td id="d-isWarn">-</td></tr>
+                <tr><th>最終報フラグ (isFinal)</th><td id="d-isFinal">-</td></tr>
+            </table>
+        </div>
 
-    <div id="eew-content" style="display:none;">
+        <div class="section" id="sect-hypocenter">
+            <div class="section-title">3. 震源要素情報 (originTime / hypocenter)</div>
+            <table class="info-table">
+                <tr><th>地震発生/検出時刻 (originTime)</th><td id="d-originTime">-</td></tr>
+                <tr><th>震源コード (hypocenter.code)</th><td id="d-hypo-code">-</td></tr>
+                <tr><th>震央名 (hypocenter.name)</th><td id="d-hypo-name">-</td></tr>
+                <tr><th>仮定震源フラグ (hypocenter.isEstimate)</th><td id="d-hypo-isEstimate">-</td></tr>
+                <tr><th>震源経度 (hypocenter.location.lng)</th><td id="d-hypo-lng">-</td></tr>
+                <tr><th>震源緯度 (hypocenter.location.lat)</th><td id="d-hypo-lat">-</td></tr>
+                <tr><th>震源深さ (hypocenter.location.depth)</th><td id="d-hypo-depth">-</td></tr>
+                <tr><th>マグニチュード (hypocenter.magnitude)</th><td id="d-hypo-magnitude">-</td></tr>
+                <tr><th>位置分類 (hypocenter.landOrSea)</th><td id="d-hypo-landOrSea">-</td></tr>
+            </table>
+        </div>
 
-        <!-- 5. 震度 + 6. 地域別詳細（先頭に配置：最も見る情報） -->
-        <div class="panel" id="sect-intensity">
-            <div class="panel-head"><span><span class="num">05</span><h2 style="display:inline">最大予測震度 / 警報地域</h2></span></div>
-            <div class="panel-body">
-                <div class="intensity-wrap">
-                    <div class="intensity-dial" id="d-maxIntensity">-</div>
-                    <div>
-                        <div class="intensity-legend" id="intensity-legend"></div>
-                        <div id="row-warnArea" style="margin-top:10px; font-size:0.8rem; color:var(--text-mid);">
-                            警報地域: <span id="d-warnArea" style="color:var(--s-wave); font-weight:600;">-</span>
-                        </div>
-                    </div>
-                </div>
+        <div class="section" id="sect-accuracy">
+            <div class="section-title">4. 解析精度情報 (hypocenter.accuracy)</div>
+            <table class="info-table">
+                <tr><th>震央精度 (accuracy.epicenter)</th><td id="d-acc-epi">-</td></tr>
+                <tr><th>震源深さ精度 (accuracy.depth)</th><td id="d-acc-depth">-</td></tr>
+                <tr><th>マグニチュード精度 (accuracy.magnitude)</th><td id="d-acc-mag">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-intensity">
+            <div class="section-title">5. 全体震度・警報地域 (maxIntensity / warnArea)</div>
+            <table class="info-table">
+                <tr><th>最大予測震度 (maxIntensity)</th><td id="d-maxIntensity" style="font-weight:bold; color:var(--danger);">-</td></tr>
+                <tr id="row-warnArea"><th>警報地域 (warnArea)</th><td id="d-warnArea">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-estIntensity">
+            <div class="section-title">6. 地域別詳細予測情報 (estIntensity)</div>
+            <div class="est-container" id="d-estIntensity-box">
+                <div style="padding:16px; color:var(--text-muted); font-size:0.875rem;">データがありません</div>
             </div>
         </div>
 
-        <!-- seismograph -->
-        <div class="panel">
-            <div class="panel-head"><span><h2 style="display:inline">リアルタイム・セイスモグラフ（模式波形）</h2></span></div>
-            <div class="panel-body">
-                <div class="seismo-box">
-                    <div class="seismo-label">CH-01 SIMULATED TRACE</div>
-                    <canvas id="seismo-canvas" height="110"></canvas>
-                </div>
+        <div class="section" id="sect-calculation">
+            <div class="section-title">7. 震源距離・深さ計算 (JMA2001走時表)</div>
+            <table class="calc-table">
+                <tr><th>現在時刻</th><td id="d-calc-current-time">-</td></tr>
+                <tr><th>地震発生時刻</th><td id="d-calc-origin-time">-</td></tr>
+                <tr><th>経過時間 A (秒)</th><td id="d-calc-elapsed">-</td></tr>
+                <tr><th>震源深さ</th><td id="d-calc-depth">-</td></tr>
+                <tr><th>P波速度</th><td id="d-calc-pwave-vel">-</td></tr>
+                <tr><th>S波速度</th><td id="d-calc-swave-vel">-</td></tr>
+            </table>
+            <div class="calculation-area" id="d-calc-results">
+                <div style="color:var(--text-muted); font-size:0.875rem;">計算データがあります</div>
             </div>
         </div>
 
-        <!-- P/S radar propagation -->
-        <div class="panel" id="sect-radar">
-            <div class="panel-head"><span><h2 style="display:inline">P波・S波 伝播シミュレーション</h2></span></div>
-            <div class="panel-body">
-                <div class="radar-wrap">
-                    <div class="radar-svg-box">
-                        <svg id="radar-svg" width="220" height="220" viewBox="0 0 220 220"></svg>
-                    </div>
-                    <div class="radar-stats">
-                        <div class="radar-stat-row"><span class="lab"><span class="dotcyan"></span>P波推定到達距離</span><span class="val" id="d-p-dist">-- km</span></div>
-                        <div class="radar-stat-row"><span class="lab"><span class="dotred"></span>S波推定到達距離</span><span class="val" id="d-s-dist">-- km</span></div>
-                        <div class="radar-stat-row"><span class="lab">経過時間（A）</span><span class="val" id="d-elapsed">-- 秒</span></div>
-                        <div class="radar-stat-row"><span class="lab">当地点との距離（推定）</span><span class="val" id="d-user-dist">-- km</span></div>
-                        <div class="eta-box">
-                            <div class="eta-tag">当地点 S波到達推定（震央距離ベース概算）</div>
-                            <div class="eta-num" id="d-eta">--</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-head"><span><span class="num">01</span><h2 style="display:inline">基本・発表情報</h2></span></div>
-            <div class="panel-body">
-                <table class="kv">
-                    <tr><th>解析ステータス (parse.status)</th><td id="d-parse-status">-</td></tr>
-                    <tr><th>解析バージョン (parse.version)</th><td id="d-parse-version">-</td></tr>
-                    <tr><th>タイトルコード (title.code)</th><td id="d-title-code">-</td></tr>
-                    <tr><th>タイトル (title.string)</th><td id="d-title-string">-</td></tr>
-                    <tr><th>タイトル詳細 (title.detail)</th><td id="d-title-detail">-</td></tr>
-                    <tr><th>発表タイプコード (issue.type.code)</th><td id="d-issue-type-code">-</td></tr>
-                    <tr><th>発表タイプ (issue.type.string)</th><td id="d-issue-type-string">-</td></tr>
-                    <tr><th>発表機関コード (issue.agency.code)</th><td id="d-issue-agency-code">-</td></tr>
-                    <tr><th>発表機関 (issue.agency.string)</th><td id="d-issue-agency-string">-</td></tr>
-                    <tr><th>発表時刻 (issue.time)</th><td id="d-issue-time">-</td></tr>
-                    <tr><th>タイプコード (type.code)</th><td id="d-type-code">-</td></tr>
-                    <tr><th>タイプ (type.string)</th><td id="d-type-string">-</td></tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-head"><span><span class="num">02</span><h2 style="display:inline">メタ識別情報</h2></span></div>
-            <div class="panel-body">
-                <table class="kv">
-                    <tr><th>地震ID (eventID)</th><td id="d-eventID">-</td></tr>
-                    <tr><th>速報番号 (serial)</th><td id="d-serial">-</td></tr>
-                    <tr><th>キャンセル報フラグ</th><td id="d-isCancel">-</td></tr>
-                    <tr><th>警報フラグ</th><td id="d-isWarn">-</td></tr>
-                    <tr><th>最終報フラグ</th><td id="d-isFinal">-</td></tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="panel" id="sect-hypocenter">
-            <div class="panel-head"><span><span class="num">03</span><h2 style="display:inline">震源要素情報</h2></span></div>
-            <div class="panel-body">
-                <table class="kv">
-                    <tr><th>地震発生/検出時刻 (originTime)</th><td id="d-originTime">-</td></tr>
-                    <tr><th>震源コード</th><td id="d-hypo-code">-</td></tr>
-                    <tr><th>震央名</th><td id="d-hypo-name">-</td></tr>
-                    <tr><th>仮定震源フラグ</th><td id="d-hypo-isEstimate">-</td></tr>
-                    <tr><th>震源経度</th><td id="d-hypo-lng">-</td></tr>
-                    <tr><th>震源緯度</th><td id="d-hypo-lat">-</td></tr>
-                    <tr><th>震源深さ</th><td id="d-hypo-depth">-</td></tr>
-                    <tr><th>マグニチュード</th><td id="d-hypo-magnitude">-</td></tr>
-                    <tr><th>位置分類</th><td id="d-hypo-landOrSea">-</td></tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="panel" id="sect-accuracy">
-            <div class="panel-head"><span><span class="num">04</span><h2 style="display:inline">解析精度情報</h2></span></div>
-            <div class="panel-body">
-                <table class="kv">
-                    <tr><th>震央精度</th><td id="d-acc-epi">-</td></tr>
-                    <tr><th>震源深さ精度</th><td id="d-acc-depth">-</td></tr>
-                    <tr><th>マグニチュード精度</th><td id="d-acc-mag">-</td></tr>
-                </table>
-            </div>
-        </div>
-
-        <div class="panel" id="sect-estIntensity">
-            <div class="panel-head"><span><span class="num">06</span><h2 style="display:inline">地域別詳細予測情報</h2></span></div>
-            <div class="panel-body">
-                <div class="est-container" id="d-estIntensity-box">
-                    <div class="empty-note">データがありません</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-head"><span><span class="num">07</span><h2 style="display:inline">電文テキスト (originalTelegram)</h2></span></div>
-            <div class="panel-body">
-                <pre id="d-telegram">-</pre>
-            </div>
+        <div class="section">
+            <div class="section-title">8. 電文テキスト (originalTelegram)</div>
+            <pre id="d-telegram">-</pre>
         </div>
 
     </div>
-
-    <div id="no-data">リアルタイム電文の受信を待っています...</div>
-
+    
+    <div id="no-data" class="section" style="text-align: center; color: var(--text-muted); font-size: 0.9rem; padding: 40px 20px;">
+        リアルタイム電文の受信を待っています...
+    </div>
 </div>
 
 <script>
-/* ============================================================
-   JMA 震度カラーマップ
-   ============================================================ */
-const INTENSITY_COLORS = {
-    "0":"var(--i0)","1":"var(--i1)","2":"var(--i2)","3":"var(--i3)","4":"var(--i4)",
-    "5-":"var(--i5w)","5+":"var(--i5s)","6-":"var(--i6w)","6+":"var(--i6s)","7":"var(--i7)"
-};
-function intensityColor(v){
-    if(v===undefined||v===null) return "var(--i0)";
-    const s=String(v).trim();
-    if(INTENSITY_COLORS[s]) return INTENSITY_COLORS[s];
-    // 表記ゆれ対応（５弱 / 5弱 / 5weak 等）
-    if(s.includes("7")) return "var(--i7)";
-    if(s.includes("6")&&(s.includes("強")||s.includes("+"))) return "var(--i6s)";
-    if(s.includes("6")) return "var(--i6w)";
-    if(s.includes("5")&&(s.includes("強")||s.includes("+"))) return "var(--i5s)";
-    if(s.includes("5")) return "var(--i5w)";
-    if(s.includes("4")) return "var(--i4)";
-    if(s.includes("3")) return "var(--i3)";
-    if(s.includes("2")) return "var(--i2)";
-    if(s.includes("1")) return "var(--i1)";
-    return "var(--i0)";
-}
-function resolveVar(cssVarExpr){
-    // "var(--i7)" -> actual hex, so it can be used on canvas/svg fill safely
-    const m = cssVarExpr.match(/--[a-zA-Z0-9-]+/);
-    if(!m) return "#7d8a94";
-    return getComputedStyle(document.documentElement).getPropertyValue(m[0]).trim() || "#7d8a94";
-}
-
-/* legend */
-(function buildLegend(){
-    const legend = document.getElementById("intensity-legend");
-    const labels = ["0","1","2","3","4","5弱","5強","6弱","6強","7"];
-    const keys   = ["0","1","2","3","4","5-","5+","6-","6+","7"];
-    legend.innerHTML = labels.map((l,i)=>`<span style="background:${intensityColor(keys[i])}">${l}</span>`).join("");
-})();
-
-/* ============================================================
-   走時表（気象庁 JMA2001走時表に基づく深さ別P波/S波係数）
-   [depth_km, P_coeff(km/s), S_coeff(km/s)]  -- 間引きサンプル
-   ============================================================ */
-const TRAVEL_TABLE = [
-[0.0,4.800,2.844],[5.0,5.820,3.431],[10.0,6.020,3.531],[15.0,6.220,3.634],
-[20.0,6.450,3.754],[25.0,6.700,3.885],[30.0,6.980,4.032],[35.0,7.230,4.161],
-[40.0,7.454,4.274],[45.0,7.626,4.356],[50.0,7.815,4.415],[55.0,7.779,4.409],
-[60.0,7.815,4.415],[65.0,7.845,4.419],[70.0,7.865,4.419],[75.0,7.876,4.420],
-[80.0,7.889,4.420],[85.0,7.906,4.427],[90.0,7.921,4.433],[95.0,7.936,4.440],
-[100.0,7.949,4.446],[110.0,7.976,4.458],[120.0,8.009,4.474],[130.0,8.046,4.492],
-[140.0,8.079,4.508],[150.0,8.111,4.524],[160.0,8.139,4.537],[170.0,8.166,4.549],
-[180.0,8.199,4.565],[190.0,8.237,4.584],[200.0,8.269,4.602],[220.0,8.328,4.632],
-[240.0,8.389,4.664],[260.0,8.449,4.694],[280.0,8.510,4.726],[300.0,8.579,4.761],
-[320.0,8.651,4.798],[340.0,8.716,4.831],[360.0,8.789,4.869],[380.0,8.919,4.941],
-[400.0,8.919,4.941],[420.0,9.029,5.002],[440.0,9.159,5.076],[460.0,9.299,5.152],
-[480.0,9.449,5.235],[500.0,9.599,5.318],[520.0,9.744,5.398],[540.0,9.879,5.473],
-[560.0,10.000,5.540],[580.0,10.129,5.612],[600.0,10.250,5.679],[650.0,10.539,5.839],
-[700.0,10.779,5.972],[750.0,10.958,6.071],[800.0,11.100,6.150],[850.0,11.100,6.150],
-[900.0,11.159,6.182],[939.5,11.199,6.204]
+// JMA2001走時表データ
+const jmaWaveData = [
+    {depth: 0.0, pWave: 4.800, sWave: 2.844},
+    {depth: 0.5, pWave: 4.950, sWave: 2.931},
+    {depth: 1.0, pWave: 5.090, sWave: 3.012},
+    {depth: 1.5, pWave: 5.220, sWave: 3.088},
+    {depth: 2.0, pWave: 5.340, sWave: 3.157},
+    {depth: 2.5, pWave: 5.450, sWave: 3.221},
+    {depth: 3.0, pWave: 5.550, sWave: 3.278},
+    {depth: 3.5, pWave: 5.640, sWave: 3.329},
+    {depth: 4.0, pWave: 5.720, sWave: 3.375},
+    {depth: 4.5, pWave: 5.780, sWave: 3.409},
+    {depth: 5.0, pWave: 5.820, sWave: 3.431},
+    {depth: 5.5, pWave: 5.840, sWave: 3.441},
+    {depth: 6.0, pWave: 5.860, sWave: 3.451},
+    {depth: 6.5, pWave: 5.880, sWave: 3.461},
+    {depth: 7.0, pWave: 5.900, sWave: 3.471},
+    {depth: 7.5, pWave: 5.920, sWave: 3.481},
+    {depth: 8.0, pWave: 5.940, sWave: 3.491},
+    {depth: 8.5, pWave: 5.960, sWave: 3.501},
+    {depth: 9.0, pWave: 5.980, sWave: 3.511},
+    {depth: 9.5, pWave: 6.000, sWave: 3.521},
+    {depth: 10.0, pWave: 6.020, sWave: 3.531},
 ];
-function coeffForDepth(depthKm){
-    const d = (typeof depthKm === "number" && !isNaN(depthKm)) ? depthKm : 10;
-    if(d<=TRAVEL_TABLE[0][0]) return {p:TRAVEL_TABLE[0][1], s:TRAVEL_TABLE[0][2]};
-    for(let i=0;i<TRAVEL_TABLE.length-1;i++){
-        const [d0,p0,s0]=TRAVEL_TABLE[i], [d1,p1,s1]=TRAVEL_TABLE[i+1];
-        if(d>=d0 && d<=d1){
-            const t=(d-d0)/(d1-d0||1);
-            return {p:p0+(p1-p0)*t, s:s0+(s1-s0)*t};
-        }
-    }
-    const last=TRAVEL_TABLE[TRAVEL_TABLE.length-1];
-    return {p:last[1], s:last[2]};
-}
 
-/* haversine (km) */
-function haversineKm(lat1,lon1,lat2,lon2){
-    const R=6371;
-    const toRad=x=>x*Math.PI/180;
-    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-    const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-    return 2*R*Math.asin(Math.sqrt(a));
-}
-
-/* この受信端末の推定位置（新潟県南魚沼市 付近） */
-const HOME_LAT = 37.0, HOME_LON = 138.88;
-
-/* ============================================================
-   状態管理
-   ============================================================ */
-let currentEvent = null;   // 最新の受信データ
-let originTimeMs  = null;
-let hypoLat=null, hypoLon=null, hypoDepth=10;
-let userDistKm = null;
-let maxIntensityKey = "0";
-
-/* ---------------- seismograph canvas animation ---------------- */
-const seCanvas = document.getElementById("seismo-canvas");
-const seCtx = seCanvas.getContext("2d");
-let seW=0, seH=0, seBuffer=[];
-function resizeSeismo(){
-    seW = seCanvas.clientWidth || 600;
-    seH = 110;
-    seCanvas.width = seW; seCanvas.height = seH;
-    if(seBuffer.length===0){ for(let i=0;i<seW;i++) seBuffer.push(0); }
-}
-window.addEventListener("resize", resizeSeismo);
-resizeSeismo();
-
-let seismoAgitation = 0.04; // idle noise amplitude
-function seismoTick(){
-    // shift buffer left
-    seBuffer.shift();
-    const target = seismoAgitation;
-    const noise = (Math.random()*2-1) * target;
-    seBuffer.push(noise);
-
-    seCtx.clearRect(0,0,seW,seH);
-    // grid
-    seCtx.strokeStyle = "rgba(46,230,255,0.06)";
-    seCtx.lineWidth = 1;
-    for(let x=0;x<seW;x+=40){ seCtx.beginPath(); seCtx.moveTo(x,0); seCtx.lineTo(x,seH); seCtx.stroke(); }
-    seCtx.beginPath(); seCtx.moveTo(0,seH/2); seCtx.lineTo(seW,seH/2); seCtx.stroke();
-
-    const traceColor = seismoAgitation>0.4 ? "#ff5d4a" : (seismoAgitation>0.15 ? "#ffb020" : "#2ee6ff");
-    seCtx.strokeStyle = traceColor;
-    seCtx.shadowColor = traceColor;
-    seCtx.shadowBlur = 6;
-    seCtx.lineWidth = 1.4;
-    seCtx.beginPath();
-    for(let i=0;i<seBuffer.length;i++){
-        const y = seH/2 + seBuffer[i]*(seH/2-6);
-        if(i===0) seCtx.moveTo(i,y); else seCtx.lineTo(i,y);
-    }
-    seCtx.stroke();
-    seCtx.shadowBlur = 0;
-    requestAnimationFrame(seismoTick);
-}
-requestAnimationFrame(seismoTick);
-
-function intensityToAgitation(key){
-    const scale = {"0":0.03,"1":0.05,"2":0.08,"3":0.12,"4":0.2,"5-":0.32,"5+":0.45,"6-":0.6,"6+":0.78,"7":1.0};
-    return scale[key] !== undefined ? scale[key] : 0.03;
-}
-
-/* ---------------- radar svg ---------------- */
-const radarSvg = document.getElementById("radar-svg");
-const RADAR_R = 95, RADAR_CX=110, RADAR_CY=110;
-function drawRadarBase(){
-    let html = "";
-    // background rings (static reference grid)
-    for(let i=1;i<=4;i++){
-        const r = RADAR_R*i/4;
-        html += `<circle cx="${RADAR_CX}" cy="${RADAR_CY}" r="${r}" fill="none" stroke="rgba(143,163,179,0.15)" stroke-width="1"/>`;
-    }
-    html += `<line x1="${RADAR_CX-RADAR_R}" y1="${RADAR_CY}" x2="${RADAR_CX+RADAR_R}" y2="${RADAR_CY}" stroke="rgba(143,163,179,0.12)"/>`;
-    html += `<line x1="${RADAR_CX}" y1="${RADAR_CY-RADAR_R}" x2="${RADAR_CX}" y2="${RADAR_CY+RADAR_R}" stroke="rgba(143,163,179,0.12)"/>`;
-    // epicenter marker
-    html += `<circle id="radar-epi" cx="${RADAR_CX}" cy="${RADAR_CY}" r="4" fill="#ffb020"/>`;
-    // P/S rings
-    html += `<circle id="radar-p" cx="${RADAR_CX}" cy="${RADAR_CY}" r="0" fill="none" stroke="var(--p-wave)" stroke-width="2" opacity="0.9"/>`;
-    html += `<circle id="radar-s" cx="${RADAR_CX}" cy="${RADAR_CY}" r="0" fill="none" stroke="var(--s-wave)" stroke-width="2" opacity="0.9"/>`;
-    // user location marker (fixed at top for reference, since real map projection isn't used)
-    html += `<circle id="radar-user" cx="${RADAR_CX}" cy="${RADAR_CY-RADAR_R}" r="4" fill="#2ee6ff" stroke="#05080c" stroke-width="1"/>`;
-    html += `<text x="${RADAR_CX}" y="${RADAR_CY-RADAR_R-8}" fill="#8fa3b3" font-size="9" text-anchor="middle" font-family="JetBrains Mono">当地点(概算)</text>`;
-    radarSvg.innerHTML = html;
-}
-drawRadarBase();
-
-/* 2000km を画面上の最大半径(RADAR_R)に対応させる（走時表の有効範囲上限） */
-const KM_CAP = 2000;
-function kmToPx(km){
-    return Math.min(km, KM_CAP) / KM_CAP * RADAR_R;
-}
-
-function updateRadarAndReadouts(){
-    if(originTimeMs===null){
-        document.getElementById("d-p-dist").textContent = "-- km";
-        document.getElementById("d-s-dist").textContent = "-- km";
-        document.getElementById("d-elapsed").textContent = "-- 秒";
-        document.getElementById("d-user-dist").textContent = "-- km";
-        document.getElementById("d-eta").textContent = "--";
-        return;
-    }
-    const nowMs = Date.now();
-    const A = Math.max(0, (nowMs - originTimeMs)/1000); // 経過秒数
-    const {p,s} = coeffForDepth(hypoDepth);
-    const pDist = Math.min(A*p, KM_CAP);
-    const sDist = Math.min(A*s, KM_CAP);
-
-    document.getElementById("d-elapsed").textContent = A.toFixed(1)+" 秒";
-    document.getElementById("d-p-dist").textContent = pDist.toFixed(1)+" km";
-    document.getElementById("d-s-dist").textContent = sDist.toFixed(1)+" km";
-
-    const pEl = document.getElementById("radar-p");
-    const sEl = document.getElementById("radar-s");
-    if(pEl) pEl.setAttribute("r", kmToPx(pDist).toFixed(1));
-    if(sEl) sEl.setAttribute("r", kmToPx(sDist).toFixed(1));
-
-    if(userDistKm!==null){
-        document.getElementById("d-user-dist").textContent = userDistKm.toFixed(1)+" km";
-        const eta = (userDistKm / s) - A; // 残り秒（負なら到達済み）
-        const etaEl = document.getElementById("d-eta");
-        if(eta > 0){
-            etaEl.textContent = "あと約 "+eta.toFixed(1)+" 秒";
-            etaEl.style.color = "var(--amber)";
-        }else{
-            etaEl.textContent = "到達済み（推定）";
-            etaEl.style.color = "var(--s-wave)";
-        }
-    }else{
-        document.getElementById("d-user-dist").textContent = "-- km（震央位置未受信）";
-        document.getElementById("d-eta").textContent = "--";
-    }
-}
-setInterval(updateRadarAndReadouts, 200);
-
-/* ============================================================
-   WebSocket 接続
-   ============================================================ */
 const wsStatus = document.getElementById("ws-status");
 const eewContent = document.getElementById("eew-content");
 const noData = document.getElementById("no-data");
-const warnBanner = document.getElementById("warn-banner");
 
 let ws;
 let pingTimer;
 let reconnectTimer;
 
-function setStatus(mode, text){
-    wsStatus.className = "status-"+mode;
-    wsStatus.innerHTML = `<span class="led"></span>${text}`;
+// 走時表から深さに該当するP波・S波速度を取得
+function getWaveDataForDepth(depth) {
+    if (depth < 0 || !jmaWaveData.length) return null;
+    
+    // 深さ範囲を超える場合は最後のデータを返す
+    if (depth >= jmaWaveData[jmaWaveData.length - 1].depth) {
+        return jmaWaveData[jmaWaveData.length - 1];
+    }
+    
+    // 線形補間で該当データを探す
+    for (let i = 0; i < jmaWaveData.length - 1; i++) {
+        const current = jmaWaveData[i];
+        const next = jmaWaveData[i + 1];
+        
+        if (depth >= current.depth && depth <= next.depth) {
+            const ratio = (depth - current.depth) / (next.depth - current.depth);
+            return {
+                depth: depth,
+                pWave: current.pWave + (next.pWave - current.pWave) * ratio,
+                sWave: current.sWave + (next.sWave - current.sWave) * ratio
+            };
+        }
+    }
+    
+    return jmaWaveData[jmaWaveData.length - 1];
+}
+
+// 現在時刻を取得・更新
+function updateCurrentTime() {
+    const now = new Date();
+    return now;
+}
+
+// 計算セクションを更新
+function updateCalculation(data) {
+    const sectCalc = document.getElementById("sect-calculation");
+    
+    if (!data || data.isCancel || !data.hypocenter || data.hypocenter.location.depth === undefined || !data.originTime) {
+        sectCalc.style.display = "none";
+        return;
+    }
+    
+    sectCalc.style.display = "block";
+    
+    const currentTime = updateCurrentTime();
+    const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false });
+    document.getElementById("d-calc-current-time").textContent = currentTimeStr;
+    
+    // originTimeをパース（例: "2024-01-01T12:34:56.789Z" フォーマット）
+    const originDate = new Date(data.originTime);
+    const originTimeStr = originDate.toLocaleTimeString('ja-JP', { hour12: false });
+    document.getElementById("d-calc-origin-time").textContent = originTimeStr;
+    
+    // 経過時間を秒単位で計算
+    const elapsedMs = currentTime.getTime() - originDate.getTime();
+    const elapsedSec = Math.round(elapsedMs / 1000);
+    const elapsedStr = elapsedSec >= 0 ? `${elapsedSec}秒` : "計算中...";
+    document.getElementById("d-calc-elapsed").textContent = elapsedStr;
+    
+    // 震源深さ
+    const depth = data.hypocenter.location.depth;
+    document.getElementById("d-calc-depth").textContent = `${depth} km`;
+    
+    // 走時表からP波・S波速度を取得
+    const waveData = getWaveDataForDepth(depth);
+    
+    if (waveData) {
+        const pWaveVel = waveData.pWave.toFixed(3);
+        const sWaveVel = waveData.sWave.toFixed(3);
+        
+        document.getElementById("d-calc-pwave-vel").textContent = `${pWaveVel} km/s`;
+        document.getElementById("d-calc-swave-vel").textContent = `${sWaveVel} km/s`;
+        
+        // 計算結果を表示
+        if (elapsedSec >= 0) {
+            const pDistance = (elapsedSec * waveData.pWave).toFixed(2);
+            const sDistance = (elapsedSec * waveData.sWave).toFixed(2);
+            
+            let resultsHtml = `
+                <div class="calculation-result">
+                    <strong>経過時間:</strong> ${elapsedSec}秒<br/>
+                    <strong>P波到達距離:</strong> ${pDistance} km (A × P波速度)<br/>
+                    <strong>S波到達距離:</strong> ${sDistance} km (A × S波速度)
+                </div>
+            `;
+            document.getElementById("d-calc-results").innerHTML = resultsHtml;
+        }
+    } else {
+        document.getElementById("d-calc-pwave-vel").textContent = "-";
+        document.getElementById("d-calc-swave-vel").textContent = "-";
+        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">走時表データが利用できません</div>';
+    }
 }
 
 function connect(){
@@ -672,198 +477,205 @@ function connect(){
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
-        setStatus("ok", "WEBSOCKET LINK UP — 電文受信待機中");
+        wsStatus.textContent = "● WebSocket接続完了 - 電文受信待機中";
+        wsStatus.style.color = "var(--success)";
+        wsStatus.style.backgroundColor = "var(--success-light)";
+        wsStatus.style.borderColor = "rgba(22, 163, 74, 0.2)";
         ws.send("queryjson");
+
         pingTimer = setInterval(() => {
-            if(ws.readyState === WebSocket.OPEN) ws.send("ping");
+            if(ws.readyState === WebSocket.OPEN){
+                ws.send("ping");
+            }
         }, 5000);
     };
 
     ws.onmessage = (event) => {
         if(event.data === "pong") return;
-        try{
+
+        try {
             const data = JSON.parse(event.data);
             renderEEW(data);
-        }catch(e){
+            // 定期的に計算を更新する
+            setInterval(() => {
+                updateCalculation(data);
+            }, 1000);
+        } catch(e) {
             console.error("JSONのパースに失敗しました", e);
         }
     };
 
     ws.onclose = () => {
-        setStatus("bad", "LINK DOWN — 再接続します...");
+        wsStatus.textContent = "▲ 切断されました。再接続します...";
+        wsStatus.style.color = "var(--danger)";
+        wsStatus.style.backgroundColor = "var(--danger-light)";
+        wsStatus.style.borderColor = "rgba(220, 38, 38, 0.2)";
         clearInterval(pingTimer);
         reconnectTimer = setTimeout(connect, 1000);
     };
 }
 
-function renderEEW(data){
-    if(!data) return;
-    currentEvent = data;
-
+function renderEEW(data) {
+    if (!data) return;
+    
     noData.style.display = "none";
     eewContent.style.display = "block";
 
-    /* --- 1. parse --- */
-    if(data.parse){
+    // --- 1. parse関連 ---
+    if (data.parse) {
         document.getElementById("d-parse-status").textContent = data.parse.status || "-";
         document.getElementById("d-parse-version").textContent = data.parse.version || "-";
     }
-    /* --- 2. title --- */
-    if(data.title){
+
+    // --- 2. title関連 ---
+    if (data.title) {
         document.getElementById("d-title-code").textContent = data.title.code !== undefined ? data.title.code : "-";
         document.getElementById("d-title-string").textContent = data.title.string || "-";
         document.getElementById("d-title-detail").textContent = data.title.detail || "-";
     }
-    /* --- 3. issue --- */
-    if(data.issue){
-        if(data.issue.type){
+
+    // --- 3. issue関連 ---
+    if (data.issue) {
+        if (data.issue.type) {
             document.getElementById("d-issue-type-code").textContent = data.issue.type.code !== undefined ? data.issue.type.code : "-";
             document.getElementById("d-issue-type-string").textContent = data.issue.type.string || "-";
         }
-        if(data.issue.agency){
+        if (data.issue.agency) {
             document.getElementById("d-issue-agency-code").textContent = data.issue.agency.code !== undefined ? data.issue.agency.code : "-";
             document.getElementById("d-issue-agency-string").textContent = data.issue.agency.string || "-";
         }
         document.getElementById("d-issue-time").textContent = data.issue.time || "-";
     }
-    /* --- 4. type --- */
-    if(data.type){
+
+    // --- 4. type関連 ---
+    if (data.type) {
         document.getElementById("d-type-code").textContent = data.type.code !== undefined ? data.type.code : "-";
         document.getElementById("d-type-string").textContent = data.type.string || "-";
     }
 
-    /* --- 5. meta flags --- */
+    // --- 5. 基本フラグ・メタデータ群 ---
     document.getElementById("d-eventID").textContent = data.eventID || "-";
     document.getElementById("d-serial").textContent = data.serial !== undefined ? `${data.serial} 報` : "-";
+    
     document.getElementById("d-isCancel").innerHTML = `<span class="badge badge-${data.isCancel}">${data.isCancel ? 'はい（キャンセル）' : 'いいえ'}</span>`;
     document.getElementById("d-isWarn").innerHTML = `<span class="badge badge-${data.isWarn}">${data.isWarn ? 'はい（警報発生）' : 'いいえ'}</span>`;
     document.getElementById("d-isFinal").innerHTML = `<span class="badge badge-${data.isFinal}">${data.isFinal ? 'はい（最終報）' : 'いいえ'}</span>`;
 
     document.getElementById("d-originTime").textContent = data.originTime || "-";
-    originTimeMs = data.originTime ? Date.parse(data.originTime.replace(" ","T")) : (data.originTime ? Date.parse(data.originTime) : null);
-    if(isNaN(originTimeMs)) originTimeMs = null;
-
-    warnBanner.style.display = (data.isWarn && !data.isCancel) ? "block" : "none";
 
     const sectHypo = document.getElementById("sect-hypocenter");
     const sectAcc = document.getElementById("sect-accuracy");
     const sectIntensity = document.getElementById("sect-intensity");
     const sectEstIntensity = document.getElementById("sect-estIntensity");
-    const sectRadar = document.getElementById("sect-radar");
 
-    /* --- 6. hypocenter --- */
-    if(data.isCancel || !data.hypocenter){
+    // --- 6. 震源関連 ---
+    if (data.isCancel || !data.hypocenter) {
         sectHypo.style.display = "none";
         sectAcc.style.display = "none";
-        sectRadar.style.display = "none";
-        hypoLat=null; hypoLon=null; userDistKm=null;
-    }else{
+    } else {
         sectHypo.style.display = "block";
         sectAcc.style.display = "block";
-        sectRadar.style.display = "block";
-
+        
         const h = data.hypocenter;
         document.getElementById("d-hypo-code").textContent = h.code !== undefined ? h.code : "-";
         document.getElementById("d-hypo-name").textContent = h.name || "-";
         document.getElementById("d-hypo-isEstimate").textContent = h.isEstimate ? "はい (仮定震源要素)" : "いいえ";
         document.getElementById("d-hypo-magnitude").textContent = h.magnitude !== undefined ? h.magnitude : "-";
         document.getElementById("d-hypo-landOrSea").textContent = h.landOrSea || "-";
-
-        if(h.location){
+        
+        if (h.location) {
             document.getElementById("d-hypo-lng").textContent = h.location.lng !== undefined ? `${h.location.lng} 度` : "-";
             document.getElementById("d-hypo-lat").textContent = h.location.lat !== undefined ? `${h.location.lat} 度` : "-";
             document.getElementById("d-hypo-depth").textContent = h.location.depth !== undefined ? `${h.location.depth} km` : "-";
-            hypoLat = h.location.lat; hypoLon = h.location.lng;
-            hypoDepth = h.location.depth !== undefined ? h.location.depth : 10;
-            if(typeof hypoLat === "number" && typeof hypoLon === "number"){
-                userDistKm = haversineKm(hypoLat, hypoLon, HOME_LAT, HOME_LON);
-            }else{
-                userDistKm = null;
-            }
         }
 
-        if(h.accuracy){
-            if(h.accuracy.epicenter) document.getElementById("d-acc-epi").textContent = `${h.accuracy.epicenter.string || '-'} (コード: ${h.accuracy.epicenter.code})`;
-            if(h.accuracy.depth) document.getElementById("d-acc-depth").textContent = `${h.accuracy.depth.string || '-'} (コード: ${h.accuracy.depth.code})`;
-            if(h.accuracy.magnitude) document.getElementById("d-acc-mag").textContent = `${h.accuracy.magnitude.string || '-'} (コード: ${h.accuracy.magnitude.code})`;
+        if (h.accuracy) {
+            if (h.accuracy.epicenter) document.getElementById("d-acc-epi").textContent = `${h.accuracy.epicenter.string || '-'} (コード: ${h.accuracy.epicenter.code})`;
+            if (h.accuracy.depth) document.getElementById("d-acc-depth").textContent = `${h.accuracy.depth.string || '-'} (コード: ${h.accuracy.depth.code})`;
+            if (h.accuracy.magnitude) document.getElementById("d-acc-mag").textContent = `${h.accuracy.magnitude.string || '-'} (コード: ${h.accuracy.magnitude.code})`;
         }
     }
 
-    /* --- 7. intensity + est areas --- */
-    if(data.isCancel){
+    // --- 7. 震度・警報地域情報 ---
+    if (data.isCancel) {
         sectIntensity.style.display = "none";
         sectEstIntensity.style.display = "none";
-    }else{
+    } else {
         sectIntensity.style.display = "block";
         sectEstIntensity.style.display = "block";
-
-        maxIntensityKey = data.maxIntensity || "0";
-        const dial = document.getElementById("d-maxIntensity");
-        dial.textContent = data.maxIntensity || "不明";
-        const col = intensityColor(maxIntensityKey);
-        dial.style.background = col;
-        dial.style.color = (maxIntensityKey==="0"||maxIntensityKey==="1"||maxIntensityKey==="4"||maxIntensityKey==="5-") ? "#0a0f16" : "#fff";
-        dial.style.boxShadow = `0 0 24px ${resolveVar(col)}66`;
-        seismoAgitation = intensityToAgitation(maxIntensityKey);
-
+        
+        document.getElementById("d-maxIntensity").textContent = data.maxIntensity || "不明";
+        
         const rowWarn = document.getElementById("row-warnArea");
-        if(data.isWarn && data.warnArea && data.warnArea.length>0){
-            rowWarn.style.display = "block";
+        if (data.isWarn && data.warnArea && data.warnArea.length > 0) {
+            rowWarn.style.display = "grid";
             document.getElementById("d-warnArea").textContent = data.warnArea.join(", ");
-        }else{
+        } else {
             rowWarn.style.display = "none";
         }
 
+        // --- 8. 地域別予測 (estIntensity) の新規オブジェクト構造パース ---
         const estBox = document.getElementById("d-estIntensity-box");
-        if(data.estIntensity && data.estIntensity.length>0){
-            let html = "<table class='est-table'><thead><tr><th>地域コード</th><th>地域名</th><th>予測震度</th><th>到達予想時間</th><th>状況・ステータス</th><th>地域警報</th></tr></thead><tbody>";
-            data.estIntensity.forEach(item=>{
+        
+        if (data.estIntensity && data.estIntensity.length > 0) {
+            let estHtml = "<table class='est-table'><thead><tr><th>地域コード</th><th>地域名</th><th>予測震度</th><th>到達予想時間</th><th>状況・ステータス</th><th>地域警報</th></tr></thead><tbody>";
+            
+            data.estIntensity.forEach(item => {
+                // areaオブジェクト
                 const areaCode = (item.area && item.area.code !== undefined) ? item.area.code : "-";
                 const areaName = (item.area && item.area.name) ? item.area.name : "不明な地域";
-
-                let intensityStr = "-", intKeyForColor = "0";
-                if(item.intensity){
-                    if(item.intensity.from && item.intensity.to){
-                        intensityStr = item.intensity.from === item.intensity.to ? item.intensity.from : `${item.intensity.from} ～ ${item.intensity.to}`;
-                        intKeyForColor = item.intensity.to || item.intensity.from;
-                    }else if(typeof item.intensity === "string"){
+                
+                // intensity オブジェクト対応 (from と to が同一なら1つ、異なるなら範囲表示)
+                let intensityStr = "-";
+                if (item.intensity) {
+                    if (item.intensity.from && item.intensity.to) {
+                        intensityStr = item.intensity.from === item.intensity.to 
+                            ? item.intensity.from 
+                            : `${item.intensity.from} ～ ${item.intensity.to}`;
+                    } else if (typeof item.intensity === 'string') {
                         intensityStr = item.intensity;
-                        intKeyForColor = item.intensity;
                     }
                 }
-                const pillColor = intensityColor(intKeyForColor);
 
-                let arrivalTime = "-", arrivalStatus = "-";
-                if(item.arrival){
+                // arrival オブジェクト対応
+                let arrivalTime = "-";
+                let arrivalStatus = "-";
+                if (item.arrival) {
                     arrivalTime = item.arrival.time || "-";
-                    if(item.arrival.status && item.arrival.status.string) arrivalStatus = item.arrival.status.string;
+                    if (item.arrival.status && item.arrival.status.string) {
+                        arrivalStatus = item.arrival.status.string;
+                    }
                 }
+                
+                // 地域ごとのisWarnフラグ
                 const areaWarn = item.isWarn !== undefined ? (item.isWarn ? "⚠ 警報" : "予報") : "-";
-
-                html += `<tr>
+                
+                estHtml += `<tr>
                     <td>${areaCode}</td>
                     <td><b>${areaName}</b></td>
-                    <td><span class="ipill" style="background:${pillColor}">${intensityStr}</span></td>
+                    <td style="color:var(--danger); font-weight:bold;">${intensityStr}</td>
                     <td>${arrivalTime}</td>
-                    <td style="color:var(--text-dim);">${arrivalStatus}</td>
+                    <td style="color:var(--text-muted);">${arrivalStatus}</td>
                     <td>${areaWarn}</td>
                 </tr>`;
             });
-            html += "</tbody></table>";
-            estBox.innerHTML = html;
-        }else{
-            estBox.innerHTML = "<div class='empty-note'>予測地域データなし、または配信なし</div>";
+            
+            estHtml += "</tbody></table>";
+            estBox.innerHTML = estHtml;
+        } else {
+            estBox.innerHTML = "<div style='padding:16px; color:var(--text-muted); font-size:0.875rem;'>予測地域データなし、または配信なし</div>";
         }
     }
 
-    /* --- 9. raw telegram --- */
-    document.getElementById("d-telegram").textContent = data.originalTelegram || "電文データなし";
+    // 計算セクションを更新
+    updateCalculation(data);
 
-    updateRadarAndReadouts();
+    // --- 9. 生電文テキスト ---
+    document.getElementById("d-telegram").textContent = data.originalTelegram || "電文データなし";
 }
 
 if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded", connect, {once:true});
+    document.addEventListener("DOMContentLoaded",connect,{once:true});
 }else{
     connect();
 }
