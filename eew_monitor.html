@@ -514,7 +514,7 @@ function connect(){
     clearInterval(pingTimer);
 
     ws = new WebSocket("wss://ws-api.wolfx.jp/jma_eew");
-    ws.binaryType = "arraybuffer";
+    ws.binaryType = "type";
 
     ws.onopen = () => {
         wsStatus.textContent = "● WebSocket接続完了 - 電文受信待機中";
