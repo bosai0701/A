@@ -513,7 +513,7 @@ function connect(){
     clearTimeout(reconnectTimer);
     clearInterval(pingTimer);
 
-    ws = new WebSocket("wss://telegram-cf.projectbs.cn/jmaeewws/");
+    ws = new WebSocket("wss://ws-api.wolfx.jp/jma_eew");
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
