@@ -374,18 +374,19 @@ const noData = document.getElementById("no-data");
 let ws;
 let pingTimer;
 let reconnectTimer;
-let calculationTimer = null;
-let lastValidData = null;
-let currentData = null;
+let currentTimeTimer;
+let lastData = null;
 
 // 走時表から深さに該当するP波・S波速度を取得
 function getWaveDataForDepth(depth) {
     if (depth < 0 || !jmaWaveData.length) return null;
     
+    // 深さ範囲を超える場合は最後のデータを返す
     if (depth >= jmaWaveData[jmaWaveData.length - 1].depth) {
         return jmaWaveData[jmaWaveData.length - 1];
     }
     
+    // 線形補間で該当データを探す
     for (let i = 0; i < jmaWaveData.length - 1; i++) {
         const current = jmaWaveData[i];
         const next = jmaWaveData[i + 1];
@@ -403,93 +404,60 @@ function getWaveDataForDepth(depth) {
     return jmaWaveData[jmaWaveData.length - 1];
 }
 
-// 現在時刻を取得・更新
-function updateCurrentTime() {
-    const now = new Date();
-    return now;
-}
-
 // 計算セクションを更新
 function updateCalculation(data) {
     const sectCalc = document.getElementById("sect-calculation");
     
     if (!data || data.isCancel || !data.hypocenter || data.hypocenter.location.depth === undefined || !data.originTime) {
         sectCalc.style.display = "none";
+        clearInterval(currentTimeTimer);
         return;
     }
     
     sectCalc.style.display = "block";
     
-    const currentTime = updateCurrentTime();
+    const currentTime = new Date();
     const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false });
     document.getElementById("d-calc-current-time").textContent = currentTimeStr;
     
-    // originTimeをパース
+    // originTimeをパース（例: "2024-01-01T12:34:56.789Z" フォーマット）
     const originDate = new Date(data.originTime);
     const originTimeStr = originDate.toLocaleTimeString('ja-JP', { hour12: false });
+    document.getElementById("d-calc-origin-time").textContent = originTimeStr;
     
     // 経過時間を秒単位で計算
     const elapsedMs = currentTime.getTime() - originDate.getTime();
     const elapsedSec = Math.round(elapsedMs / 1000);
+    const elapsedStr = elapsedSec >= 0 ? `${elapsedSec}秒` : "計算中...";
+    document.getElementById("d-calc-elapsed").textContent = elapsedStr;
+    
+    // 震源深さ
+    const depth = data.hypocenter.location.depth;
+    document.getElementById("d-calc-depth").textContent = `${depth} km`;
     
     // 走時表からP波・S波速度を取得
-    const waveData = getWaveDataForDepth(data.hypocenter.location.depth);
+    const waveData = getWaveDataForDepth(depth);
     
-    if (waveData && elapsedSec >= 0) {
-        const pDistance = (elapsedSec * waveData.pWave);
-        const sDistance = (elapsedSec * waveData.sWave);
+    if (waveData) {
+        const pWaveVel = waveData.pWave.toFixed(3);
+        const sWaveVel = waveData.sWave.toFixed(3);
         
-        // 2000km到達判定
-        const isPWaveOver2000km = pDistance >= 2000;
-        const isSWaveOver2000km = sDistance >= 2000;
+        document.getElementById("d-calc-pwave-vel").textContent = `${pWaveVel} km/s`;
+        document.getElementById("d-calc-swave-vel").textContent = `${sWaveVel} km/s`;
         
-        if (isPWaveOver2000km || isSWaveOver2000km) {
-            // どちらかが2000km以上：現在時刻だけ更新、他は固定
-            if (!lastValidData) {
-                lastValidData = {
-                    originTimeStr: originTimeStr,
-                    depth: data.hypocenter.location.depth,
-                    pWaveVel: waveData.pWave.toFixed(3),
-                    sWaveVel: waveData.sWave.toFixed(3),
-                    elapsedSec: elapsedSec,
-                    pDistance: pDistance.toFixed(2),
-                    sDistance: sDistance.toFixed(2)
-                };
-            }
+        // 計算結果を表示
+        if (elapsedSec >= 0) {
+            const pDistance = (elapsedSec * waveData.pWave).toFixed(2);
+            const sDistance = (elapsedSec * waveData.sWave).toFixed(2);
             
-            // 現在時刻だけ更新
-            document.getElementById("d-calc-current-time").textContent = currentTimeStr;
-            
-            // 他のフィールドは固定値を表示
-            document.getElementById("d-calc-origin-time").textContent = lastValidData.originTimeStr;
-            document.getElementById("d-calc-elapsed").textContent = `${lastValidData.elapsedSec}秒（固定）`;
-            document.getElementById("d-calc-depth").textContent = `${lastValidData.depth} km`;
-            document.getElementById("d-calc-pwave-vel").textContent = `${lastValidData.pWaveVel} km/s`;
-            document.getElementById("d-calc-swave-vel").textContent = `${lastValidData.sWaveVel} km/s`;
-            
-            let resultsHtml = `
-                <div class="calculation-result">
-                    <strong>経過時間:</strong> ${lastValidData.elapsedSec}秒（固定）<br/>
-                    <strong>P波到達距離:</strong> ${lastValidData.pDistance} km（2000km超過）<br/>
-                    <strong>S波到達距離:</strong> ${lastValidData.sDistance} km（2000km超過）<br/>
-                    <span style="color: var(--text-muted); font-size: 0.8rem;">※走時表の範囲を超えているため、固定値を表示しています</span>
-                </div>
-            `;
-            document.getElementById("d-calc-results").innerHTML = resultsHtml;
-        } else {
-            // 2000km以下：すべて更新
-            lastValidData = null;
-            document.getElementById("d-calc-origin-time").textContent = originTimeStr;
-            document.getElementById("d-calc-elapsed").textContent = `${elapsedSec}秒`;
-            document.getElementById("d-calc-depth").textContent = `${data.hypocenter.location.depth} km`;
-            document.getElementById("d-calc-pwave-vel").textContent = `${waveData.pWave.toFixed(3)} km/s`;
-            document.getElementById("d-calc-swave-vel").textContent = `${waveData.sWave.toFixed(3)} km/s`;
+            // 2000km以上に達したかチェック
+            const limitReached = pDistance >= 2000 || sDistance >= 2000;
             
             let resultsHtml = `
                 <div class="calculation-result">
                     <strong>経過時間:</strong> ${elapsedSec}秒<br/>
-                    <strong>P波到達距離:</strong> ${pDistance.toFixed(2)} km (A × P波速度)<br/>
-                    <strong>S波到達距離:</strong> ${sDistance.toFixed(2)} km (A × S波速度)
+                    <strong>P波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : pDistance + ' km'} (A × P波速度)<br/>
+                    <strong>S波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : sDistance + ' km'} (A × S波速度)
                 </div>
             `;
             document.getElementById("d-calc-results").innerHTML = resultsHtml;
@@ -501,11 +469,13 @@ function updateCalculation(data) {
     }
 }
 
-// 計算セクションを定期更新（毎秒）
-function startCalculationTimer(data) {
-    clearInterval(calculationTimer);
-    calculationTimer = setInterval(() => {
-        updateCalculation(data);
+// 現在時刻だけを継続的に更新（2000km以上の場合）
+function startCurrentTimeUpdate(data) {
+    clearInterval(currentTimeTimer);
+    currentTimeTimer = setInterval(() => {
+        const currentTime = new Date();
+        const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false });
+        document.getElementById("d-calc-current-time").textContent = currentTimeStr;
     }, 1000);
 }
 
@@ -514,14 +484,14 @@ function connect(){
     clearInterval(pingTimer);
 
     ws = new WebSocket("wss://ws-api.wolfx.jp/jma_eew");
-    ws.binaryType = "type";
+    ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
         wsStatus.textContent = "● WebSocket接続完了 - 電文受信待機中";
         wsStatus.style.color = "var(--success)";
         wsStatus.style.backgroundColor = "var(--success-light)";
         wsStatus.style.borderColor = "rgba(22, 163, 74, 0.2)";
-        ws.send("queryjson");
+        ws.send("query_jmaeew");
 
         pingTimer = setInterval(() => {
             if(ws.readyState === WebSocket.OPEN){
@@ -535,9 +505,10 @@ function connect(){
 
         try {
             const data = JSON.parse(event.data);
+            lastData = data;
             renderEEW(data);
-            currentData = data;
-            startCalculationTimer(data);
+            updateCalculation(data);
+            startCurrentTimeUpdate(data);
         } catch(e) {
             console.error("JSONのパースに失敗しました", e);
         }
@@ -549,7 +520,7 @@ function connect(){
         wsStatus.style.backgroundColor = "var(--danger-light)";
         wsStatus.style.borderColor = "rgba(220, 38, 38, 0.2)";
         clearInterval(pingTimer);
-        clearInterval(calculationTimer);
+        clearInterval(currentTimeTimer);
         reconnectTimer = setTimeout(connect, 1000);
     };
 }
