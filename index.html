@@ -308,9 +308,472 @@ pre {
                 <div style="padding:16px; color:var(--text-muted); font-size:0.875rem;">データがありません</div>
             </div>
         </div>
+<!-- section7 removed -->
+            <table class="calc-table">
+                <tr><th>現在時刻 (NTP同期)</th><td id="d-calc-current-time">-</td></tr>
+                <tr><th>地震発生時刻</th><td id="d-calc-origin-time">-</td></tr>
+                <tr><th>経過時間 A (秒)</th><td id="d-calc-elapsed">-</td></tr>
+                <tr><th>震源深さ</th><td id="d-calc-depth">-</td></tr>
+                <tr><th>P波速度</th><td id="d-calc-pwave-vel">-</td></tr>
+                <tr><th>S波速度</th><td id="d-calc-swave-vel">-</td></tr>
+            </table>
+            <div class="calculation-area" id="d-calc-results">
+                <div style="color:var(--text-muted); font-size:0.875rem;">計算データがあります</div>
+            </div>
+        </div>
 
-        <div class="section" id="sect-calculation">
-            <div class="section-title">7. 震源距離・深さ計算 (JMA2001走時表)</div>
+        <div class="section">
+            <div class="section-title">8. 電文原文 (OriginalText)</div>
+            <pre id="d-telegram">-</pre>
+        </div>
+
+    </div>
+    
+    <div id="no-data" class="section" style="text-align: center; color: var(--text-muted); font-size: 0.9rem; padding: 40px 20px;">
+        リアルタイム電文の受信を待っています...
+    </div>
+</div>
+
+<script>
+// JMA2001走時表データ
+const jmaWaveData = [
+    {depth: 0.0, pWave: 4.800, sWave: 2.844},
+    {depth: 0.5, pWave: 4.950, sWave: 2.931},
+    {depth: 1.0, pWave: 5.090, sWave: 3.012},
+    {depth: 1.5, pWave: 5.220, sWave: 3.088},
+    {depth: 2.0, pWave: 5.340, sWave: 3.157},
+    {depth: 2.5, pWave: 5.450, sWave: 3.221},
+    {depth: 3.0, pWave: 5.550, sWave: 3.278},
+    {depth: 3.5, pWave: 5.640, sWave: 3.329},
+    {depth: 4.0, pWave: 5.720, sWave: 3.375},
+    {depth: 4.5, pWave: 5.780, sWave: 3.409},
+    {depth: 5.0, pWave: 5.820, sWave: 3.431},
+    {depth: 5.5, pWave: 5.840, sWave: 3.441},
+    {depth: 6.0, pWave: 5.860, sWave: 3.451},
+    {depth: 6.5, pWave: 5.880, sWave: 3.461},
+    {depth: 7.0, pWave: 5.900, sWave: 3.471},
+    {depth: 7.5, pWave: 5.920, sWave: 3.481},
+    {depth: 8.0, pWave: 5.940, sWave: 3.491},
+    {depth: 8.5, pWave: 5.960, sWave: 3.501},
+    {depth: 9.0, pWave: 5.980, sWave: 3.511},
+    {depth: 9.5, pWave: 6.000, sWave: 3.521},
+    {depth: 10.0, pWave: 6.020, sWave: 3.531},
+];
+
+const wsStatus = document.getElementById("ws-status");
+const eewContent = document.getElementById("eew-content");
+const noData = document.getElementById("no-data");
+
+let ws;
+let pingTimer;
+let reconnectTimer;
+let currentTimeTimer;
+let ntpSyncTimer;
+let lastData = null;
+
+// --- NTPライクな時刻同期 ---
+// ブラウザからは本物のNTP(UDP)は使えないため、HTTPSレスポンスのDateヘッダーと
+// 往復時間(RTT)を使ってサーバー時刻とのオフセットを推定する(俗に言う「なんちゃってNTP」方式)。
+// 外部の時刻配信専用サービスは頻繁に終了/仕様変更するため、既に利用しているWolfx自身の
+// HTTP APIエンドポイントを時刻源として使う。
+let ntpOffsetMs = 0;
+let ntpSynced = false;
+
+async function syncNtpTime() {
+    try {
+        const t0 = performance.now();
+        const res = await fetch("https://api.wolfx.jp/jma_eew.json", { method: "GET", cache: "no-store" });
+        const t1 = performance.now();
+
+        const serverDateHeader = res.headers.get("Date");
+        if (!serverDateHeader) throw new Error("Dateヘッダーが取得できませんでした");
+
+        const serverTimeMs = new Date(serverDateHeader).getTime();
+        const roundTripMs = t1 - t0;
+        // 往復遅延の半分をサーバー応答時刻に足して、応答時点のサーバー時刻を推定
+        const estimatedServerNowMs = serverTimeMs + roundTripMs / 2;
+
+        ntpOffsetMs = estimatedServerNowMs - Date.now();
+        ntpSynced = true;
+    } catch (e) {
+        console.warn("NTP風の時刻同期に失敗しました。ローカル時計にフォールバックします。", e);
+        ntpSynced = false;
+    }
+}
+
+// 同期済みオフセットを適用した「現在時刻」を返す
+function getSyncedNow() {
+    return new Date(Date.now() + ntpOffsetMs);
+}
+
+// 走時表から深さに該当するP波・S波速度を取得
+function getWaveDataForDepth(depth) {
+    if (depth < 0 || !jmaWaveData.length) return null;
+    
+    // 深さ範囲を超える場合は最後のデータを返す
+    if (depth >= jmaWaveData[jmaWaveData.length - 1].depth) {
+        return jmaWaveData[jmaWaveData.length - 1];
+    }
+    
+    // 線形補間で該当データを探す
+    for (let i = 0; i < jmaWaveData.length - 1; i++) {
+        const current = jmaWaveData[i];
+        const next = jmaWaveData[i + 1];
+        
+        if (depth >= current.depth && depth <= next.depth) {
+            const ratio = (depth - current.depth) / (next.depth - current.depth);
+            return {
+                depth: depth,
+                pWave: current.pWave + (next.pWave - current.pWave) * ratio,
+                sWave: current.sWave + (next.sWave - current.sWave) * ratio
+            };
+        }
+    }
+    
+    return jmaWaveData[jmaWaveData.length - 1];
+}
+
+// Wolfx形式の日時文字列 "YYYY/MM/DD HH:mm:ss"（UTC+9固定）をDateに変換
+function parseWolfxTime(str) {
+    if (!str) return null;
+    const iso = str.replace(/\//g, '-').replace(' ', 'T') + '+09:00';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+// 計算セクションを更新
+function updateCalculation(data) {
+    const sectCalc = document.getElementById("sect-calculation");
+    sectCalc.style.display = "block"; // 他セクション同様、常に表示し中身だけを更新する
+
+    const currentTime = getSyncedNow();
+    const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false }) + (ntpSynced ? "" : "（ローカル時計）");
+    document.getElementById("d-calc-current-time").textContent = currentTimeStr;
+
+    if (!data || data.isCancel || data.Depth === undefined || data.Depth === null || !data.OriginTime) {
+        clearInterval(currentTimeTimer);
+        document.getElementById("d-calc-origin-time").textContent = "-";
+        document.getElementById("d-calc-elapsed").textContent = "-";
+        document.getElementById("d-calc-depth").textContent = "-";
+        document.getElementById("d-calc-pwave-vel").textContent = "-";
+        document.getElementById("d-calc-swave-vel").textContent = "-";
+        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">計算に必要なデータがありません</div>';
+        return;
+    }
+    
+    // OriginTimeをパース（Wolfx形式: "YYYY/MM/DD HH:mm:ss" UTC+9）
+    const originDate = parseWolfxTime(data.OriginTime);
+    const originTimeStr = originDate ? originDate.toLocaleTimeString('ja-JP', { hour12: false }) : "-";
+    document.getElementById("d-calc-origin-time").textContent = originTimeStr;
+    
+    if (!originDate) {
+        document.getElementById("d-calc-elapsed").textContent = "-";
+        document.getElementById("d-calc-depth").textContent = "-";
+        document.getElementById("d-calc-pwave-vel").textContent = "-";
+        document.getElementById("d-calc-swave-vel").textContent = "-";
+        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">OriginTimeを解析できませんでした</div>';
+        return;
+    }
+    
+    // 経過時間を秒単位で計算
+    const elapsedMs = currentTime.getTime() - originDate.getTime();
+    const elapsedSec = Math.round(elapsedMs / 1000);
+    const elapsedStr = elapsedSec >= 0 ? `${elapsedSec}秒` : "計算中...";
+    document.getElementById("d-calc-elapsed").textContent = elapsedStr;
+    
+    // 震源深さ
+    const depth = data.Depth;
+    document.getElementById("d-calc-depth").textContent = `${depth} km`;
+    
+    // 走時表からP波・S波速度を取得
+    const waveData = getWaveDataForDepth(depth);
+    
+    if (waveData) {
+        const pWaveVel = waveData.pWave.toFixed(3);
+        const sWaveVel = waveData.sWave.toFixed(3);
+        
+        document.getElementById("d-calc-pwave-vel").textContent = `${pWaveVel} km/s`;
+        document.getElementById("d-calc-swave-vel").textContent = `${sWaveVel} km/s`;
+        
+        // 計算結果を表示
+        if (elapsedSec >= 0) {
+            const pDistance = (elapsedSec * waveData.pWave).toFixed(2);
+            const sDistance = (elapsedSec * waveData.sWave).toFixed(2);
+            
+            // 2000km以上に達したかチェック
+            const limitReached = pDistance >= 2000 || sDistance >= 2000;
+            
+            let resultsHtml = `
+                <div class="calculation-result">
+                    <strong>経過時間:</strong> ${elapsedSec}秒<br/>
+                    <strong>P波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : pDistance + ' km'} (A × P波速度)<br/>
+                    <strong>S波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : sDistance + ' km'} (A × S波速度)
+                </div>
+            `;
+            document.getElementById("d-calc-results").innerHTML = resultsHtml;
+        }
+    } else {
+        document.getElementById("d-calc-pwave-vel").textContent = "-";
+        document.getElementById("d-calc-swave-vel").textContent = "-";
+        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">走時表データが利用できません</div>';
+    }
+}
+
+// 現在時刻だけを継続的に更新（2000km以上の場合）
+function startCurrentTimeUpdate(data) {
+    clearInterval(currentTimeTimer);
+    currentTimeTimer = setInterval(() => {
+        const currentTime = getSyncedNow();
+        const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false }) + (ntpSynced ? "" : "（ローカル時計）");
+        document.getElementById("d-calc-current-time").textContent = currentTimeStr;
+    }, 1000);
+}
+
+function connect(){
+    clearTimeout(reconnectTimer);
+    clearInterval(pingTimer);
+
+    ws = new WebSocket("wss://ws-api.wolfx.jp/jma_eew");
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+        wsStatus.textContent = "● WebSocket接続完了 - 電文受信待機中";
+        wsStatus.style.color = "var(--success)";
+        wsStatus.style.backgroundColor = "var(--success-light)";
+        wsStatus.style.borderColor = "rgba(22, 163, 74, 0.2)";
+        ws.send("query_jmaeew");
+
+        pingTimer = setInterval(() => {
+            if(ws.readyState === WebSocket.OPEN){
+                ws.send("ping");
+            }
+        }, 5000);
+    };
+
+    ws.onmessage = (event) => {
+        if(event.data === "pong") return;
+
+        try {
+            const data = JSON.parse(event.data);
+
+            // サーバーからのハートビート応答（{"type":"pong"} 形式）は地震データではないので無視する
+            if (data && typeof data === "object" && data.type === "pong") return;
+
+            lastData = data;
+            renderEEW(data);
+            updateCalculation(data);
+            startCurrentTimeUpdate(data);
+        } catch(e) {
+            console.error("JSONのパースに失敗しました", e);
+        }
+    };
+
+    ws.onclose = () => {
+        wsStatus.textContent = "▲ 切断されました。再接続します...";
+        wsStatus.style.color = "var(--danger)";
+        wsStatus.style.backgroundColor = "var(--danger-light)";
+        wsStatus.style.borderColor = "rgba(220, 38, 38, 0.2)";
+        clearInterval(pingTimer);
+        clearInterval(currentTimeTimer);
+        reconnectTimer = setTimeout(connect, 1000);
+    };
+}
+
+function renderEEW(data) {
+    // EventID等を持たないデータ（pong応答や不明な形式）は地震データとして描画しない
+    if (!data || typeof data !== "object" || data.EventID === undefined) return;
+    
+    noData.style.display = "none";
+    eewContent.style.display = "block";
+
+    // --- 1. 基本・発表情報 (type / Title / CodeType / Issue) ---
+    document.getElementById("d-type").textContent = data.type || "-";
+    document.getElementById("d-title").textContent = data.Title || "-";
+    document.getElementById("d-codetype").textContent = data.CodeType || "-";
+    if (data.Issue) {
+        document.getElementById("d-issue-source").textContent = data.Issue.Source || "-";
+        document.getElementById("d-issue-status").textContent = data.Issue.Status || "-";
+    } else {
+        document.getElementById("d-issue-source").textContent = "-";
+        document.getElementById("d-issue-status").textContent = "-";
+    }
+
+    // --- 2. メタ識別情報・各種フラグ ---
+    document.getElementById("d-eventID").textContent = data.EventID || "-";
+    document.getElementById("d-serial").textContent = data.Serial !== undefined ? `${data.Serial} 報` : "-";
+
+    document.getElementById("d-isCancel").innerHTML = `<span class="badge badge-${data.isCancel}">${data.isCancel ? 'はい（取消報）' : 'いいえ'}</span>`;
+    document.getElementById("d-isWarn").innerHTML = `<span class="badge badge-${data.isWarn}">${data.isWarn ? 'はい（警報発生）' : 'いいえ'}</span>`;
+    document.getElementById("d-isFinal").innerHTML = `<span class="badge badge-${data.isFinal}">${data.isFinal ? 'はい（最終報）' : 'いいえ'}</span>`;
+    document.getElementById("d-isTraining").innerHTML = `<span class="badge badge-${data.isTraining}">${data.isTraining ? 'はい（訓練報）' : 'いいえ'}</span>`;
+    document.getElementById("d-isAssumption").innerHTML = `<span class="badge badge-${data.isAssumption}">${data.isAssumption ? 'はい（PLUM法推定）' : 'いいえ'}</span>`;
+
+    const sectHypo = document.getElementById("sect-hypocenter");
+    const sectAcc = document.getElementById("sect-accuracy");
+    const sectIntensity = document.getElementById("sect-intensity");
+    const sectWarnArea = document.getElementById("sect-warnArea");
+
+    // --- 3. 震源要素情報 ---
+    if (data.isCancel) {
+        sectHypo.style.display = "none";
+        sectAcc.style.display = "none";
+    } else {
+        sectHypo.style.display = "block";
+        sectAcc.style.display = "block";
+
+        document.getElementById("d-announcedTime").textContent = data.AnnouncedTime || "-";
+        document.getElementById("d-originTime").textContent = data.OriginTime || "-";
+        document.getElementById("d-hypo-name").textContent = data.Hypocenter || "-";
+        document.getElementById("d-hypo-lat").textContent = data.Latitude !== undefined ? `${data.Latitude} 度` : "-";
+        document.getElementById("d-hypo-lng").textContent = data.Longitude !== undefined ? `${data.Longitude} 度` : "-";
+        document.getElementById("d-hypo-depth").textContent = (data.Depth !== undefined && data.Depth !== null) ? `${data.Depth} km` : "-";
+        document.getElementById("d-hypo-magnitude").textContent = data.Magunitude !== undefined ? data.Magunitude : "-";
+        document.getElementById("d-isSea").innerHTML = `<span class="badge badge-${data.isSea}">${data.isSea ? 'はい（海域）' : 'いいえ（内陸）'}</span>`;
+
+        // --- 4. 解析精度情報 (Accuracy) ---
+        if (data.Accuracy) {
+            document.getElementById("d-acc-epi").textContent = data.Accuracy.Epicenter || "-";
+            document.getElementById("d-acc-depth").textContent = data.Accuracy.Depth || "-";
+            document.getElementById("d-acc-mag").textContent = data.Accuracy.Magnitude || "-";
+        } else {
+            document.getElementById("d-acc-epi").textContent = "-";
+            document.getElementById("d-acc-depth").textContent = "-";
+            document.getElementById("d-acc-mag").textContent = "-";
+        }
+    }
+
+    // --- 5. 全体震度・変化情報 (MaxIntensity / MaxIntChange) ---
+    if (data.isCancel) {
+        sectIntensity.style.display = "none";
+        sectWarnArea.style.display = "none";
+    } else {
+        sectIntensity.style.display = "block";
+        sectWarnArea.style.display = "block";
+
+        document.getElementById("d-maxIntensity").textContent = data.MaxIntensity || "不明";
+
+        if (data.MaxIntChange) {
+            document.getElementById("d-maxIntChange-string").textContent = data.MaxIntChange.String || "-";
+            document.getElementById("d-maxIntChange-reason").textContent = data.MaxIntChange.Reason || "-";
+        } else {
+            document.getElementById("d-maxIntChange-string").textContent = "-";
+            document.getElementById("d-maxIntChange-reason").textContent = "-";
+        }
+
+        // --- 6. 警報対象地域一覧 (WarnArea[]) ---
+        const warnBox = document.getElementById("d-warnArea-box");
+
+        if (data.WarnArea && data.WarnArea.length > 0) {
+            let warnHtml = "<table class='est-table'><thead><tr><th>地域名 (Chiiki)</th><th>最大震度 (Shindo1)</th><th>最小震度 (Shindo2)</th><th>発表時刻 (Time)</th><th>種別 (Type)</th><th>到達状況 (Arrive)</th></tr></thead><tbody>";
+
+            data.WarnArea.forEach(item => {
+                const chiiki = item.Chiiki || "不明な地域";
+                const shindo1 = item.Shindo1 || "-";
+                const shindo2 = item.Shindo2 || "-";
+                const time = item.Time || "-";
+                const type = item.Type || "-";
+                const arrive = item.Arrive !== undefined ? String(item.Arrive) : "-";
+
+                warnHtml += `<tr>
+                    <td><b>${chiiki}</b></td>
+                    <td style="color:var(--danger); font-weight:bold;">${shindo1}</td>
+                    <td>${shindo2}</td>
+                    <td>${time}</td>
+                    <td>${type}</td>
+                    <td style="color:var(--text-muted);">${arrive}</td>
+                </tr>`;
+            });
+
+            warnHtml += "</tbody></table>";
+            warnBox.innerHTML = warnHtml;
+        } else {
+            warnBox.innerHTML = "<div style='padding:16px; color:var(--text-muted); font-size:0.875rem;'>警報対象地域データなし、または配信なし</div>";
+        }
+    }
+
+    // --- 7. 電文原文 (OriginalText) ---
+    document.getElementById("d-telegram").textContent = data.OriginalText || "電文データなし";
+}
+
+if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded", () => {
+        connect();
+        syncNtpTime();
+        clearInterval(ntpSyncTimer);
+        ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000); // 5分毎に再同期してドリフトを補正
+    }, {once:true});
+}else{
+    connect();
+    syncNtpTime();
+    clearInterval(ntpSyncTimer);
+    ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000);
+}
+</script>
+
+</body>
+</html<div class="section">
+            <div class="section-title">1. 基本・発表情報 (type / Title / CodeType / Issue)</div>
+            <table class="info-table">
+                <tr><th>種別 (type)</th><td id="d-type">-</td></tr>
+                <tr><th>ヘッダー (Title)</th><td id="d-title">-</td></tr>
+                <tr><th>発表区分 (CodeType)</th><td id="d-codetype">-</td></tr>
+                <tr><th>発表機関 (Issue.Source)</th><td id="d-issue-source">-</td></tr>
+                <tr><th>発表ステータス (Issue.Status)</th><td id="d-issue-status">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">2. メタ識別情報 (EventID / Serial / flags)</div>
+            <table class="info-table">
+                <tr><th>イベントID (EventID)</th><td id="d-eventID">-</td></tr>
+                <tr><th>速報回数 (Serial)</th><td id="d-serial">-</td></tr>
+                <tr><th>取消報フラグ (isCancel)</th><td id="d-isCancel">-</td></tr>
+                <tr><th>警報フラグ (isWarn)</th><td id="d-isWarn">-</td></tr>
+                <tr><th>最終報フラグ (isFinal)</th><td id="d-isFinal">-</td></tr>
+                <tr><th>訓練報フラグ (isTraining)</th><td id="d-isTraining">-</td></tr>
+                <tr><th>推定震源フラグ / PLUM法 (isAssumption)</th><td id="d-isAssumption">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-hypocenter">
+            <div class="section-title">3. 震源要素情報 (AnnouncedTime / OriginTime / Hypocenter)</div>
+            <table class="info-table">
+                <tr><th>発表時刻 UTC+9 (AnnouncedTime)</th><td id="d-announcedTime">-</td></tr>
+                <tr><th>地震発生時刻 UTC+9 (OriginTime)</th><td id="d-originTime">-</td></tr>
+                <tr><th>震源地 (Hypocenter)</th><td id="d-hypo-name">-</td></tr>
+                <tr><th>震源地の緯度 (Latitude)</th><td id="d-hypo-lat">-</td></tr>
+                <tr><th>震源地の経度 (Longitude)</th><td id="d-hypo-lng">-</td></tr>
+                <tr><th>震源の深さ (Depth)</th><td id="d-hypo-depth">-</td></tr>
+                <tr><th>マグニチュード (Magunitude)</th><td id="d-hypo-magnitude">-</td></tr>
+                <tr><th>海域地震フラグ (isSea)</th><td id="d-isSea">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-accuracy">
+            <div class="section-title">4. 解析精度情報 (Accuracy)</div>
+            <table class="info-table">
+                <tr><th>震央の精度 (Accuracy.Epicenter)</th><td id="d-acc-epi">-</td></tr>
+                <tr><th>深さの精度 (Accuracy.Depth)</th><td id="d-acc-depth">-</td></tr>
+                <tr><th>マグニチュードの精度 (Accuracy.Magnitude)</th><td id="d-acc-mag">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-intensity">
+            <div class="section-title">5. 全体震度・変化情報 (MaxIntensity / MaxIntChange)</div>
+            <table class="info-table">
+                <tr><th>最大震度 弱/強 (MaxIntensity)</th><td id="d-maxIntensity" style="font-weight:bold; color:var(--danger);">-</td></tr>
+                <tr><th>震度変化の説明 (MaxIntChange.String)</th><td id="d-maxIntChange-string">-</td></tr>
+                <tr><th>震度変化の理由 (MaxIntChange.Reason)</th><td id="d-maxIntChange-reason">-</td></tr>
+            </table>
+        </div>
+
+        <div class="section" id="sect-warnArea">
+            <div class="section-title">6. 警報対象地域一覧 (WarnArea)</div>
+            <div class="est-container" id="d-warnArea-box">
+                <div style="padding:16px; color:var(--text-muted); font-size:0.875rem;">データがありません</div>
+            </div>
+        </div>
+<!-- section7 removed -->
             <table class="calc-table">
                 <tr><th>現在時刻 (NTP同期)</th><td id="d-calc-current-time">-</td></tr>
                 <tr><th>地震発生時刻</th><td id="d-calc-origin-time">-</td></tr>
