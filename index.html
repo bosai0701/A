@@ -517,6 +517,10 @@ function connect(){
 
         try {
             const data = JSON.parse(event.data);
+
+            // サーバーからのハートビート応答（{"type":"pong"} 形式）は地震データではないので無視する
+            if (data && typeof data === "object" && data.type === "pong") return;
+
             lastData = data;
             renderEEW(data);
             updateCalculation(data);
@@ -538,7 +542,8 @@ function connect(){
 }
 
 function renderEEW(data) {
-    if (!data) return;
+    // EventID等を持たないデータ（pong応答や不明な形式）は地震データとして描画しない
+    if (!data || typeof data !== "object" || data.EventID === undefined) return;
     
     noData.style.display = "none";
     eewContent.style.display = "block";
