@@ -312,7 +312,7 @@ pre {
         <div class="section" id="sect-calculation">
             <div class="section-title">7. 震源距離・深さ計算 (JMA2001走時表)</div>
             <table class="calc-table">
-                <tr><th>現在時刻</th><td id="d-calc-current-time">-</td></tr>
+                <tr><th>現在時刻 (NTP同期)</th><td id="d-calc-current-time">-</td></tr>
                 <tr><th>地震発生時刻</th><td id="d-calc-origin-time">-</td></tr>
                 <tr><th>経過時間 A (秒)</th><td id="d-calc-elapsed">-</td></tr>
                 <tr><th>震源深さ</th><td id="d-calc-depth">-</td></tr>
@@ -370,7 +370,43 @@ let ws;
 let pingTimer;
 let reconnectTimer;
 let currentTimeTimer;
+let ntpSyncTimer;
 let lastData = null;
+
+// --- NTPライクな時刻同期 ---
+// ブラウザからは本物のNTP(UDP)は使えないため、HTTPSレスポンスのDateヘッダーと
+// 往復時間(RTT)を使ってサーバー時刻とのオフセットを推定する(俗に言う「なんちゃってNTP」方式)。
+// 外部の時刻配信専用サービスは頻繁に終了/仕様変更するため、既に利用しているWolfx自身の
+// HTTP APIエンドポイントを時刻源として使う。
+let ntpOffsetMs = 0;
+let ntpSynced = false;
+
+async function syncNtpTime() {
+    try {
+        const t0 = performance.now();
+        const res = await fetch("https://api.wolfx.jp/jma_eew.json", { method: "GET", cache: "no-store" });
+        const t1 = performance.now();
+
+        const serverDateHeader = res.headers.get("Date");
+        if (!serverDateHeader) throw new Error("Dateヘッダーが取得できませんでした");
+
+        const serverTimeMs = new Date(serverDateHeader).getTime();
+        const roundTripMs = t1 - t0;
+        // 往復遅延の半分をサーバー応答時刻に足して、応答時点のサーバー時刻を推定
+        const estimatedServerNowMs = serverTimeMs + roundTripMs / 2;
+
+        ntpOffsetMs = estimatedServerNowMs - Date.now();
+        ntpSynced = true;
+    } catch (e) {
+        console.warn("NTP風の時刻同期に失敗しました。ローカル時計にフォールバックします。", e);
+        ntpSynced = false;
+    }
+}
+
+// 同期済みオフセットを適用した「現在時刻」を返す
+function getSyncedNow() {
+    return new Date(Date.now() + ntpOffsetMs);
+}
 
 // 走時表から深さに該当するP波・S波速度を取得
 function getWaveDataForDepth(depth) {
@@ -410,18 +446,22 @@ function parseWolfxTime(str) {
 // 計算セクションを更新
 function updateCalculation(data) {
     const sectCalc = document.getElementById("sect-calculation");
-    
+    sectCalc.style.display = "block"; // 他セクション同様、常に表示し中身だけを更新する
+
+    const currentTime = getSyncedNow();
+    const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false }) + (ntpSynced ? "" : "（ローカル時計）");
+    document.getElementById("d-calc-current-time").textContent = currentTimeStr;
+
     if (!data || data.isCancel || data.Depth === undefined || data.Depth === null || !data.OriginTime) {
-        sectCalc.style.display = "none";
         clearInterval(currentTimeTimer);
+        document.getElementById("d-calc-origin-time").textContent = "-";
+        document.getElementById("d-calc-elapsed").textContent = "-";
+        document.getElementById("d-calc-depth").textContent = "-";
+        document.getElementById("d-calc-pwave-vel").textContent = "-";
+        document.getElementById("d-calc-swave-vel").textContent = "-";
+        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">計算に必要なデータがありません</div>';
         return;
     }
-    
-    sectCalc.style.display = "block";
-    
-    const currentTime = new Date();
-    const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false });
-    document.getElementById("d-calc-current-time").textContent = currentTimeStr;
     
     // OriginTimeをパース（Wolfx形式: "YYYY/MM/DD HH:mm:ss" UTC+9）
     const originDate = parseWolfxTime(data.OriginTime);
@@ -485,8 +525,8 @@ function updateCalculation(data) {
 function startCurrentTimeUpdate(data) {
     clearInterval(currentTimeTimer);
     currentTimeTimer = setInterval(() => {
-        const currentTime = new Date();
-        const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false });
+        const currentTime = getSyncedNow();
+        const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false }) + (ntpSynced ? "" : "（ローカル時計）");
         document.getElementById("d-calc-current-time").textContent = currentTimeStr;
     }, 1000);
 }
@@ -658,9 +698,17 @@ function renderEEW(data) {
 }
 
 if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded",connect,{once:true});
+    document.addEventListener("DOMContentLoaded", () => {
+        connect();
+        syncNtpTime();
+        clearInterval(ntpSyncTimer);
+        ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000); // 5分毎に再同期してドリフトを補正
+    }, {once:true});
 }else{
     connect();
+    syncNtpTime();
+    clearInterval(ntpSyncTimer);
+    ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000);
 }
 </script>
 
