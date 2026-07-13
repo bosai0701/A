@@ -273,155 +273,7 @@ const noData = document.getElementById("no-data");
 let ws;
 let pingTimer;
 let reconnectTimer;
-let ntpSyncTimer;
 let lastData = null;
-
-// --- NTPライクな時刻同期 ---
-// ブラウザからは本物のNTP(UDP)は使えないため、HTTPSレスポンスのDateヘッダーと
-// 往復時間(RTT)を使ってサーバー時刻とのオフセットを推定する(俗に言う「なんちゃってNTP」方式)。
-// 外部の時刻配信専用サービスは頻繁に終了/仕様変更するため、既に利用しているWolfx自身の
-// HTTP APIエンドポイントを時刻源として使う。
-let ntpOffsetMs = 0;
-let ntpSynced = false;
-
-async function syncNtpTime() {
-    try {
-        const t0 = performance.now();
-        const res = await fetch("https://api.wolfx.jp/jma_eew.json", { method: "GET", cache: "no-store" });
-        const t1 = performance.now();
-
-        const serverDateHeader = res.headers.get("Date");
-        if (!serverDateHeader) throw new Error("Dateヘッダーが取得できませんでした");
-
-        const serverTimeMs = new Date(serverDateHeader).getTime();
-        const roundTripMs = t1 - t0;
-        // 往復遅延の半分をサーバー応答時刻に足して、応答時点のサーバー時刻を推定
-        const estimatedServerNowMs = serverTimeMs + roundTripMs / 2;
-
-        ntpOffsetMs = estimatedServerNowMs - Date.now();
-        ntpSynced = true;
-    } catch (e) {
-        console.warn("NTP風の時刻同期に失敗しました。ローカル時計にフォールバックします。", e);
-        ntpSynced = false;
-    }
-}
-
-// 同期済みオフセットを適用した「現在時刻」を返す
-function getSyncedNow() {
-    return new Date(Date.now() + ntpOffsetMs);
-}
-
-// 走時表から深さに該当するP波・S波速度を取得
-function getWaveDataForDepth(depth) {
-    if (depth < 0 || !jmaWaveData.length) return null;
-    
-    // 深さ範囲を超える場合は最後のデータを返す
-    if (depth >= jmaWaveData[jmaWaveData.length - 1].depth) {
-        return jmaWaveData[jmaWaveData.length - 1];
-    }
-    
-    // 線形補間で該当データを探す
-    for (let i = 0; i < jmaWaveData.length - 1; i++) {
-        const current = jmaWaveData[i];
-        const next = jmaWaveData[i + 1];
-        
-        if (depth >= current.depth && depth <= next.depth) {
-            const ratio = (depth - current.depth) / (next.depth - current.depth);
-            return {
-                depth: depth,
-                pWave: current.pWave + (next.pWave - current.pWave) * ratio,
-                sWave: current.sWave + (next.sWave - current.sWave) * ratio
-            };
-        }
-    }
-    
-    return jmaWaveData[jmaWaveData.length - 1];
-}
-
-// Wolfx形式の日時文字列 "YYYY/MM/DD HH:mm:ss"（UTC+9固定）をDateに変換
-function parseWolfxTime(str) {
-    if (!str) return null;
-    const iso = str.replace(/\//g, '-').replace(' ', 'T') + '+09:00';
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? null : d;
-}
-
-// 計算セクションを更新
-function updateCalculation(data) {
-    const sectCalc = document.getElementById("sect-calculation");
-    sectCalc.style.display = "block"; // 他セクション同様、常に表示し中身だけを更新する
-
-    const currentTime = getSyncedNow();
-    const currentTimeStr = currentTime.toLocaleTimeString('ja-JP', { hour12: false }) + (ntpSynced ? "" : "（ローカル時計）");
-    document.getElementById("d-calc-current-time").textContent = currentTimeStr;
-
-    if (!data || data.isCancel || data.Depth === undefined || data.Depth === null || !data.OriginTime) {
-        document.getElementById("d-calc-origin-time").textContent = "-";
-        document.getElementById("d-calc-elapsed").textContent = "-";
-        document.getElementById("d-calc-depth").textContent = "-";
-        document.getElementById("d-calc-pwave-vel").textContent = "-";
-        document.getElementById("d-calc-swave-vel").textContent = "-";
-        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">計算に必要なデータがありません</div>';
-        return;
-    }
-    
-    // OriginTimeをパース（Wolfx形式: "YYYY/MM/DD HH:mm:ss" UTC+9）
-    const originDate = parseWolfxTime(data.OriginTime);
-    const originTimeStr = originDate ? originDate.toLocaleTimeString('ja-JP', { hour12: false }) : "-";
-    document.getElementById("d-calc-origin-time").textContent = originTimeStr;
-    
-    if (!originDate) {
-        document.getElementById("d-calc-elapsed").textContent = "-";
-        document.getElementById("d-calc-depth").textContent = "-";
-        document.getElementById("d-calc-pwave-vel").textContent = "-";
-        document.getElementById("d-calc-swave-vel").textContent = "-";
-        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">OriginTimeを解析できませんでした</div>';
-        return;
-    }
-    
-    // 経過時間を秒単位で計算
-    const elapsedMs = currentTime.getTime() - originDate.getTime();
-    const elapsedSec = Math.round(elapsedMs / 1000);
-    const elapsedStr = elapsedSec >= 0 ? `${elapsedSec}秒` : "計算中...";
-    document.getElementById("d-calc-elapsed").textContent = elapsedStr;
-    
-    // 震源深さ
-    const depth = data.Depth;
-    document.getElementById("d-calc-depth").textContent = `${depth} km`;
-    
-    // 走時表からP波・S波速度を取得
-    const waveData = getWaveDataForDepth(depth);
-    
-    if (waveData) {
-        const pWaveVel = waveData.pWave.toFixed(3);
-        const sWaveVel = waveData.sWave.toFixed(3);
-        
-        document.getElementById("d-calc-pwave-vel").textContent = `${pWaveVel} km/s`;
-        document.getElementById("d-calc-swave-vel").textContent = `${sWaveVel} km/s`;
-        
-        // 計算結果を表示
-        if (elapsedSec >= 0) {
-            const pDistance = (elapsedSec * waveData.pWave).toFixed(2);
-            const sDistance = (elapsedSec * waveData.sWave).toFixed(2);
-            
-            // 2000km以上に達したかチェック
-            const limitReached = pDistance >= 2000 || sDistance >= 2000;
-            
-            let resultsHtml = `
-                <div class="calculation-result">
-                    <strong>経過時間:</strong> ${elapsedSec}秒<br/>
-                    <strong>P波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : pDistance + ' km'} (A × P波速度)<br/>
-                    <strong>S波到達距離:</strong> ${limitReached ? '2000.00 km (計算上限)' : sDistance + ' km'} (A × S波速度)
-                </div>
-            `;
-            document.getElementById("d-calc-results").innerHTML = resultsHtml;
-        }
-    } else {
-        document.getElementById("d-calc-pwave-vel").textContent = "-";
-        document.getElementById("d-calc-swave-vel").textContent = "-";
-        document.getElementById("d-calc-results").innerHTML = '<div style="color:var(--text-muted); font-size:0.875rem;">走時表データが利用できません</div>';
-    }
-}
 
 function connect(){
     clearTimeout(reconnectTimer);
@@ -589,15 +441,9 @@ function renderEEW(data) {
 if(document.readyState==="loading"){
     document.addEventListener("DOMContentLoaded", () => {
         connect();
-        syncNtpTime();
-        clearInterval(ntpSyncTimer);
-        ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000); // 5分毎に再同期してドリフトを補正
     }, {once:true});
 }else{
     connect();
-    syncNtpTime();
-    clearInterval(ntpSyncTimer);
-    ntpSyncTimer = setInterval(syncNtpTime, 5 * 60 * 1000);
 }
 </script>
 
