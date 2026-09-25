@@ -11,8 +11,7 @@
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.css">
 
   <style>
-    html,
-    body {
+    html, body {
       width:100%;
       height:100%;
       margin:0;
@@ -153,14 +152,8 @@
       line-height:1.5;
     }
 
-    #clock {
-      font-weight:bold;
-    }
-
-    #sat-time,
-    #nowcast-time {
-      margin-top:2px;
-    }
+    #clock { font-weight:bold; }
+    #sat-time, #nowcast-time { margin-top:2px; }
 
     .maplibregl-ctrl-bottom-left,
     .maplibregl-ctrl-bottom-right {
@@ -339,7 +332,6 @@ function setConnectionStatus(state) {
 
 function showInitialError(message) {
   loadingError = true;
-
   initGeneration++;
 
   if (initialDisplayTimer) {
@@ -469,6 +461,7 @@ function showMapAfterLoading() {
           loading.style.display = 'none';
         }
       }, 300);
+
     }, 200);
 
   }, 50);
@@ -481,23 +474,10 @@ function showMapAfterLoading() {
 const NOWCAST_OPACITY = 0.55;
 const BASE_ZOOM = 8;
 const HIGH_ZOOM = 10;
-const TILE_SIZE = 256;
-
-const TILE_X_MIN = 212;
-const TILE_X_MAX = 243;
-const TILE_Y_MIN = 92;
-const TILE_Y_MAX = 115;
-
-const MOSAIC_WIDTH =
-  (TILE_X_MAX - TILE_X_MIN + 1) * TILE_SIZE;
-
-const MOSAIC_HEIGHT =
-  (TILE_Y_MAX - TILE_Y_MIN + 1) * TILE_SIZE;
 
 let latestTime1 = '';
 let latestTime2 = '';
 
-let mosaicURL = '';
 let previousTimestamp = '';
 
 let z10Generation = 0;
@@ -704,19 +684,21 @@ function getSatelliteBeforeLayerId() {
     return 'nowcast-z10-layer-';
   }
 
-  if (map.getLayer('nowcast-z8-mosaic-layer')) {
-    return 'nowcast-z8-mosaic-layer';
+  if (map.getLayer('nowcast-z8-direct-layer')) {
+    return 'nowcast-z8-direct-layer';
   }
 
   const layers = map.getStyle().layers || [];
-  const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
+  const z10Layer = layers.find(layer =>
+    layer.id.startsWith('nowcast-z10-layer-')
+  );
 
   if (z10Layer) {
     return z10Layer.id;
   }
 
-  if (map.getLayer('nowcast-z8-mosaic-layer')) {
-    return 'nowcast-z8-mosaic-layer';
+  if (map.getLayer('nowcast-z8-direct-layer')) {
+    return 'nowcast-z8-direct-layer';
   }
 
   return 'jma-mask';
@@ -744,13 +726,9 @@ function removeOldSatelliteLayers(keepSourceId, keepLayerId) {
   const layers = map.getStyle().layers || [];
 
   for (const layer of layers) {
-    if (!layer.id.startsWith('himawari-layer-')) {
-      continue;
-    }
+    if (!layer.id.startsWith('himawari-layer-')) continue;
 
-    if (layer.id === keepLayerId) {
-      continue;
-    }
+    if (layer.id === keepLayerId) continue;
 
     const sourceId = layer.source;
 
@@ -843,29 +821,20 @@ async function updateSatellite() {
         let finished = false;
 
         const finish = value => {
-          if (finished)
-            return;
-
+          if (finished) return;
           finished = true;
           map.off('sourcedata', handler);
           resolve(value);
         };
 
         const handler = event => {
-          if (event.sourceId !== sourceId) {
-            return;
-          }
-
-          if (map.isSourceLoaded(sourceId)) {
-            finish(true);
-          }
+          if (event.sourceId !== sourceId) return;
+          if (map.isSourceLoaded(sourceId)) finish(true);
         };
 
         map.on('sourcedata', handler);
 
-        if (map.isSourceLoaded(sourceId)) {
-          finish(true);
-        }
+        if (map.isSourceLoaded(sourceId)) finish(true);
 
         setTimeout(() => {
           finish(map.getSource(sourceId) !== null);
@@ -903,17 +872,14 @@ async function updateSatellite() {
 
     removeOldSatelliteLayers(sourceId, layerId);
     map.triggerRepaint();
-  }
 
-  catch (error) {
+  } catch (error) {
     console.warn('衛星画像更新エラー:', error);
 
     if (navigator.onLine) {
       setConnectionStatus('unstable');
     }
-  }
-
-  finally {
+  } finally {
     satChecking = false;
   }
 }
@@ -957,9 +923,7 @@ async function checkJMAConnection() {
     }
 
     return true;
-  }
-
-  catch (error) {
+  } catch (error) {
     clearTimeout(timeout);
 
     if (!navigator.onLine) {
@@ -1060,9 +1024,7 @@ async function fetchLatestTimes() {
     }
 
     return changed;
-  }
-
-  catch (error) {
+  } catch (error) {
     console.warn('JMA時刻取得エラー:', error);
 
     if (!navigator.onLine) {
@@ -1080,218 +1042,260 @@ async function fetchLatestTimes() {
 }
 
 /* =========================================
-   JMAタイルURL
+   Z8: 直接タイル表示
 ========================================= */
 
-function jmaTileURL(x, y) {
-  return (
-    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
-    latestTime1 +
-    '/none/' +
-    latestTime2 +
-    '/surf/hrpns/' +
-    BASE_ZOOM +
-    '/' +
-    x +
-    '/' +
-    y +
-    '.png'
-  );
-}
+function addOrUpdateZ8() {
+  if (!latestTime1 || !latestTime2 || !navigator.onLine) {
+    return false;
+  }
 
-/* =========================================
-   画像読み込み
-========================================= */
+  const sourceId = 'nowcast-z8-direct-source';
+  const layerId = 'nowcast-z8-direct-layer';
 
-function loadImage(url) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
+  if (map.getLayer(layerId)) {
+    map.removeLayer(layerId);
+  }
+
+  if (map.getSource(sourceId)) {
+    map.removeSource(sourceId);
+  }
+
+  map.addSource(sourceId, {
+    type: 'raster',
+    tiles: [
+      'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
+      latestTime1 +
+      '/none/' +
+      latestTime2 +
+      '/surf/hrpns/8/{x}/{y}.png'
+    ],
+    tileSize: 256,
+    minzoom: 3,
+    maxzoom: 10,
+    attribution: '© 気象庁'
   });
+
+  map.addLayer({
+    id: layerId,
+    type: 'raster',
+    source: sourceId,
+    minzoom: 3,
+    maxzoom: 10,
+    paint: {
+      'raster-opacity': NOWCAST_OPACITY,
+      'raster-resampling': 'nearest',
+      'raster-fade-duration': 0
+    }
+  }, 'jma-mask');
+
+  return true;
 }
 
 /* =========================================
-   Z8モザイク（軽量版）
-   - フル解像度ではなく、半分解像で生成
-   - 20枚ずつ処理してUIを止めない
-   - すぐ地図表示した後、バックグラウンドで生成
+   Z10
 ========================================= */
 
-async function createMosaic() {
+function addZ10Layer(time1, time2) {
+  if (!navigator.onLine)
+    return;
+
+  const generation = ++z10Generation;
+  const sourceId = 'nowcast-z10-' + generation;
+  const layerId = 'nowcast-z10-layer-' + generation;
+
+  const url =
+    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
+    time1 +
+    '/none/' +
+    time2 +
+    '/surf/hrpns/10/{x}/{y}.png';
+
+  map.addSource(sourceId, {
+    type:'raster',
+    tiles:[url],
+    tileSize:256,
+    minzoom:10,
+    maxzoom:10
+  });
+
+  map.addLayer({
+    id:layerId,
+    type:'raster',
+    source:sourceId,
+    minzoom:10,
+    maxzoom:14,
+    paint:{
+      'raster-opacity':NOWCAST_OPACITY,
+      'raster-resampling':'nearest',
+      'raster-fade-duration':0
+    }
+  }, 'jma-mask');
+
+  const checkLoaded = () => {
+    if (generation !== z10Generation) return;
+
+    if (!navigator.onLine) {
+      setConnectionStatus('offline');
+      return;
+    }
+
+    if (!map.getSource(sourceId)) {
+      return;
+    }
+
+    if (map.isSourceLoaded(sourceId)) {
+      if (map.getLayer('nowcast-z8-direct-layer')) {
+        map.setLayoutProperty('nowcast-z8-direct-layer', 'visibility', 'none');
+      }
+
+      const layers = map.getStyle().layers || [];
+
+      for (const layer of layers) {
+        if (
+          layer.id.startsWith('nowcast-z10-layer-') &&
+          layer.id !== layerId
+        ) {
+          const oldSource = layer.source;
+
+          if (map.getLayer(layer.id)) {
+            map.removeLayer(layer.id);
+          }
+
+          if (oldSource && map.getSource(oldSource)) {
+            map.removeSource(oldSource);
+          }
+        }
+      }
+
+      switchingToZ10 = false;
+      map.triggerRepaint();
+      return;
+    }
+
+    requestAnimationFrame(checkLoaded);
+  };
+
+  requestAnimationFrame(checkLoaded);
+}
+
+/* =========================================
+   ズーム切り替え
+========================================= */
+
+function updateZoomLayers() {
+  if (!navigator.onLine) {
+    setConnectionStatus('offline');
+    return;
+  }
+
+  const zoom = map.getZoom();
+
+  if (zoom >= HIGH_ZOOM) {
+    if (map.getLayer('nowcast-z8-direct-layer')) {
+      map.setLayoutProperty('nowcast-z8-direct-layer', 'visibility', 'none');
+    }
+
+    const layers = map.getStyle().layers || [];
+    const z10Exists = layers.some(layer =>
+      layer.id.startsWith('nowcast-z10-layer-')
+    );
+
+    if (!z10Exists && !switchingToZ10 && latestTime1 && latestTime2) {
+      switchingToZ10 = true;
+      addZ10Layer(latestTime1, latestTime2);
+    }
+
+    return;
+  }
+
+  if (map.getLayer('nowcast-z8-direct-layer')) {
+    map.setLayoutProperty('nowcast-z8-direct-layer', 'visibility', 'visible');
+    map.setPaintProperty('nowcast-z8-direct-layer', 'raster-opacity', NOWCAST_OPACITY);
+  }
+
+  const layers = map.getStyle().layers || [];
+
+  for (const layer of layers) {
+    if (layer.id.startsWith('nowcast-z10-layer-')) {
+      const source = layer.source;
+
+      if (map.getLayer(layer.id)) {
+        map.removeLayer(layer.id);
+      }
+
+      if (source && map.getSource(source)) {
+        map.removeSource(source);
+      }
+    }
+  }
+
+  switchingToZ10 = false;
+  map.triggerRepaint();
+}
+
+map.on('zoom', updateZoomLayers);
+
+/* =========================================
+   ナウキャスト更新
+========================================= */
+
+async function updateNowcastLayers() {
   if (!latestTime1 || !latestTime2) {
     return false;
   }
 
-  if (!navigator.onLine) {
-    if (!mapReady) {
-      showInitialError();
-    }
+  const ready = addOrUpdateZ8();
+
+  if (!ready) {
     return false;
   }
 
-  const renderScale = 0.5;
-
-  const width = Math.max(1, Math.round(MOSAIC_WIDTH * renderScale));
-  const height = Math.max(1, Math.round(MOSAIC_HEIGHT * renderScale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext('2d', { alpha:true, willReadFrequently:false });
-  ctx.imageSmoothingEnabled = false;
-
-  const totalTiles =
-    (TILE_X_MAX - TILE_X_MIN + 1) *
-    (TILE_Y_MAX - TILE_Y_MIN + 1);
-
-  let loadedTiles = 0;
-
-  const tileList = [];
-
-  for (let y = TILE_Y_MIN; y <= TILE_Y_MAX; y++) {
-    for (let x = TILE_X_MIN; x <= TILE_X_MAX; x++) {
-      tileList.push({ x, y });
-    }
+  if (map.getZoom() >= HIGH_ZOOM) {
+    switchingToZ10 = true;
+    addZ10Layer(latestTime1, latestTime2);
   }
 
-  for (let i = 0; i < tileList.length; i += 20) {
-    if (!navigator.onLine) {
-      return false;
-    }
-
-    const batch = tileList.slice(i, i + 20);
-
-    await Promise.all(
-      batch.map(async tile => {
-        if (!navigator.onLine)
-          return;
-
-        const img = await loadImage(jmaTileURL(tile.x, tile.y));
-
-        if (!navigator.onLine)
-          return;
-
-        if (img) {
-          const dx = ((tile.x - TILE_X_MIN) * TILE_SIZE) * renderScale;
-          const dy = ((tile.y - TILE_Y_MIN) * TILE_SIZE) * renderScale;
-
-          ctx.drawImage(
-            img,
-            0,
-            0,
-            img.width,
-            img.height,
-            dx,
-            dy,
-            TILE_SIZE * renderScale,
-            TILE_SIZE * renderScale
-          );
-
-          loadedTiles++;
-        }
-
-        const progress = loadedTiles / totalTiles;
-
-        setLoading(
-          `降水タイルを読み込み中… ${loadedTiles}/${totalTiles}`,
-          15 + progress * 70
-        );
-      })
-    );
-  }
-
-  if (!navigator.onLine) {
-    if (!mapReady) {
-      showInitialError();
-    }
-    return false;
-  }
-
-  if (loadedTiles === 0) {
-    if (mapReady) {
-      setConnectionStatus('unstable');
-    } else {
-      showInitialError();
-    }
-    return false;
-  }
-
-  setLoading('降水画像を生成しています…', 90);
-
-  return new Promise(resolve => {
-    canvas.toBlob(blob => {
-      if (!blob) {
-        if (mapReady) {
-          setConnectionStatus('unstable');
-        } else {
-          showInitialError();
-        }
-        resolve(false);
-        return;
-      }
-
-      if (!navigator.onLine) {
-        if (!mapReady) {
-          showInitialError();
-        }
-        resolve(false);
-        return;
-      }
-
-      const newURL = URL.createObjectURL(blob);
-
-      if (mosaicURL) {
-        URL.revokeObjectURL(mosaicURL);
-      }
-
-      mosaicURL = newURL;
-
-      setLoading('地図を仕上げています…', 96);
-      resolve(true);
-    }, 'image/png');
-  });
+  map.triggerRepaint();
+  return true;
 }
 
 /* =========================================
-   座標
+   ナウキャスト確認
 ========================================= */
 
-function tileXToLng(x) {
-  return (
-    x /
-    Math.pow(2, BASE_ZOOM)
-  ) * 360 - 180;
+async function checkNowcastUpdate() {
+  if (!mapReady)
+    return;
+
+  if (!navigator.onLine) {
+    setConnectionStatus('offline');
+    return;
+  }
+
+  const changed = await fetchLatestTimes();
+
+  if (!changed)
+    return;
+
+  const timestamp = latestTime1 + '_' + latestTime2;
+
+  if (timestamp === previousTimestamp) {
+    return;
+  }
+
+  previousTimestamp = timestamp;
+
+  const ready = await updateNowcastLayers();
+
+  if (ready) {
+    checkJMAConnection();
+  } else {
+    if (navigator.onLine) {
+      setConnectionStatus('unstable');
+    }
+  }
 }
-
-function tileYToLat(y) {
-  const n =
-    Math.PI -
-    (
-      2 *
-      Math.PI *
-      y /
-      Math.pow(2, BASE_ZOOM)
-    );
-
-  return (
-    180 / Math.PI
-  ) * Math.atan(
-    0.5 * (
-      Math.exp(n) -
-      Math.exp(-n)
-    )
-  );
-}
-
-const west = tileXToLng(TILE_X_MIN);
-const east = tileXToLng(TILE_X_MAX + 1);
-const north = tileYToLat(TILE_Y_MIN);
-const south = tileYToLat(TILE_Y_MAX + 1);
 
 /* =========================================
    MapLibre
@@ -1305,6 +1309,10 @@ const map = new maplibregl.Map({
   maxZoom:13,
   bearing:0,
   pitch:0,
+  maxPitch:0,
+  dragRotate:false,
+  pitchWithRotate:false,
+  touchPitch:false,
   attributionControl:false,
   antialias:false,
   preserveDrawingBuffer:false,
@@ -1362,275 +1370,23 @@ const map = new maplibregl.Map({
   }
 });
 
-/* =========================================
-   Z8
-========================================= */
+// 3D傾き・回転を無効化
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+map.setPitch(0);
+map.setBearing(0);
 
-function addOrUpdateZ8() {
-  if (!mosaicURL)
-    return;
-
-  const coordinates = [
-    [west, north],
-    [east, north],
-    [east, south],
-    [west, south]
-  ];
-
-  if (!map.getSource('nowcast-z8-mosaic')) {
-    map.addSource('nowcast-z8-mosaic', {
-      type:'image',
-      url:mosaicURL,
-      coordinates:coordinates
-    });
-
-    map.addLayer({
-      id:'nowcast-z8-mosaic-layer',
-      type:'raster',
-      source:'nowcast-z8-mosaic',
-      minzoom:3,
-      maxzoom:10,
-      paint:{
-        'raster-opacity':NOWCAST_OPACITY,
-        'raster-resampling':'nearest',
-        'raster-fade-duration':0
-      }
-    }, 'jma-mask');
-
-    return;
+map.on('pitch', () => {
+  if (map.getPitch() !== 0) {
+    map.setPitch(0);
   }
+});
 
-  map.getSource('nowcast-z8-mosaic').updateImage({
-    url:mosaicURL,
-    coordinates:coordinates
-  });
-}
-
-/* =========================================
-   Z10
-========================================= */
-
-function addZ10Layer(time1, time2) {
-  if (!navigator.onLine)
-    return;
-
-  const generation = ++z10Generation;
-  const sourceId = 'nowcast-z10-' + generation;
-  const layerId = 'nowcast-z10-layer-' + generation;
-
-  const url =
-    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
-    time1 +
-    '/none/' +
-    time2 +
-    '/surf/hrpns/10/{x}/{y}.png';
-
-  map.addSource(sourceId, {
-    type:'raster',
-    tiles:[url],
-    tileSize:256,
-    minzoom:10,
-    maxzoom:10
-  });
-
-  map.addLayer({
-    id:layerId,
-    type:'raster',
-    source:sourceId,
-    minzoom:10,
-    maxzoom:14,
-    paint:{
-      'raster-opacity':NOWCAST_OPACITY,
-      'raster-resampling':'nearest',
-      'raster-fade-duration':0
-    }
-  }, 'jma-mask');
-
-  const checkLoaded = () => {
-    if (generation !== z10Generation) {
-      return;
-    }
-
-    if (!navigator.onLine) {
-      setConnectionStatus('offline');
-      return;
-    }
-
-    if (!map.getSource(sourceId)) {
-      return;
-    }
-
-    if (map.isSourceLoaded(sourceId)) {
-      if (map.getLayer('nowcast-z8-mosaic-layer')) {
-        map.setPaintProperty(
-          'nowcast-z8-mosaic-layer',
-          'raster-opacity',
-          0
-        );
-      }
-
-      const layers = map.getStyle().layers || [];
-
-      for (const layer of layers) {
-        if (
-          layer.id.startsWith('nowcast-z10-layer-') &&
-          layer.id !== layerId
-        ) {
-          const oldSource = layer.source;
-
-          if (map.getLayer(layer.id)) {
-            map.removeLayer(layer.id);
-          }
-
-          if (oldSource && map.getSource(oldSource)) {
-            map.removeSource(oldSource);
-          }
-        }
-      }
-
-      switchingToZ10 = false;
-      map.triggerRepaint();
-      return;
-    }
-
-    requestAnimationFrame(checkLoaded);
-  };
-
-  requestAnimationFrame(checkLoaded);
-}
-
-/* =========================================
-   ズーム切り替え
-========================================= */
-
-function updateZoomLayers() {
-  if (!navigator.onLine) {
-    setConnectionStatus('offline');
-    return;
+map.on('rotate', () => {
+  if (map.getBearing() !== 0) {
+    map.setBearing(0);
   }
-
-  const zoom = map.getZoom();
-
-  if (zoom >= HIGH_ZOOM) {
-    const layers = map.getStyle().layers || [];
-    const z10Exists = layers.some(layer =>
-      layer.id.startsWith('nowcast-z10-layer-')
-    );
-
-    if (!z10Exists && !switchingToZ10 && latestTime1 && latestTime2) {
-      switchingToZ10 = true;
-      addZ10Layer(latestTime1, latestTime2);
-    }
-
-    return;
-  }
-
-  if (map.getLayer('nowcast-z8-mosaic-layer')) {
-    map.setPaintProperty(
-      'nowcast-z8-mosaic-layer',
-      'raster-opacity',
-      NOWCAST_OPACITY
-    );
-  }
-
-  const layers = map.getStyle().layers || [];
-
-  for (const layer of layers) {
-    if (layer.id.startsWith('nowcast-z10-layer-')) {
-      const source = layer.source;
-
-      if (map.getLayer(layer.id)) {
-        map.removeLayer(layer.id);
-      }
-
-      if (source && map.getSource(source)) {
-        map.removeSource(source);
-      }
-    }
-  }
-
-  switchingToZ10 = false;
-  map.triggerRepaint();
-}
-
-map.on('zoom', updateZoomLayers);
-
-/* =========================================
-   ナウキャスト更新（速く見せる版）
-========================================= */
-
-async function updateNowcastLayers() {
-  const ready = await createMosaic();
-
-  if (!ready)
-    return false;
-
-  addOrUpdateZ8();
-
-  if (map.getZoom() >= HIGH_ZOOM) {
-    switchingToZ10 = true;
-    addZ10Layer(latestTime1, latestTime2);
-  }
-
-  map.triggerRepaint();
-  return true;
-}
-
-/* =========================================
-   バックグラウンド更新
-========================================= */
-
-let mosaicTaskQueued = false;
-
-function queueMosaicUpdate() {
-  if (mosaicTaskQueued)
-    return;
-
-  mosaicTaskQueued = true;
-
-  setTimeout(async () => {
-    mosaicTaskQueued = false;
-
-    if (!mapReady || !navigator.onLine) {
-      return;
-    }
-
-    await updateNowcastLayers();
-  }, 100);
-}
-
-/* =========================================
-   ナウキャスト確認
-========================================= */
-
-async function checkNowcastUpdate() {
-  if (!mapReady)
-    return;
-
-  if (!navigator.onLine) {
-    setConnectionStatus('offline');
-    return;
-  }
-
-  const changed = await fetchLatestTimes();
-
-  if (!changed)
-    return;
-
-  const timestamp = latestTime1 + '_' + latestTime2;
-
-  if (timestamp === previousTimestamp) {
-    return;
-  }
-
-  previousTimestamp = timestamp;
-
-  queueMosaicUpdate();
-
-  if (map.getZoom() >= HIGH_ZOOM) {
-    checkJMAConnection();
-  }
-}
+});
 
 /* =========================================
    初期化
@@ -1641,7 +1397,6 @@ async function initialize() {
     return;
 
   initializing = true;
-
   const generation = ++initGeneration;
 
   showLoading();
@@ -1687,13 +1442,23 @@ async function initialize() {
     return;
   }
 
+  const ready = await updateNowcastLayers();
+
+  if (
+    generation !== initGeneration ||
+    !ready ||
+    !navigator.onLine
+  ) {
+    if (!mapReady) {
+      showInitialError();
+    }
+    initializing = false;
+    return;
+  }
+
   showMapAfterLoading();
 
-  // 地図を先に表示して、降水画像は後で背景処理
-  queueMosaicUpdate();
-
   initializing = false;
-
   startConnectionMonitor();
 }
 
