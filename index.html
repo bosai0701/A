@@ -83,9 +83,7 @@
     }
 
     @keyframes loading-spin {
-      to {
-        transform:rotate(360deg);
-      }
+      to { transform:rotate(360deg); }
     }
 
     .loading-progress {
@@ -174,7 +172,6 @@
       right:12px;
       bottom:12px;
       z-index:5000;
-
       width:52px;
       height:52px;
       padding:0;
@@ -182,21 +179,15 @@
       border-radius:50%;
       background:rgba(255,255,255,.95);
       box-shadow:0 2px 8px rgba(0,0,0,.25);
-
       display:flex;
       align-items:center;
       justify-content:center;
-
       cursor:pointer;
       user-select:none;
       -webkit-tap-highlight-color:transparent;
-
       backdrop-filter:blur(4px);
       -webkit-backdrop-filter:blur(4px);
-
-      transition:
-        background .15s ease,
-        transform .15s ease;
+      transition:background .15s ease, transform .15s ease;
     }
 
     #location-btn:active {
@@ -252,31 +243,17 @@
 
 <div id="loading">
   <div class="loading-box">
-
     <div id="loading-spinner" class="loading-spinner"></div>
-
-    <div class="loading-title">
-      降水ナウキャスト
-    </div>
-
-    <div id="loading-status" class="loading-status">
-      地図を準備しています…
-    </div>
-
+    <div class="loading-title">降水ナウキャスト</div>
+    <div id="loading-status" class="loading-status">地図を準備しています…</div>
     <div id="loading-progress" class="loading-progress">
       <div id="loading-progress-bar" class="loading-progress-bar"></div>
     </div>
-
-    <div id="loading-percent" class="loading-percent">
-      0%
-    </div>
-
+    <div id="loading-percent" class="loading-percent">0%</div>
   </div>
 </div>
 
-<div id="connection-status">
-  ● オンライン
-</div>
+<div id="connection-status">● オンライン</div>
 
 <div id="map"></div>
 
@@ -286,12 +263,7 @@
   <div id="nowcast-time">降水: --</div>
 </div>
 
-<button
-  id="location-btn"
-  type="button"
-  aria-label="現在地を表示"
-  title="現在地"
->
+<button id="location-btn" type="button" aria-label="現在地を表示" title="現在地">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <circle cx="12" cy="12" r="7"></circle>
     <line x1="12" y1="2" x2="12" y2="5"></line>
@@ -308,13 +280,11 @@
 let loadingError = false;
 let mapReady = false;
 let initializing = false;
-
 let initGeneration = 0;
 
 let jmaConnectionTimer = null;
 let nowcastTimer = null;
 let satelliteTimer = null;
-
 let initialDisplayTimer = null;
 
 /* =========================================
@@ -499,10 +469,9 @@ function showMapAfterLoading() {
           loading.style.display = 'none';
         }
       }, 300);
+    }, 200);
 
-    }, 600);
-
-  }, 100);
+  }, 50);
 }
 
 /* =========================================
@@ -1146,7 +1115,10 @@ function loadImage(url) {
 }
 
 /* =========================================
-   Z8モザイク
+   Z8モザイク（軽量版）
+   - フル解像度ではなく、半分解像で生成
+   - 20枚ずつ処理してUIを止めない
+   - すぐ地図表示した後、バックグラウンドで生成
 ========================================= */
 
 async function createMosaic() {
@@ -1161,17 +1133,16 @@ async function createMosaic() {
     return false;
   }
 
-  setLoading('降水タイルを読み込んでいます…', 15);
+  const renderScale = 0.5;
+
+  const width = Math.max(1, Math.round(MOSAIC_WIDTH * renderScale));
+  const height = Math.max(1, Math.round(MOSAIC_HEIGHT * renderScale));
 
   const canvas = document.createElement('canvas');
-  canvas.width = MOSAIC_WIDTH;
-  canvas.height = MOSAIC_HEIGHT;
+  canvas.width = width;
+  canvas.height = height;
 
-  const ctx = canvas.getContext('2d', {
-    alpha:true,
-    willReadFrequently:false
-  });
-
+  const ctx = canvas.getContext('2d', { alpha:true, willReadFrequently:false });
   ctx.imageSmoothingEnabled = false;
 
   const totalTiles =
@@ -1189,6 +1160,10 @@ async function createMosaic() {
   }
 
   for (let i = 0; i < tileList.length; i += 20) {
+    if (!navigator.onLine) {
+      return false;
+    }
+
     const batch = tileList.slice(i, i + 20);
 
     await Promise.all(
@@ -1202,10 +1177,21 @@ async function createMosaic() {
           return;
 
         if (img) {
-          const dx = (tile.x - TILE_X_MIN) * TILE_SIZE;
-          const dy = (tile.y - TILE_Y_MIN) * TILE_SIZE;
+          const dx = ((tile.x - TILE_X_MIN) * TILE_SIZE) * renderScale;
+          const dy = ((tile.y - TILE_Y_MIN) * TILE_SIZE) * renderScale;
 
-          ctx.drawImage(img, dx, dy, TILE_SIZE, TILE_SIZE);
+          ctx.drawImage(
+            img,
+            0,
+            0,
+            img.width,
+            img.height,
+            dx,
+            dy,
+            TILE_SIZE * renderScale,
+            TILE_SIZE * renderScale
+          );
+
           loadedTiles++;
         }
 
@@ -1293,8 +1279,7 @@ function tileYToLat(y) {
     );
 
   return (
-    180 /
-    Math.PI
+    180 / Math.PI
   ) * Math.atan(
     0.5 * (
       Math.exp(n) -
@@ -1571,7 +1556,7 @@ function updateZoomLayers() {
 map.on('zoom', updateZoomLayers);
 
 /* =========================================
-   ナウキャスト更新
+   ナウキャスト更新（速く見せる版）
 ========================================= */
 
 async function updateNowcastLayers() {
@@ -1589,6 +1574,29 @@ async function updateNowcastLayers() {
 
   map.triggerRepaint();
   return true;
+}
+
+/* =========================================
+   バックグラウンド更新
+========================================= */
+
+let mosaicTaskQueued = false;
+
+function queueMosaicUpdate() {
+  if (mosaicTaskQueued)
+    return;
+
+  mosaicTaskQueued = true;
+
+  setTimeout(async () => {
+    mosaicTaskQueued = false;
+
+    if (!mapReady || !navigator.onLine) {
+      return;
+    }
+
+    await updateNowcastLayers();
+  }, 100);
 }
 
 /* =========================================
@@ -1617,14 +1625,10 @@ async function checkNowcastUpdate() {
 
   previousTimestamp = timestamp;
 
-  const ready = await updateNowcastLayers();
+  queueMosaicUpdate();
 
-  if (ready) {
+  if (map.getZoom() >= HIGH_ZOOM) {
     checkJMAConnection();
-  } else {
-    if (navigator.onLine) {
-      setConnectionStatus('unstable');
-    }
   }
 }
 
@@ -1683,24 +1687,10 @@ async function initialize() {
     return;
   }
 
-  const timestamp = latestTime1 + '_' + latestTime2;
-  previousTimestamp = timestamp;
-
-  const ready = await updateNowcastLayers();
-
-  if (
-    generation !== initGeneration ||
-    !ready ||
-    !navigator.onLine
-  ) {
-    if (!mapReady) {
-      showInitialError();
-    }
-    initializing = false;
-    return;
-  }
-
   showMapAfterLoading();
+
+  // 地図を先に表示して、降水画像は後で背景処理
+  queueMosaicUpdate();
 
   initializing = false;
 
@@ -1778,7 +1768,6 @@ satelliteTimer = setInterval(() => {
 
 function updateClock() {
   const now = new Date();
-
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
