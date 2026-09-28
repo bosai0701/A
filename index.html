@@ -118,7 +118,7 @@ function setConnectionStatus(state) {
 }
 
 /* =========================================
-   初期エラー
+   初期エラー / ローディング
 ========================================= */
 
 function showInitialError(message) {
@@ -141,10 +141,6 @@ function showInitialError(message) {
     'データがないか、通信に障害が発生しています。';
   setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
 }
-
-/* =========================================
-   ローディング
-========================================= */
 
 function showLoading() {
   loadingError = false;
@@ -177,10 +173,6 @@ function setLoading(text, percent) {
   loadingProgressBar.style.width = value + '%';
   loadingPercent.textContent = Math.round(value) + '%';
 }
-
-/* =========================================
-   初回表示
-========================================= */
 
 function showMapAfterLoading() {
   if (loadingError) return;
@@ -216,28 +208,34 @@ function showMapAfterLoading() {
       loading.classList.add('hide');
 
       setTimeout(() => {
-        if (!loadingError && navigator.onLine) {
-          loading.style.display = 'none';
-        }
+        if (!loadingError && navigator.onLine) loading.style.display = 'none';
       }, 300);
     }, 600);
   }, 100);
 }
 
 /* =========================================
-   ナウキャスト
+   定数
 ========================================= */
 
 const NOWCAST_OPACITY = 0.55;
 const BASE_ZOOM = 8;
 const HIGH_ZOOM = 10;
 const TILE_SIZE = 256;
+
+/* 降水・境界線モザイク範囲 (z8) */
 const TILE_X_MIN = 212;
 const TILE_X_MAX = 243;
 const TILE_Y_MIN = 92;
 const TILE_Y_MAX = 115;
-const MOSAIC_WIDTH = (TILE_X_MAX - TILE_X_MIN + 1) * TILE_SIZE;
-const MOSAIC_HEIGHT = (TILE_Y_MAX - TILE_Y_MIN + 1) * TILE_SIZE;
+
+/* 衛星モザイク範囲 (z5)
+   X は 21〜36 (36 は 180°を越えた仮想タイル。URL では 32 で折り返す) */
+const SAT_ZOOM = 5;
+const SAT_X_MIN = 21;
+const SAT_X_MAX = 36;
+const SAT_Y_MIN = 3;
+const SAT_Y_MAX = 28;
 
 let latestTime1 = '';
 let latestTime2 = '';
@@ -250,9 +248,11 @@ let switchingToZ10 = false;
 let latestSatValidTime = null;
 let latestSatBaseTime = null;
 let satChecking = false;
-let satGeneration = 0;
-let activeSatelliteSourceId = null;
-let activeSatelliteLayerId = null;
+let satURL = '';
+
+/* 境界線 */
+let maskURL = '';
+let maskReady = false;
 
 /* =========================================
    現在地
@@ -326,7 +326,7 @@ locationBtn.addEventListener('click', () => {
 });
 
 /* =========================================
-   衛星時刻
+   時刻表示
 ========================================= */
 
 function formatSatJST(utcString) {
@@ -347,6 +347,128 @@ function formatSatJST(utcString) {
 
   return `${date.getUTCFullYear()}/${m}/${d} ${h}:${min} JST`;
 }
+
+/* =========================================
+   座標
+========================================= */
+
+function tileXToLng(x, z) {
+  return (x / Math.pow(2, z)) * 360 - 180;
+}
+
+function tileYToLat(y, z) {
+  const n = Math.PI - (2 * Math.PI * y / Math.pow(2, z));
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+function mosaicCoordinates(xMin, xMax, yMin, yMax, z) {
+  const w = tileXToLng(xMin, z);
+  const e = tileXToLng(xMax + 1, z);
+  const n = tileYToLat(yMin, z);
+  const s = tileYToLat(yMax + 1, z);
+  return [[w, n], [e, n], [e, s], [w, s]];
+}
+
+const nowcastCoordinates =
+  mosaicCoordinates(TILE_X_MIN, TILE_X_MAX, TILE_Y_MIN, TILE_Y_MAX, BASE_ZOOM);
+
+const satCoordinates =
+  mosaicCoordinates(SAT_X_MIN, SAT_X_MAX, SAT_Y_MIN, SAT_Y_MAX, SAT_ZOOM);
+
+/* =========================================
+   モザイク共通処理 (WebP出力)
+========================================= */
+
+function loadImage(url) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/* WebP で書き出す。
+   quality 1  : Chrome系では可逆圧縮(降水・境界線向け)
+   quality <1 : 非可逆(JPEG由来の衛星画像向け)
+   WebP非対応ブラウザでは toBlob が別形式を返すので、
+   blob.type を見て fallbackType で再生成する */
+function encodeMosaic(canvas, quality, fallbackType) {
+  return new Promise(resolve => {
+    canvas.toBlob(
+      webpBlob => {
+        if (webpBlob && webpBlob.type === 'image/webp') {
+          resolve(webpBlob);
+          return;
+        }
+        canvas.toBlob(blob => resolve(blob), fallbackType, 0.9);
+      },
+      'image/webp',
+      quality
+    );
+  });
+}
+
+/* タイルを1枚のキャンバスに並べて Blob にする。
+   失敗時は null。onProgress(読込済み枚数, 総数) */
+async function buildMosaic(options) {
+  const xMin = options.xMin, xMax = options.xMax;
+  const yMin = options.yMin, yMax = options.yMax;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = (xMax - xMin + 1) * TILE_SIZE;
+  canvas.height = (yMax - yMin + 1) * TILE_SIZE;
+
+  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
+  ctx.imageSmoothingEnabled = false;
+
+  const tileList = [];
+  for (let y = yMin; y <= yMax; y++) {
+    for (let x = xMin; x <= xMax; x++) {
+      tileList.push({ x: x, y: y });
+    }
+  }
+
+  const totalTiles = tileList.length;
+  let loadedTiles = 0;
+
+  for (let i = 0; i < tileList.length; i += 20) {
+    const batch = tileList.slice(i, i + 20);
+
+    await Promise.all(
+      batch.map(async tile => {
+        if (!navigator.onLine) return;
+
+        const img = await loadImage(options.urlFn(tile.x, tile.y));
+
+        if (!navigator.onLine) return;
+
+        if (img) {
+          ctx.drawImage(
+            img,
+            (tile.x - xMin) * TILE_SIZE,
+            (tile.y - yMin) * TILE_SIZE,
+            TILE_SIZE,
+            TILE_SIZE
+          );
+          loadedTiles++;
+        }
+
+        if (options.onProgress) options.onProgress(loadedTiles, totalTiles);
+      })
+    );
+  }
+
+  if (!navigator.onLine || loadedTiles === 0) return null;
+
+  return await encodeMosaic(canvas, options.quality, options.fallbackType);
+}
+
+/* =========================================
+   衛星 (z5 モザイク)
+========================================= */
 
 async function getSatLatestTime() {
   const controller = new AbortController();
@@ -371,10 +493,7 @@ async function getSatLatestTime() {
   }
 }
 
-/* =========================================
-   衛星レイヤー
-========================================= */
-
+/* 衛星レイヤーは降水・境界線より下に置く */
 function getSatelliteBeforeLayerId() {
   const layers = map.getStyle().layers || [];
 
@@ -387,26 +506,36 @@ function getSatelliteBeforeLayerId() {
   return undefined;
 }
 
-function removeSatelliteLayer(sourceId, layerId) {
-  if (layerId && map.getLayer(layerId)) map.removeLayer(layerId);
-  if (sourceId && map.getSource(sourceId)) map.removeSource(sourceId);
-}
+function addOrUpdateSatellite(url) {
+  if (!map.getSource('himawari-mosaic')) {
+    map.addSource('himawari-mosaic', {
+      type: 'image',
+      url: url,
+      coordinates: satCoordinates
+    });
 
-function removeOldSatelliteLayers(keepSourceId, keepLayerId) {
-  const layers = map.getStyle().layers || [];
-
-  for (const layer of layers) {
-    if (!layer.id.startsWith('himawari-layer-')) continue;
-    if (layer.id === keepLayerId) continue;
-
-    const sourceId = layer.source;
-
-    if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-
-    if (sourceId && sourceId !== keepSourceId && map.getSource(sourceId)) {
-      map.removeSource(sourceId);
-    }
+    map.addLayer(
+      {
+        id: 'himawari-mosaic-layer',
+        type: 'raster',
+        source: 'himawari-mosaic',
+        minzoom: 0,
+        maxzoom: 19,
+        paint: {
+          'raster-opacity': 0.65,
+          'raster-resampling': 'linear',
+          'raster-fade-duration': 0
+        }
+      },
+      getSatelliteBeforeLayerId()
+    );
+    return;
   }
+
+  map.getSource('himawari-mosaic').updateImage({
+    url: url,
+    coordinates: satCoordinates
+  });
 }
 
 async function updateSatellite() {
@@ -419,11 +548,9 @@ async function updateSatellite() {
   }
 
   satChecking = true;
-  const generation = ++satGeneration;
 
   try {
     const target = await getSatLatestTime();
-    if (generation !== satGeneration) return;
 
     const baseTime = String(target.basetime);
     const validTime = String(target.validtime);
@@ -431,102 +558,43 @@ async function updateSatellite() {
     if (
       latestSatValidTime === validTime &&
       latestSatBaseTime === baseTime &&
-      activeSatelliteLayerId &&
-      map.getLayer(activeSatelliteLayerId) &&
-      activeSatelliteSourceId &&
-      map.getSource(activeSatelliteSourceId)
+      map.getSource('himawari-mosaic')
     ) {
       return;
     }
 
-    const sourceId = 'himawari-source-' + generation;
-    const layerId = 'himawari-layer-' + generation;
-
-    const tileURL =
-      'https://www.jma.go.jp/bosai/himawari/data/satimg/' +
-      baseTime + '/fd/' + validTime + '/B13/TBB/{z}/{x}/{y}.jpg';
-
-    map.addSource(sourceId, {
-      type: 'raster',
-      tiles: [tileURL],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 5,
-      attribution: '© 気象庁'
+    const blob = await buildMosaic({
+      xMin: SAT_X_MIN,
+      xMax: SAT_X_MAX,
+      yMin: SAT_Y_MIN,
+      yMax: SAT_Y_MAX,
+      quality: 0.85,
+      fallbackType: 'image/jpeg',
+      urlFn: (x, y) => {
+        const wrappedX = ((x % 32) + 32) % 32;
+        return (
+          'https://www.jma.go.jp/bosai/himawari/data/satimg/' +
+          baseTime + '/fd/' + validTime +
+          '/B13/TBB/' + SAT_ZOOM + '/' + wrappedX + '/' + y + '.jpg'
+        );
+      }
     });
 
-    const beforeLayerId = getSatelliteBeforeLayerId();
+    if (!blob) throw new Error('衛星モザイク生成失敗');
 
-    map.addLayer(
-      {
-        id: layerId,
-        type: 'raster',
-        source: sourceId,
-        minzoom: 0,
-        maxzoom: 19,
-        paint: {
-          'raster-opacity': 0.65,
-          'raster-resampling': 'linear',
-          'raster-fade-duration': 0
-        }
-      },
-      beforeLayerId
-    );
+    const newURL = URL.createObjectURL(blob);
 
-    const waitForSource = () => {
-      return new Promise(resolve => {
-        let finished = false;
+    addOrUpdateSatellite(newURL);
 
-        const finish = value => {
-          if (finished) return;
-          finished = true;
-          map.off('sourcedata', handler);
-          resolve(value);
-        };
+    if (satURL) URL.revokeObjectURL(satURL);
+    satURL = newURL;
 
-        const handler = event => {
-          if (event.sourceId !== sourceId) return;
-          if (map.isSourceLoaded(sourceId)) finish(true);
-        };
-
-        map.on('sourcedata', handler);
-
-        if (map.isSourceLoaded(sourceId)) finish(true);
-
-        setTimeout(() => {
-          finish(map.getSource(sourceId) !== null);
-        }, 5000);
-      });
-    };
-
-    const loaded = await waitForSource();
-
-    if (generation !== satGeneration) {
-      removeSatelliteLayer(sourceId, layerId);
-      return;
-    }
-
-    if (!loaded) {
-      removeSatelliteLayer(sourceId, layerId);
-      throw new Error('衛星タイル読み込みタイムアウト');
-    }
-
-    const oldSourceId = activeSatelliteSourceId;
-    const oldLayerId = activeSatelliteLayerId;
-
-    activeSatelliteSourceId = sourceId;
-    activeSatelliteLayerId = layerId;
     latestSatValidTime = validTime;
     latestSatBaseTime = baseTime;
 
     document.getElementById('sat-time').textContent =
       '衛星: ' + formatSatJST(validTime);
 
-    if (oldLayerId && oldLayerId !== layerId) {
-      removeSatelliteLayer(oldSourceId, oldLayerId);
-    }
-
-    removeOldSatelliteLayers(sourceId, layerId);
     map.triggerRepaint();
 
   } catch (error) {
@@ -644,7 +712,7 @@ async function fetchLatestTimes() {
 }
 
 /* =========================================
-   JMAタイルURL
+   降水 Z8 モザイク (WebP)
 ========================================= */
 
 function jmaTileURL(x, y) {
@@ -653,42 +721,6 @@ function jmaTileURL(x, y) {
     latestTime1 + '/none/' + latestTime2 +
     '/surf/hrpns/' + BASE_ZOOM + '/' + x + '/' + y + '.png'
   );
-}
-
-function loadImage(url) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.decoding = 'async';
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
-}
-
-/* =========================================
-   Z8モザイク(WebP出力)
-========================================= */
-
-/* WebP で書き出す。
-   - quality 1 を指定(Chrome系では可逆圧縮になり、色・透明度が劣化しない)
-   - nearest 表示なので、色境界がにじむ非可逆の低品質は使わない
-   - WebP非対応ブラウザでは toBlob が PNG を返すため、
-     blob.type を見て PNG で再生成するフォールバックを入れている */
-function encodeMosaic(canvas) {
-  return new Promise(resolve => {
-    canvas.toBlob(
-      webpBlob => {
-        if (webpBlob && webpBlob.type === 'image/webp') {
-          resolve(webpBlob);
-          return;
-        }
-        canvas.toBlob(pngBlob => resolve(pngBlob), 'image/png');
-      },
-      'image/webp',
-      1
-    );
-  });
 }
 
 async function createMosaic() {
@@ -701,68 +733,21 @@ async function createMosaic() {
 
   setLoading('降水タイルを読み込んでいます…', 15);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = MOSAIC_WIDTH;
-  canvas.height = MOSAIC_HEIGHT;
-
-  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
-  ctx.imageSmoothingEnabled = false;
-
-  const totalTiles =
-    (TILE_X_MAX - TILE_X_MIN + 1) *
-    (TILE_Y_MAX - TILE_Y_MIN + 1);
-
-  let loadedTiles = 0;
-  const tileList = [];
-
-  for (let y = TILE_Y_MIN; y <= TILE_Y_MAX; y++) {
-    for (let x = TILE_X_MIN; x <= TILE_X_MAX; x++) {
-      tileList.push({ x: x, y: y });
+  const blob = await buildMosaic({
+    xMin: TILE_X_MIN,
+    xMax: TILE_X_MAX,
+    yMin: TILE_Y_MIN,
+    yMax: TILE_Y_MAX,
+    quality: 1,
+    fallbackType: 'image/png',
+    urlFn: jmaTileURL,
+    onProgress: (loaded, total) => {
+      setLoading(
+        `降水タイルを読み込み中… ${loaded}/${total}`,
+        15 + (loaded / total) * 70
+      );
     }
-  }
-
-  for (let i = 0; i < tileList.length; i += 20) {
-    const batch = tileList.slice(i, i + 20);
-
-    await Promise.all(
-      batch.map(async tile => {
-        if (!navigator.onLine) return;
-
-        const img = await loadImage(jmaTileURL(tile.x, tile.y));
-
-        if (!navigator.onLine) return;
-
-        if (img) {
-          const dx = (tile.x - TILE_X_MIN) * TILE_SIZE;
-          const dy = (tile.y - TILE_Y_MIN) * TILE_SIZE;
-          ctx.drawImage(img, dx, dy, TILE_SIZE, TILE_SIZE);
-          loadedTiles++;
-        }
-
-        const progress = loadedTiles / totalTiles;
-
-        setLoading(
-          `降水タイルを読み込み中… ${loadedTiles}/${totalTiles}`,
-          15 + progress * 70
-        );
-      })
-    );
-  }
-
-  if (!navigator.onLine) {
-    if (!mapReady) showInitialError();
-    return false;
-  }
-
-  if (loadedTiles === 0) {
-    if (mapReady) setConnectionStatus('unstable');
-    else showInitialError();
-    return false;
-  }
-
-  setLoading('降水画像を生成しています…', 90);
-
-  const blob = await encodeMosaic(canvas);
+  });
 
   if (!blob) {
     if (mapReady) setConnectionStatus('unstable');
@@ -775,10 +760,11 @@ async function createMosaic() {
     return false;
   }
 
+  setLoading('降水画像を生成しています…', 90);
+
   const newURL = URL.createObjectURL(blob);
 
   if (mosaicURL) URL.revokeObjectURL(mosaicURL);
-
   mosaicURL = newURL;
 
   setLoading('地図を仕上げています…', 96);
@@ -787,25 +773,9 @@ async function createMosaic() {
 }
 
 /* =========================================
-   座標
-========================================= */
-
-function tileXToLng(x) {
-  return (x / Math.pow(2, BASE_ZOOM)) * 360 - 180;
-}
-
-function tileYToLat(y) {
-  const n = Math.PI - (2 * Math.PI * y / Math.pow(2, BASE_ZOOM));
-  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-}
-
-const west = tileXToLng(TILE_X_MIN);
-const east = tileXToLng(TILE_X_MAX + 1);
-const north = tileYToLat(TILE_Y_MIN);
-const south = tileYToLat(TILE_Y_MAX + 1);
-
-/* =========================================
    MapLibre
+   ※ jma-mask は高ズーム(z10以上)用の元タイル。
+      低ズームは境界線モザイクを使う。
 ========================================= */
 
 const map = new maplibregl.Map({
@@ -856,7 +826,7 @@ const map = new maplibregl.Map({
         id: 'jma-mask',
         type: 'raster',
         source: 'jma-mask',
-        minzoom: 0,
+        minzoom: HIGH_ZOOM,
         maxzoom: 16,
         paint: {
           'raster-opacity': 1,
@@ -870,24 +840,82 @@ const map = new maplibregl.Map({
 });
 
 /* =========================================
-   Z8
+   境界線 Z8 モザイク (WebP)
+========================================= */
+
+async function ensureMaskMosaic() {
+  if (maskReady) return true;
+
+  const blob = await buildMosaic({
+    xMin: TILE_X_MIN,
+    xMax: TILE_X_MAX,
+    yMin: TILE_Y_MIN,
+    yMax: TILE_Y_MAX,
+    quality: 1,
+    fallbackType: 'image/png',
+    urlFn: (x, y) =>
+      'https://www.jma.go.jp/bosai/jmatile/data/map/none/none/none/surf/mask/' +
+      BASE_ZOOM + '/' + x + '/' + y + '.png',
+    onProgress: (loaded, total) => {
+      setLoading(
+        `境界線タイルを読み込み中… ${loaded}/${total}`,
+        8 + (loaded / total) * 7
+      );
+    }
+  });
+
+  if (!blob) {
+    /* 失敗時は元のタイルを全ズームで表示 */
+    map.setLayerZoomRange('jma-mask', 0, 16);
+    return false;
+  }
+
+  const newURL = URL.createObjectURL(blob);
+  if (maskURL) URL.revokeObjectURL(maskURL);
+  maskURL = newURL;
+
+  if (!map.getSource('jma-mask-mosaic')) {
+    map.addSource('jma-mask-mosaic', {
+      type: 'image',
+      url: maskURL,
+      coordinates: nowcastCoordinates
+    });
+
+    /* 最前面に置く (降水・衛星の上) */
+    map.addLayer({
+      id: 'jma-mask-mosaic-layer',
+      type: 'raster',
+      source: 'jma-mask-mosaic',
+      minzoom: 3,
+      maxzoom: HIGH_ZOOM,
+      paint: {
+        'raster-opacity': 1,
+        'raster-saturation': -1,
+        'raster-resampling': 'nearest',
+        'raster-fade-duration': 0
+      }
+    });
+  }
+
+  map.setLayerZoomRange('jma-mask', HIGH_ZOOM, 16);
+  maskReady = true;
+  map.triggerRepaint();
+
+  return true;
+}
+
+/* =========================================
+   降水 Z8 レイヤー
 ========================================= */
 
 function addOrUpdateZ8() {
   if (!mosaicURL) return;
 
-  const coordinates = [
-    [west, north],
-    [east, north],
-    [east, south],
-    [west, south]
-  ];
-
   if (!map.getSource('nowcast-z8-mosaic')) {
     map.addSource('nowcast-z8-mosaic', {
       type: 'image',
       url: mosaicURL,
-      coordinates: coordinates
+      coordinates: nowcastCoordinates
     });
 
     map.addLayer(
@@ -911,12 +939,12 @@ function addOrUpdateZ8() {
 
   map.getSource('nowcast-z8-mosaic').updateImage({
     url: mosaicURL,
-    coordinates: coordinates
+    coordinates: nowcastCoordinates
   });
 }
 
 /* =========================================
-   Z10
+   降水 Z10 レイヤー
 ========================================= */
 
 function addZ10Layer(time1, time2) {
@@ -1132,6 +1160,15 @@ async function initialize() {
 
   previousTimestamp = latestTime1 + '_' + latestTime2;
 
+  /* 境界線モザイク (失敗しても元タイルで代替するので続行) */
+  await ensureMaskMosaic();
+
+  if (generation !== initGeneration || loadingError || !navigator.onLine) {
+    if (!mapReady) showInitialError();
+    initializing = false;
+    return;
+  }
+
   const ready = await updateNowcastLayers();
 
   if (generation !== initGeneration || !ready || !navigator.onLine) {
@@ -1183,7 +1220,7 @@ nowcastTimer = setInterval(() => {
   if (mapReady && !document.hidden) checkNowcastUpdate();
 }, 3000);
 
-/* 衛星 30秒ごと */
+/* 衛星 30秒ごと (時刻が変わった時だけモザイクを作り直す) */
 satelliteTimer = setInterval(() => {
   if (mapReady && !document.hidden) updateSatellite();
 }, 30000);
@@ -1209,7 +1246,7 @@ setInterval(updateClock, 1000);
 updateClock();
 
 /* =========================================
-   MapLibreエラー
+   MapLibreエラー / 読み込み完了 / アプリ復帰
 ========================================= */
 
 map.on('error', event => {
@@ -1219,18 +1256,10 @@ map.on('error', event => {
   }
 });
 
-/* =========================================
-   Map読み込み完了
-========================================= */
-
 map.on('load', () => {
   updateSatellite();
   initialize();
 });
-
-/* =========================================
-   アプリ復帰
-========================================= */
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && mapReady) {
