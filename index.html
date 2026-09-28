@@ -210,7 +210,7 @@ function showMapAfterLoading() {
    定数
 ========================================= */
 
-const NOWCAST_OPACITY = 0.85;
+const NOWCAST_OPACITY = 0.55;
 const BASE_ZOOM = 8;
 const HIGH_ZOOM = 10;
 const TILE_SIZE = 256;
@@ -543,16 +543,19 @@ async function getSatLatestTime() {
   }
 }
 
-/* 衛星は降水より下、地図より上 */
+/* 衛星は降水より下に来るべき（beforeId で nowcast を指定）*/
 function getSatelliteBeforeLayerId() {
   const layers = map.getStyle().layers || [];
 
+  /* 降水 Z10 が存在する場合は、その前に来る */
   const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
   if (z10Layer) return z10Layer.id;
 
+  /* 降水 Z8 が存在する場合は、その前に来る */
   const nowcastId = activeLayerId('nowcast');
   if (nowcastId) return nowcastId;
 
+  /* 降水がない場合は jma-mask の前 */
   if (map.getLayer('jma-mask')) return 'jma-mask';
 
   return undefined;
@@ -847,15 +850,8 @@ async function createMosaic() {
 ========================================= */
 
 function getZ10BeforeLayerId() {
-  const layers = map.getStyle().layers || [];
-  
-  /* 気象衛星レイヤーが存在する場合は、その前に来る（Z10はナウキャストより上） */
-  const satLayer = layers.find(layer => layer.id.startsWith('satellite-layer-'));
-  if (satLayer) return satLayer.id;
-  
-  /* そうでない場合は、jma-maskの前 */
-  if (map.getLayer('jma-mask')) return 'jma-mask';
-  
+  /* Z10 は常に最前面に来るべき */
+  /* beforeId を指定しない = 最後に追加 */
   return undefined;
 }
 
@@ -977,19 +973,8 @@ map.on('zoom', updateZoomLayers);
 ========================================= */
 
 function getNowcastBeforeLayerId() {
-  const layers = map.getStyle().layers || [];
-  
-  /* 気象衛星レイヤーが存在する場合は、その前に来る */
-  const satLayer = layers.find(layer => layer.id.startsWith('satellite-layer-'));
-  if (satLayer) return satLayer.id;
-  
-  /* Z10レイヤーが存在する場合は、その前に来る */
-  const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
-  if (z10Layer) return z10Layer.id;
-  
-  /* そうでない場合は、jma-maskの前 */
-  if (map.getLayer('jma-mask')) return 'jma-mask';
-  
+  /* ナウキャストは常に最前面に来るべき */
+  /* beforeId を指定しない = 最後に追加 */
   return undefined;
 }
 
