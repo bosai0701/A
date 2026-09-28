@@ -383,7 +383,7 @@ async function buildMosaic(options) {
   canvas.width = cols * TILE_SIZE;
   canvas.height = rows * TILE_SIZE;
 
-  const ctx = canvas.getContext('2d', { alpha: true });
+  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
 
   let next = 0;
   let done = 0;
@@ -406,10 +406,19 @@ async function buildMosaic(options) {
 
         if (response.ok) {
           const blob = await response.blob();
-          const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none' });
-
-          ctx.drawImage(bitmap, (x - xMin) * TILE_SIZE, (y - yMin) * TILE_SIZE);
-          bitmap.close();
+          
+          /* Safari 対応：createImageBitmap が無い場合は drawImage 直接使用 */
+          if (window.createImageBitmap) {
+            const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none' });
+            ctx.drawImage(bitmap, (x - xMin) * TILE_SIZE, (y - yMin) * TILE_SIZE);
+            bitmap.close();
+          } else {
+            const img = new Image();
+            img.src = URL.createObjectURL(blob);
+            await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+            ctx.drawImage(img, (x - xMin) * TILE_SIZE, (y - yMin) * TILE_SIZE);
+            URL.revokeObjectURL(img.src);
+          }
           loaded++;
         }
       } catch (error) {
@@ -426,7 +435,11 @@ async function buildMosaic(options) {
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
-  if (!navigator.onLine || loaded === 0) return null;
+  if (!navigator.onLine || loaded === 0) {
+    /* キャンバスをクリア */
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return null;
+  }
 
   return canvas;
 }
@@ -444,6 +457,23 @@ function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
   const sourceId = key + '-src-' + n;
   const layerId = key + '-layer-' + n;
 
+  /* 同じキーの全ての古いレイヤーを削除（複数残ってる可能性対策） */
+  const layers = map.getStyle().layers || [];
+  for (const layer of layers) {
+    if (layer.id.startsWith(key + '-layer-')) {
+      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+    }
+  }
+
+  /* 同じキーの全ての古いソースを削除 */
+  const sources = map.getStyle().sources || {};
+  for (const srcId in sources) {
+    if (srcId.startsWith(key + '-src-')) {
+      if (map.getSource(srcId)) map.removeSource(srcId);
+    }
+  }
+
+  /* 新しいレイヤーを追加 */
   map.addSource(sourceId, {
     type: 'canvas',
     canvas: canvas,
@@ -467,23 +497,7 @@ function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
     beforeId
   );
 
-  const old = activeCanvasLayers[key];
   activeCanvasLayers[key] = { sourceId: sourceId, layerId: layerId };
-
-  if (old) {
-    map.once('render', () => {
-      setTimeout(() => {
-        /* 古いレイヤーをのみ削除（他のタイルレイヤーを誤削除しない） */
-        if (map.getLayer(old.layerId)) {
-          map.removeLayer(old.layerId);
-        }
-        if (old.sourceId && map.getSource(old.sourceId)) {
-          map.removeSource(old.sourceId);
-        }
-      }, 80);
-    });
-  }
-
   map.triggerRepaint();
 }
 
@@ -525,13 +539,14 @@ async function getSatLatestTime() {
 }
 
 function getSatelliteBeforeLayerId() {
+  /* 衛星は常に降水より下（奥）に来るべき */
   const layers = map.getStyle().layers || [];
 
-  /* Z10 が存在する場合は、その前に挿入（衛星がZ10より下） */
+  /* Z10 が存在する場合は、その前に挿入（衛星 < Z10） */
   const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
   if (z10Layer) return z10Layer.id;
 
-  /* Z8（nowcast）が存在する場合は、その前に挿入（衛星がZ8より下） */
+  /* Z8（nowcast）が存在する場合は、その前に挿入（衛星 < Z8） */
   const nowcastId = activeLayerId('nowcast');
   if (nowcastId) return nowcastId;
 
@@ -953,8 +968,8 @@ function getNowcastBeforeLayerId() {
   const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
   if (z10Layer) return z10Layer.id;
   
-  /* Z10がない場合は、常に jma-mask の前（気象衛星より上に来る） */
-  return 'jma-mask';
+  /* Z10がない場合は、常に undefined（最後に追加=最前面） */
+  return undefined;
 }
 
 async function updateNowcastLayers() {
