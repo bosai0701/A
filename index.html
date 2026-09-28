@@ -497,25 +497,6 @@ function setNowcastOpacity(value) {
   if (id) map.setPaintProperty(id, 'raster-opacity', value);
 }
 
-function ensureNowcastOrder() {
-  const nowcastId = activeLayerId('nowcast');
-  if (!nowcastId) return;
-
-  const layers = map.getStyle().layers || [];
-  const satLayer = layers.find(layer => layer.id.startsWith('satellite-layer-'));
-  
-  /* 気象衛星レイヤーが存在し、ナウキャストがその上にある場合は位置を修正 */
-  if (satLayer) {
-    const satIndex = layers.findIndex(l => l.id === satLayer.id);
-    const nowcastIndex = layers.findIndex(l => l.id === nowcastId);
-    
-    if (nowcastIndex < satIndex) {
-      /* ナウキャストが気象衛星より下（より前）にある場合、その前に移動 */
-      map.moveLayer(nowcastId, satLayer.id);
-    }
-  }
-}
-
 /* =========================================
    衛星
 ========================================= */
@@ -543,22 +524,19 @@ async function getSatLatestTime() {
   }
 }
 
-/* 衛星は降水より下に来るべき（beforeId で nowcast を指定）*/
 function getSatelliteBeforeLayerId() {
   const layers = map.getStyle().layers || [];
 
-  /* 降水 Z10 が存在する場合は、その前に来る */
+  /* Z10 が存在する場合は、その前に挿入（衛星がZ10より下） */
   const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
   if (z10Layer) return z10Layer.id;
 
-  /* 降水 Z8 が存在する場合は、その前に来る */
+  /* Z8（nowcast）が存在する場合は、その前に挿入（衛星がZ8より下） */
   const nowcastId = activeLayerId('nowcast');
   if (nowcastId) return nowcastId;
 
   /* 降水がない場合は jma-mask の前 */
-  if (map.getLayer('jma-mask')) return 'jma-mask';
-
-  return undefined;
+  return 'jma-mask';
 }
 
 async function updateSatellite() {
@@ -617,9 +595,6 @@ async function updateSatellite() {
 
     document.getElementById('sat-time').textContent =
       '衛星: ' + formatSatJST(validTime);
-
-    /* ナウキャストレイヤーの描画順序を再度確認 */
-    ensureNowcastOrder();
 
   } catch (error) {
     console.warn('衛星画像更新エラー:', error);
@@ -973,9 +948,13 @@ map.on('zoom', updateZoomLayers);
 ========================================= */
 
 function getNowcastBeforeLayerId() {
-  /* ナウキャストは常に最前面に来るべき */
-  /* beforeId を指定しない = 最後に追加 */
-  return undefined;
+  /* Z10 が存在する場合のみ、その前に挿入 */
+  const layers = map.getStyle().layers || [];
+  const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
+  if (z10Layer) return z10Layer.id;
+  
+  /* Z10がない場合は、常に jma-mask の前（気象衛星より上に来る） */
+  return 'jma-mask';
 }
 
 async function updateNowcastLayers() {
