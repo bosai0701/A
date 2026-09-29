@@ -378,10 +378,12 @@ async function buildMosaic(options) {
   const cols = options.xMax - xMin + 1;
   const rows = options.yMax - yMin + 1;
   const total = cols * rows;
+  const scale = options.scale === undefined ? 1 : options.scale;
+  const outputTileSize = TILE_SIZE * scale;
 
   const canvas = document.createElement('canvas');
-  canvas.width = cols * TILE_SIZE;
-  canvas.height = rows * TILE_SIZE;
+  canvas.width = cols * outputTileSize;
+  canvas.height = rows * outputTileSize;
 
   const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
 
@@ -410,13 +412,25 @@ async function buildMosaic(options) {
           /* Safari 対応：createImageBitmap が無い場合は drawImage 直接使用 */
           if (window.createImageBitmap) {
             const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none' });
-            ctx.drawImage(bitmap, (x - xMin) * TILE_SIZE, (y - yMin) * TILE_SIZE);
+            ctx.drawImage(
+              bitmap,
+              (x - xMin) * outputTileSize,
+              (y - yMin) * outputTileSize,
+              outputTileSize,
+              outputTileSize
+            );
             bitmap.close();
           } else {
             const img = new Image();
             img.src = URL.createObjectURL(blob);
             await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
-            ctx.drawImage(img, (x - xMin) * TILE_SIZE, (y - yMin) * TILE_SIZE);
+            ctx.drawImage(
+              img,
+              (x - xMin) * outputTileSize,
+              (y - yMin) * outputTileSize,
+              outputTileSize,
+              outputTileSize
+            );
             URL.revokeObjectURL(img.src);
           }
           loaded++;
@@ -592,6 +606,7 @@ async function updateSatellite() {
       xMax: SAT_X_MAX,
       yMin: SAT_Y_MIN,
       yMax: SAT_Y_MAX,
+      scale: 0.5,
       urlFn: (x, y) => {
         const worldTiles = Math.pow(2, SAT_ZOOM);
         const wx = ((x % worldTiles) + worldTiles) % worldTiles;
@@ -825,6 +840,7 @@ async function createMosaic() {
     xMax: TILE_X_MAX,
     yMin: TILE_Y_MIN,
     yMax: TILE_Y_MAX,
+    scale: 0.5,
     urlFn: jmaTileURL,
     onProgress: (done, total) => {
       setLoading(
