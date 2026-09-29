@@ -105,6 +105,7 @@ const locationBtn = document.getElementById('location-btn');
 
 function setConnectionStatus(state) {
   connectionStatus.className = '';
+
   if (state === 'online') {
     connectionStatus.textContent = '● オンライン';
   } else if (state === 'unstable') {
@@ -114,47 +115,59 @@ function setConnectionStatus(state) {
     connectionStatus.textContent = '● オフライン';
     connectionStatus.classList.add('offline');
   }
+
   if (mapReady) connectionStatus.style.display = 'block';
 }
 
 function showInitialError(message) {
   loadingError = true;
   initGeneration++;
+
   if (initialDisplayTimer) {
     clearTimeout(initialDisplayTimer);
     initialDisplayTimer = null;
   }
+
   mapElement.style.visibility = 'hidden';
   infoPanel.style.visibility = 'hidden';
+
   loading.style.display = 'flex';
   loading.classList.remove('hide');
+
   loadingSpinner.style.display = 'none';
   loadingProgress.style.display = 'none';
   loadingPercent.style.display = 'none';
+
   loadingStatus.innerHTML =
     message ||
     '降水ナウキャストのデータがありません。<br>' +
     'データがないか、通信に障害が発生しています。';
+
   setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
 }
 
 function showLoading() {
   loadingError = false;
+
   if (initialDisplayTimer) {
     clearTimeout(initialDisplayTimer);
     initialDisplayTimer = null;
   }
+
   loading.style.display = 'flex';
   loading.classList.remove('hide');
+
   loadingSpinner.style.display = 'block';
   loadingProgress.style.display = 'block';
   loadingPercent.style.display = 'block';
+
   loadingProgressBar.style.width = '0%';
   loadingPercent.textContent = '0%';
 }
 
 function setLoading(text, percent) {
   if (loadingError) return;
+
   if (!navigator.onLine) {
     if (!mapReady) {
       showInitialError(
@@ -164,8 +177,11 @@ function setLoading(text, percent) {
     }
     return;
   }
+
   loadingStatus.textContent = text;
+
   const value = Math.max(0, Math.min(100, percent));
+
   loadingProgressBar.style.width = value + '%';
   loadingPercent.textContent = Math.round(value) + '%';
 }
@@ -182,15 +198,17 @@ function showMapAfterLoading() {
     initialDisplayTimer = null;
   }
 
-  /* 待ち時間は最小限 (旧: 100ms + 600ms → 50ms) */
   initialDisplayTimer = setTimeout(() => {
     initialDisplayTimer = null;
+
     if (loadingError || !navigator.onLine) return;
 
     mapElement.style.visibility = 'visible';
     infoPanel.style.visibility = 'visible';
+
     mapReady = true;
     connectionStatus.style.display = 'block';
+
     setConnectionStatus('online');
 
     requestAnimationFrame(() => {
@@ -201,8 +219,11 @@ function showMapAfterLoading() {
     loading.classList.add('hide');
 
     setTimeout(() => {
-      if (!loadingError && navigator.onLine) loading.style.display = 'none';
+      if (!loadingError && navigator.onLine) {
+        loading.style.display = 'none';
+      }
     }, 300);
+
   }, 50);
 }
 
@@ -218,22 +239,35 @@ const TILE_SIZE = 256;
 /* タイル取得の同時実行数 */
 const CONCURRENCY = 8;
 
-/* 1枚あたりのタイム制限 (ms) */
+/* 1枚あたりのタイム制限 */
 const TILE_TIMEOUT = 8000;
 
-/* 降水モザイク範囲 (z8) */
+/* 降水モザイク範囲 */
 const TILE_X_MIN = 212;
 const TILE_X_MAX = 243;
 const TILE_Y_MIN = 92;
 const TILE_Y_MAX = 115;
 
-/* 衛星モザイク: z4 で約110枚。細かくしたいときは 5 にする (約4倍の枚数) */
+/*
+ * 画質維持:
+ * JMAの元タイルは256px。
+ * 0.5倍に縮小せず、元の256pxのままモザイク化する。
+ */
+const NOWCAST_SCALE = 1;
+
+/* 衛星 */
 const SAT_ZOOM = 4;
 const SAT_SCALE = Math.pow(2, SAT_ZOOM - 4);
-const SAT_X_MIN = 11 * SAT_SCALE;         /* 東経 67.5° */
-const SAT_X_MAX = 19 * SAT_SCALE - 1;     /* 247.5° (180°超の仮想タイル) */
+
+const SAT_X_MIN = 11 * SAT_SCALE;
+const SAT_X_MAX = 19 * SAT_SCALE - 1;
 const SAT_Y_MIN = 1 * SAT_SCALE;
 const SAT_Y_MAX = 15 * SAT_SCALE - 1;
+
+/*
+ * 衛星も元JPEGを縮小しない。
+ */
+const SATELLITE_SCALE = 1;
 
 let latestTime1 = '';
 let latestTime2 = '';
@@ -261,27 +295,42 @@ function updateUserLocation() {
 
       const lng = position.coords.longitude;
       const lat = position.coords.latitude;
+
       if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
 
       if (!locationMarker) {
         const element = document.createElement('div');
         element.className = 'user-location-marker';
-        locationMarker = new maplibregl.Marker({ element: element, anchor: 'center' })
-          .setLngLat([lng, lat])
-          .addTo(map);
+
+        locationMarker = new maplibregl.Marker({
+          element: element,
+          anchor: 'center'
+        })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
       } else {
         locationMarker.setLngLat([lng, lat]);
       }
 
       if (locationFirstMove) {
         locationFirstMove = false;
-        map.flyTo({ center: [lng, lat], zoom: 10, duration: 1000 });
+
+        map.flyTo({
+          center: [lng, lat],
+          zoom: 10,
+          duration: 1000
+        });
       }
     },
     error => {
       console.warn('位置情報取得エラー:', error);
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    }
   );
 }
 
@@ -291,19 +340,25 @@ function startLocationTracking() {
 
   locationEnabled = true;
   locationFirstMove = true;
+
   locationBtn.classList.add('active');
+
   updateUserLocation();
 
   if (locationTimer) clearInterval(locationTimer);
 
   locationTimer = setInterval(() => {
-    if (locationEnabled && !document.hidden) updateUserLocation();
+    if (locationEnabled && !document.hidden) {
+      updateUserLocation();
+    }
   }, 3000);
 }
 
 function stopLocationTracking() {
   locationEnabled = false;
+
   locationBtn.classList.remove('active');
+
   if (locationTimer) {
     clearInterval(locationTimer);
     locationTimer = null;
@@ -311,8 +366,11 @@ function stopLocationTracking() {
 }
 
 locationBtn.addEventListener('click', () => {
-  if (locationEnabled) stopLocationTracking();
-  else startLocationTracking();
+  if (locationEnabled) {
+    stopLocationTracking();
+  } else {
+    startLocationTracking();
+  }
 });
 
 /* =========================================
@@ -321,6 +379,7 @@ locationBtn.addEventListener('click', () => {
 
 function formatSatJST(utcString) {
   const value = String(utcString);
+
   const date = new Date(Date.UTC(
     Number(value.slice(0, 4)),
     Number(value.slice(4, 6)) - 1,
@@ -328,6 +387,7 @@ function formatSatJST(utcString) {
     Number(value.slice(8, 10)),
     Number(value.slice(10, 12))
   ));
+
   date.setUTCHours(date.getUTCHours() + 9);
 
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -348,7 +408,9 @@ function tileXToLng(x, z) {
 
 function tileYToLat(y, z) {
   const n = Math.PI - (2 * Math.PI * y / Math.pow(2, z));
-  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+
+  return (180 / Math.PI) *
+    Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
 
 function mosaicCoordinates(xMin, xMax, yMin, yMax, z) {
@@ -356,36 +418,67 @@ function mosaicCoordinates(xMin, xMax, yMin, yMax, z) {
   const e = tileXToLng(xMax + 1, z);
   const n = tileYToLat(yMin, z);
   const s = tileYToLat(yMax + 1, z);
-  return [[w, n], [e, n], [e, s], [w, s]];
+
+  return [
+    [w, n],
+    [e, n],
+    [e, s],
+    [w, s]
+  ];
 }
 
 const nowcastCoordinates =
-  mosaicCoordinates(TILE_X_MIN, TILE_X_MAX, TILE_Y_MIN, TILE_Y_MAX, BASE_ZOOM);
+  mosaicCoordinates(
+    TILE_X_MIN,
+    TILE_X_MAX,
+    TILE_Y_MIN,
+    TILE_Y_MAX,
+    BASE_ZOOM
+  );
 
 const satCoordinates =
-  mosaicCoordinates(SAT_X_MIN, SAT_X_MAX, SAT_Y_MIN, SAT_Y_MAX, SAT_ZOOM);
+  mosaicCoordinates(
+    SAT_X_MIN,
+    SAT_X_MAX,
+    SAT_Y_MIN,
+    SAT_Y_MAX,
+    SAT_ZOOM
+  );
 
 /* =========================================
-   高速モザイク
-   - fetch + createImageBitmap (デコードをメインスレッド外へ)
-   - ワーカープール方式 (遅い1枚に全体が引きずられない)
-   - 画像へのエンコードはせず、キャンバスをそのまま地図に渡す
+   高画質モザイク
 ========================================= */
 
 async function buildMosaic(options) {
   const xMin = options.xMin;
   const yMin = options.yMin;
+
   const cols = options.xMax - xMin + 1;
   const rows = options.yMax - yMin + 1;
+
   const total = cols * rows;
-  const scale = options.scale === undefined ? 1 : options.scale;
+
+  const scale =
+    options.scale === undefined ? 1 : options.scale;
+
   const outputTileSize = TILE_SIZE * scale;
 
   const canvas = document.createElement('canvas');
+
   canvas.width = cols * outputTileSize;
   canvas.height = rows * outputTileSize;
 
-  const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false });
+  const ctx = canvas.getContext('2d', {
+    alpha: true,
+    willReadFrequently: false
+  });
+
+  /*
+   * 重要:
+   * 元タイルを縮小しないため、
+   * canvas内の各タイルも256pxのまま。
+   */
+  ctx.imageSmoothingEnabled = false;
 
   let next = 0;
   let done = 0;
@@ -394,6 +487,7 @@ async function buildMosaic(options) {
   const worker = async () => {
     while (true) {
       const i = next++;
+
       if (i >= total) return;
       if (!navigator.onLine) return;
 
@@ -401,17 +495,31 @@ async function buildMosaic(options) {
       const y = yMin + Math.floor(i / cols);
 
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TILE_TIMEOUT);
+
+      const timer = setTimeout(() => {
+        controller.abort();
+      }, TILE_TIMEOUT);
 
       try {
-        const response = await fetch(options.urlFn(x, y), { signal: controller.signal });
+        const response = await fetch(
+          options.urlFn(x, y),
+          {
+            signal: controller.signal
+          }
+        );
 
         if (response.ok) {
           const blob = await response.blob();
-          
-          /* Safari 対応：createImageBitmap が無い場合は drawImage 直接使用 */
+
           if (window.createImageBitmap) {
-            const bitmap = await createImageBitmap(blob, { colorSpaceConversion: 'none' });
+
+            const bitmap = await createImageBitmap(
+              blob,
+              {
+                colorSpaceConversion: 'none'
+              }
+            );
+
             ctx.drawImage(
               bitmap,
               (x - xMin) * outputTileSize,
@@ -419,11 +527,22 @@ async function buildMosaic(options) {
               outputTileSize,
               outputTileSize
             );
+
             bitmap.close();
+
           } else {
+
             const img = new Image();
-            img.src = URL.createObjectURL(blob);
-            await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+
+            const objectURL = URL.createObjectURL(blob);
+
+            img.src = objectURL;
+
+            await new Promise(resolve => {
+              img.onload = resolve;
+              img.onerror = resolve;
+            });
+
             ctx.drawImage(
               img,
               (x - xMin) * outputTileSize,
@@ -431,27 +550,48 @@ async function buildMosaic(options) {
               outputTileSize,
               outputTileSize
             );
-            URL.revokeObjectURL(img.src);
+
+            URL.revokeObjectURL(objectURL);
           }
+
           loaded++;
         }
+
       } catch (error) {
+
         /* 取得失敗タイルは空白のまま */
+
       } finally {
+
         clearTimeout(timer);
+
         done++;
-        if (options.onProgress && (done % 8 === 0 || done === total)) {
+
+        if (
+          options.onProgress &&
+          (done % 8 === 0 || done === total)
+        ) {
           options.onProgress(done, total);
         }
       }
     }
   };
 
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  await Promise.all(
+    Array.from(
+      { length: CONCURRENCY },
+      worker
+    )
+  );
 
   if (!navigator.onLine || loaded === 0) {
-    /* キャンバスをクリア */
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
     return null;
   }
 
@@ -459,38 +599,53 @@ async function buildMosaic(options) {
 }
 
 /* =========================================
-   キャンバスレイヤーの差し替え
-   新しいレイヤーを先に作り、描画後に古い方を消す (ちらつき防止)
+   キャンバスレイヤー
 ========================================= */
 
 let canvasSeq = 0;
 const activeCanvasLayers = {};
 
-function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
+function swapCanvasLayer(
+  key,
+  canvas,
+  coordinates,
+  layerOptions,
+  beforeId
+) {
   const n = ++canvasSeq;
-  const sourceId = key + '-src-' + n;
-  const layerId = key + '-layer-' + n;
 
-  /* 同じキーの全ての古いレイヤーを削除（複数残ってる可能性対策） */
-  const layers = map.getStyle().layers || [];
+  const sourceId =
+    key + '-src-' + n;
+
+  const layerId =
+    key + '-layer-' + n;
+
+  const layers =
+    map.getStyle().layers || [];
+
   for (const layer of layers) {
     if (layer.id.startsWith(key + '-layer-')) {
-      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+      if (map.getLayer(layer.id)) {
+        map.removeLayer(layer.id);
+      }
     }
   }
 
-  /* 取り外す前のCanvas参照を保持し、古い描画バッファを解放する */
-  const previousCanvas = activeCanvasLayers[key] && activeCanvasLayers[key].canvas;
+  const previousCanvas =
+    activeCanvasLayers[key] &&
+    activeCanvasLayers[key].canvas;
 
-  /* 同じキーの全ての古いソースを削除 */
-  const sources = map.getStyle().sources || {};
+  const sources =
+    map.getStyle().sources || {};
+
   for (const srcId in sources) {
     if (srcId.startsWith(key + '-src-')) {
-      if (map.getSource(srcId)) map.removeSource(srcId);
+      if (map.getSource(srcId)) {
+        map.removeSource(srcId);
+      }
     }
   }
 
-  /* 新しいレイヤーを追加 */
   map.addSource(sourceId, {
     type: 'canvas',
     canvas: canvas,
@@ -514,23 +669,43 @@ function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
     beforeId
   );
 
-  if (previousCanvas && previousCanvas !== canvas) {
+  if (
+    previousCanvas &&
+    previousCanvas !== canvas
+  ) {
     previousCanvas.width = 0;
     previousCanvas.height = 0;
   }
 
-  activeCanvasLayers[key] = { sourceId: sourceId, layerId: layerId, canvas: canvas };
+  activeCanvasLayers[key] = {
+    sourceId: sourceId,
+    layerId: layerId,
+    canvas: canvas
+  };
+
   map.triggerRepaint();
 }
 
 function activeLayerId(key) {
-  const active = activeCanvasLayers[key];
-  return active && map.getLayer(active.layerId) ? active.layerId : null;
+  const active =
+    activeCanvasLayers[key];
+
+  return active &&
+    map.getLayer(active.layerId)
+    ? active.layerId
+    : null;
 }
 
 function setNowcastOpacity(value) {
   const id = activeLayerId('nowcast');
-  if (id) map.setPaintProperty(id, 'raster-opacity', value);
+
+  if (id) {
+    map.setPaintProperty(
+      id,
+      'raster-opacity',
+      value
+    );
+  }
 }
 
 /* =========================================
@@ -538,41 +713,76 @@ function setNowcastOpacity(value) {
 ========================================= */
 
 async function getSatLatestTime() {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(() => {
+      controller.abort();
+    }, 5000);
 
   try {
     const response = await fetch(
-      'https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_fd.json?' + Date.now(),
-      { cache: 'no-store', signal: controller.signal }
+      'https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_fd.json?' +
+      Date.now(),
+      {
+        cache: 'no-store',
+        signal: controller.signal
+      }
     );
-    if (!response.ok) throw new Error('targetTimes_fd.json取得失敗');
 
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error('時刻データがありません');
+    if (!response.ok) {
+      throw new Error(
+        'targetTimes_fd.json取得失敗'
+      );
     }
 
-    data.sort((a, b) => String(a.validtime).localeCompare(String(b.validtime)));
+    const data =
+      await response.json();
+
+    if (
+      !Array.isArray(data) ||
+      data.length === 0
+    ) {
+      throw new Error(
+        '時刻データがありません'
+      );
+    }
+
+    data.sort((a, b) =>
+      String(a.validtime)
+        .localeCompare(String(b.validtime))
+    );
+
     return data[data.length - 1];
+
   } finally {
     clearTimeout(timeout);
   }
 }
 
 function getSatelliteBeforeLayerId() {
-  /* 衛星は常に降水より下（奥）に来るべき */
-  const layers = map.getStyle().layers || [];
+  const layers =
+    map.getStyle().layers || [];
 
-  /* Z10 が存在する場合は、その前に挿入（衛星 < Z10） */
-  const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
-  if (z10Layer) return z10Layer.id;
+  const z10Layer =
+    layers.find(layer =>
+      layer.id.startsWith(
+        'nowcast-z10-layer-'
+      )
+    );
 
-  /* Z8（nowcast）が存在する場合は、その前に挿入（衛星 < Z8） */
-  const nowcastId = activeLayerId('nowcast');
-  if (nowcastId) return nowcastId;
+  if (z10Layer) {
+    return z10Layer.id;
+  }
 
-  /* 降水がない場合は jma-mask の前 */
+  const nowcastId =
+    activeLayerId('nowcast');
+
+  if (nowcastId) {
+    return nowcastId;
+  }
+
   return 'jma-mask';
 }
 
@@ -588,10 +798,14 @@ async function updateSatellite() {
   satChecking = true;
 
   try {
-    const target = await getSatLatestTime();
+    const target =
+      await getSatLatestTime();
 
-    const baseTime = String(target.basetime);
-    const validTime = String(target.validtime);
+    const baseTime =
+      String(target.basetime);
+
+    const validTime =
+      String(target.validtime);
 
     if (
       latestSatValidTime === validTime &&
@@ -601,43 +815,87 @@ async function updateSatellite() {
       return;
     }
 
-    const canvas = await buildMosaic({
-      xMin: SAT_X_MIN,
-      xMax: SAT_X_MAX,
-      yMin: SAT_Y_MIN,
-      yMax: SAT_Y_MAX,
-      scale: 0.5,
-      urlFn: (x, y) => {
-        const worldTiles = Math.pow(2, SAT_ZOOM);
-        const wx = ((x % worldTiles) + worldTiles) % worldTiles;
-        return (
-          'https://www.jma.go.jp/bosai/himawari/data/satimg/' +
-          baseTime + '/fd/' + validTime +
-          '/B13/TBB/' + SAT_ZOOM + '/' + wx + '/' + y + '.jpg'
-        );
-      }
-    });
+    const canvas =
+      await buildMosaic({
+        xMin: SAT_X_MIN,
+        xMax: SAT_X_MAX,
+        yMin: SAT_Y_MIN,
+        yMax: SAT_Y_MAX,
 
-    if (!canvas) throw new Error('衛星モザイク生成失敗');
+        /*
+         * 衛星も縮小しない。
+         */
+        scale: SATELLITE_SCALE,
+
+        urlFn: (x, y) => {
+          const worldTiles =
+            Math.pow(2, SAT_ZOOM);
+
+          const wx =
+            ((x % worldTiles) +
+              worldTiles) %
+            worldTiles;
+
+          return (
+            'https://www.jma.go.jp/bosai/himawari/data/satimg/' +
+            baseTime +
+            '/fd/' +
+            validTime +
+            '/B13/TBB/' +
+            SAT_ZOOM +
+            '/' +
+            wx +
+            '/' +
+            y +
+            '.jpg'
+          );
+        }
+      });
+
+    if (!canvas) {
+      throw new Error(
+        '衛星モザイク生成失敗'
+      );
+    }
 
     swapCanvasLayer(
       'satellite',
       canvas,
       satCoordinates,
-      { minzoom: 0, maxzoom: 19, opacity: 0.65, resampling: 'linear' },
+      {
+        minzoom: 0,
+        maxzoom: 19,
+        opacity: 0.65,
+        resampling: 'linear'
+      },
       getSatelliteBeforeLayerId()
     );
 
-    latestSatValidTime = validTime;
-    latestSatBaseTime = baseTime;
+    latestSatValidTime =
+      validTime;
 
-    document.getElementById('sat-time').textContent =
-      '衛星: ' + formatSatJST(validTime);
+    latestSatBaseTime =
+      baseTime;
+
+    document.getElementById(
+      'sat-time'
+    ).textContent =
+      '衛星: ' +
+      formatSatJST(validTime);
 
   } catch (error) {
-    console.warn('衛星画像更新エラー:', error);
-    if (navigator.onLine) setConnectionStatus('unstable');
+
+    console.warn(
+      '衛星画像更新エラー:',
+      error
+    );
+
+    if (navigator.onLine) {
+      setConnectionStatus('unstable');
+    }
+
   } finally {
+
     satChecking = false;
   }
 }
@@ -652,39 +910,74 @@ async function checkJMAConnection() {
     return false;
   }
 
-  const start = performance.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const start =
+    performance.now();
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(() => {
+      controller.abort();
+    }, 5000);
 
   try {
-    const response = await fetch(
-      'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?check=' + Date.now(),
-      { cache: 'no-store', signal: controller.signal }
-    );
+    const response =
+      await fetch(
+        'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?check=' +
+        Date.now(),
+        {
+          cache: 'no-store',
+          signal: controller.signal
+        }
+      );
 
     clearTimeout(timeout);
-    const elapsed = performance.now() - start;
+
+    const elapsed =
+      performance.now() - start;
 
     if (!response.ok) {
-      if (navigator.onLine) setConnectionStatus('unstable');
+      if (navigator.onLine) {
+        setConnectionStatus('unstable');
+      }
+
       return false;
     }
 
-    setConnectionStatus(elapsed >= 1000 ? 'unstable' : 'online');
+    setConnectionStatus(
+      elapsed >= 1000
+        ? 'unstable'
+        : 'online'
+    );
+
     return true;
 
   } catch (error) {
+
     clearTimeout(timeout);
-    setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
+
+    setConnectionStatus(
+      navigator.onLine
+        ? 'unstable'
+        : 'offline'
+    );
+
     return false;
   }
 }
 
 function startConnectionMonitor() {
-  if (jmaConnectionTimer) clearInterval(jmaConnectionTimer);
-  jmaConnectionTimer = setInterval(() => {
-    checkJMAConnection();
-  }, 1000);
+  if (jmaConnectionTimer) {
+    clearInterval(
+      jmaConnectionTimer
+    );
+  }
+
+  jmaConnectionTimer =
+    setInterval(() => {
+      checkJMAConnection();
+    }, 1000);
 }
 
 /* =========================================
@@ -693,57 +986,118 @@ function startConnectionMonitor() {
 
 async function fetchLatestTimes() {
   if (!navigator.onLine) {
+
     if (!mapReady) {
       showInitialError(
         'インターネットに接続されていません。<br>' +
         '接続を確認しています…'
       );
     }
+
     return false;
   }
 
-  const start = performance.now();
+  const start =
+    performance.now();
 
   const fail = () => {
-    if (mapReady) setConnectionStatus('unstable');
-    else showInitialError();
+
+    if (mapReady) {
+      setConnectionStatus(
+        'unstable'
+      );
+    } else {
+      showInitialError();
+    }
+
     return false;
   };
 
   try {
-    const response = await fetch(
-      'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?_' + Date.now(),
-      { cache: 'no-store' }
-    );
 
-    const elapsed = performance.now() - start;
+    const response =
+      await fetch(
+        'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?_' +
+        Date.now(),
+        {
+          cache: 'no-store'
+        }
+      );
 
-    if (!response.ok) return fail();
+    const elapsed =
+      performance.now() - start;
 
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) return fail();
+    if (!response.ok) {
+      return fail();
+    }
 
-    const newTime1 = data[0].basetime;
-    const newTime2 = data[0].validtime;
-    if (!newTime1 || !newTime2) return fail();
+    const data =
+      await response.json();
 
-    const changed = newTime1 !== latestTime1 || newTime2 !== latestTime2;
+    if (
+      !Array.isArray(data) ||
+      data.length === 0
+    ) {
+      return fail();
+    }
 
-    latestTime1 = newTime1;
-    latestTime2 = newTime2;
+    const newTime1 =
+      data[0].basetime;
 
-    document.getElementById('nowcast-time').textContent =
-      '降水: ' + formatSatJST(String(newTime2));
+    const newTime2 =
+      data[0].validtime;
 
-    if (elapsed >= 1000) setConnectionStatus('unstable');
-    else if (mapReady) setConnectionStatus('online');
+    if (!newTime1 || !newTime2) {
+      return fail();
+    }
+
+    const changed =
+      newTime1 !== latestTime1 ||
+      newTime2 !== latestTime2;
+
+    latestTime1 =
+      newTime1;
+
+    latestTime2 =
+      newTime2;
+
+    document.getElementById(
+      'nowcast-time'
+    ).textContent =
+      '降水: ' +
+      formatSatJST(
+        String(newTime2)
+      );
+
+    if (elapsed >= 1000) {
+      setConnectionStatus(
+        'unstable'
+      );
+    } else if (mapReady) {
+      setConnectionStatus(
+        'online'
+      );
+    }
 
     return changed;
 
   } catch (error) {
-    console.warn('JMA時刻取得エラー:', error);
-    setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
-    if (!mapReady) showInitialError();
+
+    console.warn(
+      'JMA時刻取得エラー:',
+      error
+    );
+
+    setConnectionStatus(
+      navigator.onLine
+        ? 'unstable'
+        : 'offline'
+    );
+
+    if (!mapReady) {
+      showInitialError();
+    }
+
     return false;
   }
 }
@@ -752,66 +1106,96 @@ async function fetchLatestTimes() {
    MapLibre
 ========================================= */
 
-const map = new maplibregl.Map({
-  container: 'map',
-  center: [134.5, 34.5],
-  zoom: 3.2,
-  minZoom: 3,
-  maxZoom: 13,
-  bearing: 0,
-  pitch: 0,
-  attributionControl: false,
-  antialias: false,
-  preserveDrawingBuffer: false,
-  fadeDuration: 0,
-  style: {
-    version: 8,
-    sources: {
-      'gsi-pale': {
-        type: 'raster',
-        tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 18,
-        attribution: '© 国土地理院'
-      },
-      'jma-mask': {
-        type: 'raster',
-        tiles: ['https://www.jma.go.jp/bosai/jmatile/data/map/none/none/none/surf/mask/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 16
-      }
-    },
-    layers: [
-      {
-        id: 'base',
-        type: 'raster',
-        source: 'gsi-pale',
-        minzoom: 0,
-        maxzoom: 18,
-        paint: {
-          'raster-opacity': 1,
-          'raster-resampling': 'linear',
-          'raster-fade-duration': 0
+const map =
+  new maplibregl.Map({
+    container: 'map',
+
+    center: [
+      134.5,
+      34.5
+    ],
+
+    zoom: 3.2,
+
+    minZoom: 3,
+    maxZoom: 13,
+
+    bearing: 0,
+    pitch: 0,
+
+    attributionControl: false,
+    antialias: false,
+    preserveDrawingBuffer: false,
+    fadeDuration: 0,
+
+    style: {
+      version: 8,
+
+      sources: {
+
+        'gsi-pale': {
+          type: 'raster',
+
+          tiles: [
+            'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'
+          ],
+
+          tileSize: 256,
+          minzoom: 0,
+          maxzoom: 18,
+
+          attribution:
+            '© 国土地理院'
+        },
+
+        'jma-mask': {
+          type: 'raster',
+
+          tiles: [
+            'https://www.jma.go.jp/bosai/jmatile/data/map/none/none/none/surf/mask/{z}/{x}/{y}.png'
+          ],
+
+          tileSize: 256,
+          minzoom: 0,
+          maxzoom: 16
         }
       },
-      {
-        id: 'jma-mask',
-        type: 'raster',
-        source: 'jma-mask',
-        minzoom: 0,
-        maxzoom: 16,
-        paint: {
-          'raster-opacity': 1,
-          'raster-saturation': -1,
-          'raster-resampling': 'nearest',
-          'raster-fade-duration': 0
+
+      layers: [
+
+        {
+          id: 'base',
+          type: 'raster',
+          source: 'gsi-pale',
+
+          minzoom: 0,
+          maxzoom: 18,
+
+          paint: {
+            'raster-opacity': 1,
+            'raster-resampling': 'linear',
+            'raster-fade-duration': 0
+          }
+        },
+
+        {
+          id: 'jma-mask',
+          type: 'raster',
+          source: 'jma-mask',
+
+          minzoom: 0,
+          maxzoom: 16,
+
+          paint: {
+            'raster-opacity': 1,
+            'raster-saturation': -1,
+            'raster-resampling': 'nearest',
+            'raster-fade-duration': 0
+          }
         }
-      }
-    ]
-  }
-});
+      ]
+    }
+  });
 
 /* =========================================
    降水 Z8 モザイク
@@ -820,39 +1204,76 @@ const map = new maplibregl.Map({
 function jmaTileURL(x, y) {
   return (
     'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
-    latestTime1 + '/none/' + latestTime2 +
-    '/surf/hrpns/' + BASE_ZOOM + '/' + x + '/' + y + '.png'
+    latestTime1 +
+    '/none/' +
+    latestTime2 +
+    '/surf/hrpns/' +
+    BASE_ZOOM +
+    '/' +
+    x +
+    '/' +
+    y +
+    '.png'
   );
 }
 
 async function createMosaic() {
-  if (!latestTime1 || !latestTime2) return null;
-
-  if (!navigator.onLine) {
-    if (!mapReady) showInitialError();
+  if (!latestTime1 || !latestTime2) {
     return null;
   }
 
-  setLoading('降水タイルを読み込んでいます…', 10);
+  if (!navigator.onLine) {
 
-  const canvas = await buildMosaic({
-    xMin: TILE_X_MIN,
-    xMax: TILE_X_MAX,
-    yMin: TILE_Y_MIN,
-    yMax: TILE_Y_MAX,
-    scale: 0.5,
-    urlFn: jmaTileURL,
-    onProgress: (done, total) => {
-      setLoading(
-        `降水タイルを読み込み中… ${done}/${total}`,
-        10 + (done / total) * 85
-      );
+    if (!mapReady) {
+      showInitialError();
     }
-  });
+
+    return null;
+  }
+
+  setLoading(
+    '降水タイルを読み込んでいます…',
+    10
+  );
+
+  const canvas =
+    await buildMosaic({
+      xMin: TILE_X_MIN,
+      xMax: TILE_X_MAX,
+      yMin: TILE_Y_MIN,
+      yMax: TILE_Y_MAX,
+
+      /*
+       * 256px → 128pxへの縮小を廃止。
+       * 元のJMAタイル解像度を維持。
+       */
+      scale: NOWCAST_SCALE,
+
+      urlFn: jmaTileURL,
+
+      onProgress: (
+        done,
+        total
+      ) => {
+
+        setLoading(
+          `降水タイルを読み込み中… ${done}/${total}`,
+          10 +
+          (done / total) * 85
+        );
+      }
+    });
 
   if (!canvas) {
-    if (mapReady) setConnectionStatus('unstable');
-    else showInitialError();
+
+    if (mapReady) {
+      setConnectionStatus(
+        'unstable'
+      );
+    } else {
+      showInitialError();
+    }
+
     return null;
   }
 
@@ -864,79 +1285,155 @@ async function createMosaic() {
 ========================================= */
 
 function getZ10BeforeLayerId() {
-  /* Z10 は常に最前面に来るべき */
-  /* beforeId を指定しない = 最後に追加 */
   return undefined;
 }
 
-function addZ10Layer(time1, time2) {
+function addZ10Layer(
+  time1,
+  time2
+) {
   if (!navigator.onLine) return;
 
-  const generation = ++z10Generation;
-  const sourceId = 'nowcast-z10-' + generation;
-  const layerId = 'nowcast-z10-layer-' + generation;
+  const generation =
+    ++z10Generation;
+
+  const sourceId =
+    'nowcast-z10-' +
+    generation;
+
+  const layerId =
+    'nowcast-z10-layer-' +
+    generation;
 
   const url =
-   'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
-   time1 + '/none/' + time2 + '/surf/hrpns/10/{x}/{y}.png';
+    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
+    time1 +
+    '/none/' +
+    time2 +
+    '/surf/hrpns/10/{x}/{y}.png';
 
-  map.addSource(sourceId, {
-   type: 'raster',
-   tiles: [url],
-   tileSize: 256,
-   minzoom: 10,
-   maxzoom: 10
-  });
+  map.addSource(
+    sourceId,
+    {
+      type: 'raster',
+
+      tiles: [url],
+
+      tileSize: 256,
+
+      minzoom: 10,
+      maxzoom: 10
+    }
+  );
 
   map.addLayer(
-   {
-     id: layerId,
-     type: 'raster',
-     source: sourceId,
-     minzoom: 10,
-     maxzoom: 14,
-     paint: {
-       'raster-opacity': NOWCAST_OPACITY,
-       'raster-resampling': 'nearest',
-       'raster-fade-duration': 0
-     }
-   },
-   getZ10BeforeLayerId()
+    {
+      id: layerId,
+
+      type: 'raster',
+
+      source: sourceId,
+
+      minzoom: 10,
+      maxzoom: 14,
+
+      paint: {
+        'raster-opacity':
+          NOWCAST_OPACITY,
+
+        'raster-resampling':
+          'nearest',
+
+        'raster-fade-duration':
+          0
+      }
+    },
+    getZ10BeforeLayerId()
   );
 
   const checkLoaded = () => {
-    if (generation !== z10Generation) return;
 
-    if (!navigator.onLine) {
-      setConnectionStatus('offline');
+    if (
+      generation !==
+      z10Generation
+    ) {
       return;
     }
 
-    if (!map.getSource(sourceId)) return;
+    if (!navigator.onLine) {
+      setConnectionStatus(
+        'offline'
+      );
 
-    if (map.isSourceLoaded(sourceId)) {
+      return;
+    }
+
+    if (!map.getSource(sourceId)) {
+      return;
+    }
+
+    if (
+      map.isSourceLoaded(
+        sourceId
+      )
+    ) {
+
       setNowcastOpacity(0);
 
-      const layers = map.getStyle().layers || [];
+      const layers =
+        map.getStyle().layers ||
+        [];
 
       for (const layer of layers) {
-        if (layer.id.startsWith('nowcast-z10-layer-') && layer.id !== layerId) {
-          const oldSource = layer.source;
 
-          if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-          if (oldSource && map.getSource(oldSource)) map.removeSource(oldSource);
+        if (
+          layer.id.startsWith(
+            'nowcast-z10-layer-'
+          ) &&
+          layer.id !== layerId
+        ) {
+
+          const oldSource =
+            layer.source;
+
+          if (
+            map.getLayer(
+              layer.id
+            )
+          ) {
+            map.removeLayer(
+              layer.id
+            );
+          }
+
+          if (
+            oldSource &&
+            map.getSource(
+              oldSource
+            )
+          ) {
+            map.removeSource(
+              oldSource
+            );
+          }
         }
       }
 
       switchingToZ10 = false;
+
       map.triggerRepaint();
+
       return;
     }
 
-    requestAnimationFrame(checkLoaded);
+    requestAnimationFrame(
+      checkLoaded
+    );
   };
 
-  requestAnimationFrame(checkLoaded);
+  requestAnimationFrame(
+    checkLoaded
+  );
 }
 
 /* =========================================
@@ -945,159 +1442,302 @@ function addZ10Layer(time1, time2) {
 
 function updateZoomLayers() {
   if (!navigator.onLine) {
-    setConnectionStatus('offline');
+
+    setConnectionStatus(
+      'offline'
+    );
+
     return;
   }
 
-  const zoom = map.getZoom();
+  const zoom =
+    map.getZoom();
 
   if (zoom >= HIGH_ZOOM) {
-    const layers = map.getStyle().layers || [];
-    const z10Exists = layers.some(layer => layer.id.startsWith('nowcast-z10-layer-'));
 
-    if (!z10Exists && !switchingToZ10 && latestTime1 && latestTime2) {
+    const layers =
+      map.getStyle().layers ||
+      [];
+
+    const z10Exists =
+      layers.some(layer =>
+        layer.id.startsWith(
+          'nowcast-z10-layer-'
+        )
+      );
+
+    if (
+      !z10Exists &&
+      !switchingToZ10 &&
+      latestTime1 &&
+      latestTime2
+    ) {
+
       switchingToZ10 = true;
-      addZ10Layer(latestTime1, latestTime2);
+
+      addZ10Layer(
+        latestTime1,
+        latestTime2
+      );
     }
 
     return;
   }
 
-  setNowcastOpacity(NOWCAST_OPACITY);
+  setNowcastOpacity(
+    NOWCAST_OPACITY
+  );
 
-  const layers = map.getStyle().layers || [];
+  const layers =
+    map.getStyle().layers ||
+    [];
 
   for (const layer of layers) {
-    if (layer.id.startsWith('nowcast-z10-layer-')) {
-      const source = layer.source;
 
-      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-      if (source && map.getSource(source)) map.removeSource(source);
+    if (
+      layer.id.startsWith(
+        'nowcast-z10-layer-'
+      )
+    ) {
+
+      const source =
+        layer.source;
+
+      if (
+        map.getLayer(
+          layer.id
+        )
+      ) {
+        map.removeLayer(
+          layer.id
+        );
+      }
+
+      if (
+        source &&
+        map.getSource(
+          source
+        )
+      ) {
+        map.removeSource(
+          source
+        );
+      }
     }
   }
 
   switchingToZ10 = false;
+
   map.triggerRepaint();
 }
 
-map.on('zoom', updateZoomLayers);
+map.on(
+  'zoom',
+  updateZoomLayers
+);
 
 /* =========================================
    ナウキャスト更新
 ========================================= */
 
 function getNowcastBeforeLayerId() {
-  /* Z10 が存在する場合のみ、その前に挿入 */
-  const layers = map.getStyle().layers || [];
-  const z10Layer = layers.find(layer => layer.id.startsWith('nowcast-z10-layer-'));
-  if (z10Layer) return z10Layer.id;
-  
-  /* Z10がない場合は、常に undefined（最後に追加=最前面） */
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  const z10Layer =
+    layers.find(layer =>
+      layer.id.startsWith(
+        'nowcast-z10-layer-'
+      )
+    );
+
+  if (z10Layer) {
+    return z10Layer.id;
+  }
+
   return undefined;
 }
 
 async function updateNowcastLayers() {
-  const canvas = await createMosaic();
-  if (!canvas) return false;
+
+  const canvas =
+    await createMosaic();
+
+  if (!canvas) {
+    return false;
+  }
 
   swapCanvasLayer(
-   'nowcast',
-   canvas,
-   nowcastCoordinates,
-   { minzoom: 3, maxzoom: 10, opacity: NOWCAST_OPACITY, resampling: 'nearest' },
-   getNowcastBeforeLayerId()
+    'nowcast',
+    canvas,
+    nowcastCoordinates,
+    {
+      minzoom: 3,
+      maxzoom: 10,
+      opacity: NOWCAST_OPACITY,
+      resampling: 'nearest'
+    },
+    getNowcastBeforeLayerId()
   );
 
-  if (map.getZoom() >= HIGH_ZOOM) {
-   switchingToZ10 = true;
-   addZ10Layer(latestTime1, latestTime2);
+  if (
+    map.getZoom() >=
+    HIGH_ZOOM
+  ) {
+
+    switchingToZ10 = true;
+
+    addZ10Layer(
+      latestTime1,
+      latestTime2
+    );
   }
 
   return true;
 }
 
 async function checkNowcastUpdate() {
+
   if (!mapReady) return;
   if (nowcastBusy) return;
 
   if (!navigator.onLine) {
-    setConnectionStatus('offline');
+
+    setConnectionStatus(
+      'offline'
+    );
+
     return;
   }
 
   nowcastBusy = true;
 
   try {
-    const changed = await fetchLatestTimes();
+
+    const changed =
+      await fetchLatestTimes();
+
     if (!changed) return;
 
-    const timestamp = latestTime1 + '_' + latestTime2;
-    if (timestamp === previousTimestamp) return;
+    const timestamp =
+      latestTime1 +
+      '_' +
+      latestTime2;
 
-    previousTimestamp = timestamp;
+    if (
+      timestamp ===
+      previousTimestamp
+    ) {
+      return;
+    }
 
-    const ready = await updateNowcastLayers();
+    previousTimestamp =
+      timestamp;
+
+    const ready =
+      await updateNowcastLayers();
 
     if (ready) {
+
       checkJMAConnection();
-    } else if (navigator.onLine) {
-      setConnectionStatus('unstable');
+
+    } else if (
+      navigator.onLine
+    ) {
+
+      setConnectionStatus(
+        'unstable'
+      );
     }
+
   } finally {
+
     nowcastBusy = false;
   }
 }
 
 /* =========================================
    初期化
-   接続チェックを省き、時刻取得 → 即モザイク生成
 ========================================= */
 
 async function initialize() {
+
   if (initializing) return;
+
   initializing = true;
 
-  const generation = ++initGeneration;
+  const generation =
+    ++initGeneration;
 
   showLoading();
 
   if (!navigator.onLine) {
+
     showInitialError(
       'インターネットに接続されていません。<br>' +
       '接続を確認しています…'
     );
+
     initializing = false;
+
     return;
   }
 
-  setLoading('気象庁データの時刻を取得しています…', 3);
+  setLoading(
+    '気象庁データの時刻を取得しています…',
+    3
+  );
 
   await fetchLatestTimes();
 
   if (
-    generation !== initGeneration ||
+    generation !==
+    initGeneration ||
     loadingError ||
     !navigator.onLine ||
     !latestTime1 ||
     !latestTime2
   ) {
-    if (!mapReady) showInitialError();
+
+    if (!mapReady) {
+      showInitialError();
+    }
+
     initializing = false;
+
     return;
   }
 
-  previousTimestamp = latestTime1 + '_' + latestTime2;
+  previousTimestamp =
+    latestTime1 +
+    '_' +
+    latestTime2;
 
-  const ready = await updateNowcastLayers();
+  const ready =
+    await updateNowcastLayers();
 
-  if (generation !== initGeneration || !ready || !navigator.onLine) {
-    if (!mapReady) showInitialError();
+  if (
+    generation !==
+    initGeneration ||
+    !ready ||
+    !navigator.onLine
+  ) {
+
+    if (!mapReady) {
+      showInitialError();
+    }
+
     initializing = false;
+
     return;
   }
 
   showMapAfterLoading();
+
   initializing = false;
+
   startConnectionMonitor();
 }
 
@@ -1105,28 +1745,48 @@ async function initialize() {
    オフライン / オンライン復帰
 ========================================= */
 
-window.addEventListener('offline', () => {
-  setConnectionStatus('offline');
+window.addEventListener(
+  'offline',
+  () => {
 
-  if (!mapReady) {
-    showInitialError(
-      'インターネットに接続されていません。<br>' +
-      '接続を確認しています…'
+    setConnectionStatus(
+      'offline'
     );
-  }
-});
 
-window.addEventListener('online', () => {
-  if (mapReady) {
-    checkJMAConnection();
-    updateSatellite();
-    checkNowcastUpdate();
-    if (locationEnabled) updateUserLocation();
-    return;
-  }
+    if (!mapReady) {
 
-  if (!initializing) initialize();
-});
+      showInitialError(
+        'インターネットに接続されていません。<br>' +
+        '接続を確認しています…'
+      );
+    }
+  }
+);
+
+window.addEventListener(
+  'online',
+  () => {
+
+    if (mapReady) {
+
+      checkJMAConnection();
+
+      updateSatellite();
+
+      checkNowcastUpdate();
+
+      if (locationEnabled) {
+        updateUserLocation();
+      }
+
+      return;
+    }
+
+    if (!initializing) {
+      initialize();
+    }
+  }
+);
 
 /* =========================================
    定期処理
@@ -1135,65 +1795,156 @@ window.addEventListener('online', () => {
 startConnectionMonitor();
 
 /* 降水 3秒ごと */
-nowcastTimer = setInterval(() => {
-  if (mapReady && !document.hidden) checkNowcastUpdate();
-}, 3000);
+nowcastTimer =
+  setInterval(() => {
 
-/* 衛星 30秒ごと (時刻が変わった時だけ作り直す) */
-satelliteTimer = setInterval(() => {
-  if (mapReady && !document.hidden) updateSatellite();
-}, 30000);
+    if (
+      mapReady &&
+      !document.hidden
+    ) {
+      checkNowcastUpdate();
+    }
+
+  }, 3000);
+
+/* 衛星 30秒ごと */
+satelliteTimer =
+  setInterval(() => {
+
+    if (
+      mapReady &&
+      !document.hidden
+    ) {
+      updateSatellite();
+    }
+
+  }, 30000);
 
 /* =========================================
    時計
 ========================================= */
 
 function updateClock() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
 
-  document.getElementById('clock').textContent =
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, '0');
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, '0');
+
+  const hours =
+    String(
+      now.getHours()
+    ).padStart(2, '0');
+
+  const minutes =
+    String(
+      now.getMinutes()
+    ).padStart(2, '0');
+
+  const seconds =
+    String(
+      now.getSeconds()
+    ).padStart(2, '0');
+
+  document.getElementById(
+    'clock'
+  ).textContent =
     `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-setInterval(updateClock, 1000);
+setInterval(
+  updateClock,
+  1000
+);
+
 updateClock();
 
 /* =========================================
-   MapLibreエラー / 読み込み完了 / アプリ復帰
+   MapLibreエラー
 ========================================= */
 
-map.on('error', event => {
-  if (event && event.error) {
-    console.warn('MapLibre:', event.error);
-    setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
+map.on(
+  'error',
+  event => {
+
+    if (
+      event &&
+      event.error
+    ) {
+
+      console.warn(
+        'MapLibre:',
+        event.error
+      );
+
+      setConnectionStatus(
+        navigator.onLine
+          ? 'unstable'
+          : 'offline'
+      );
+    }
   }
-});
+);
 
-/* 降水と衛星を並列で読み込む */
-map.on('load', () => {
-  updateSatellite();
-  initialize();
-});
+/* =========================================
+   読み込み完了
+========================================= */
 
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && mapReady) {
+map.on(
+  'load',
+  () => {
+
     updateSatellite();
-    checkNowcastUpdate();
-    checkJMAConnection();
-    if (locationEnabled) updateUserLocation();
 
-    requestAnimationFrame(() => {
-      map.resize();
-      map.triggerRepaint();
-    });
+    initialize();
   }
-});
+);
+
+/* =========================================
+   アプリ復帰
+========================================= */
+
+document.addEventListener(
+  'visibilitychange',
+  () => {
+
+    if (
+      !document.hidden &&
+      mapReady
+    ) {
+
+      updateSatellite();
+
+      checkNowcastUpdate();
+
+      checkJMAConnection();
+
+      if (locationEnabled) {
+        updateUserLocation();
+      }
+
+      requestAnimationFrame(
+        () => {
+
+          map.resize();
+
+          map.triggerRepaint();
+        }
+      );
+    }
+  }
+);
 
 </script>
 </body>
