@@ -216,7 +216,7 @@ const HIGH_ZOOM = 10;
 const TILE_SIZE = 256;
 
 /* タイル取得の同時実行数 */
-const CONCURRENCY = 64;
+const CONCURRENCY = 8;
 
 /* 1枚あたりのタイム制限 (ms) */
 const TILE_TIMEOUT = 8000;
@@ -465,6 +465,9 @@ function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
     }
   }
 
+  /* 取り外す前のCanvas参照を保持し、古い描画バッファを解放する */
+  const previousCanvas = activeCanvasLayers[key] && activeCanvasLayers[key].canvas;
+
   /* 同じキーの全ての古いソースを削除 */
   const sources = map.getStyle().sources || {};
   for (const srcId in sources) {
@@ -497,7 +500,12 @@ function swapCanvasLayer(key, canvas, coordinates, layerOptions, beforeId) {
     beforeId
   );
 
-  activeCanvasLayers[key] = { sourceId: sourceId, layerId: layerId };
+  if (previousCanvas && previousCanvas !== canvas) {
+    previousCanvas.width = 0;
+    previousCanvas.height = 0;
+  }
+
+  activeCanvasLayers[key] = { sourceId: sourceId, layerId: layerId, canvas: canvas };
   map.triggerRepaint();
 }
 
