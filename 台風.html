@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>台風情報マップ</title>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  crossorigin=""
+/>
+<style>
+  :root {
+    --bg: #08161f;
+    --panel: rgba(12, 24, 35, 0.82);
+    --text: #edf6ff;
+    --muted: #a5bfd6;
+    --line: rgba(255,255,255,0.12);
+  }
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    background: linear-gradient(180deg, #07141d, #0d1d2d);
+    color: var(--text);
+    font-family: sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  .topbar {
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    background: rgba(9,18,28,0.9);
+  }
+  .title {
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+  #map {
+    flex: 1;
+    min-height: 520px;
+    width: 100%;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 10px 18px 0;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.45);
+  }
+  .leaflet-container {
+    background: #0d1d2d;
+  }
+  .typhoon-label,
+  .forecast-label {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: rgba(255,255,255,0.95);
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    text-shadow:
+      0 1px 3px rgba(0,0,0,0.9),
+      0 0 3px rgba(0,0,0,0.8);
+  }
+</style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="title">台風情報マップ</div>
+    </div>
+<div class="legend">
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(255,255,255,0.18);"
+    ></span>
+    予報円
+  </span>
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(248,231,107,0.7);"
+    ></span>
+    強風域
+  </span>
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(255,75,75,0.7);"
+    ></span>
+    暴風域 / 暴風警戒域
+  </span>
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(248, 196, 15, 0.9);"
+    ></span>
+    実際に通った経路
+  </span>
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(30, 166, 255, 0.9);"
+    ></span>
+    予想経路
+  </span>
+  <span class="legend-item">
+    <span
+      class="swatch"
+      style="background: rgba(255,255,255,0.95);"
+    ></span>
+    中心位置
+  </span>
+</div>
+<div id="map"></div>
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  crossorigin=""
+></script>
+<script>
+  const map =
+    L.map('map').setView(
+      [35, 138],
+      4
+    );
+  L.tileLayer(
+    'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
+    {
+      attribution:
+        '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>',
+      maxZoom: 18,
+      minZoom: 3
+    }
+  ).addTo(map);
+  const layerGroup =
+    L.layerGroup().addTo(map);
+  const actualPathGroup =
+    L.layerGroup().addTo(map);
+  const forecastPathGroup =
+    L.layerGroup().addTo(map);
+  /*
+   * 予報日時
+   */
+  function formatLabel(
+    dateStr
+  ) {
+    const d =
+      new Date(dateStr);
+    return (
+      String(
+        d.getDate()
+      ).padStart(2, '0') +
+      '日' +
+      String(
+        d.getHours()
+      ).padStart(2, '0') +
+      '時'
+    );
+  }
+  /*
+   * 円の右下方向、
+   * 円の外側にラベルを配置
+   */
+  function getBottomRightPosition(
+    center,
+    radiusMeters,
+    multiplier = 1.12
+  ) {
+    const radius =
+      Number(
+        radiusMeters
+      ) || 0;
+    const latOffset =
+      (radius / 111000) *
+      multiplier *
+      0.7071;
+    const lngOffset =
+      (radius /
+        (111000 *
+          Math.cos(
+            center[0] *
+              Math.PI /
+              180
+          ))) *
+      multiplier *
+      0.7071;
+    return [
+      center[0] -
+        latOffset,
+      center[1] +
+        lngOffset
+    ];
+  }
+  /*
+   * 文字だけのラベル
+   */
+  function createTextLabel(
+    position,
+    text,
+    className,
+    width
+  ) {
+    return L.marker(
+      position,
+      {
+        icon:
+          L.divIcon({
+            className:
+              className,
+            html:
+              `<span>${text}</span>`,
+            iconSize: [
+              width,
+              20
+            ],
+            iconAnchor: [
+              width / 2,
+              10
+            ]
+          }),
+        interactive:
+          false
+      }
+    );
+  }
+  /*
+   * 台風番号
+   *
+   * 2626 → 台風26号
+   * 2610 → 台風10号
+   * 2601 → 台風1号
+   *
+   * a → 熱帯低気圧a
+   */
+  function getTyphoonLabel(
+    typhoonNumber
+  ) {
+    const value =
+      String(
+        typhoonNumber ?? ''
+      ).trim();
+    /*
+     * 4桁の場合
+     *
+     * 先頭2桁 = 年
+     * 下2桁 = 台風番号
+     */
+    if (
+      /^\d{4}$/.test(
+        value
+      )
+    ) {
+      const number =
+        Number(
+          value.slice(2)
+        );
+      if (
+        number >= 1 &&
+        number <= 99
+      ) {
+        return (
+          `${number}号`
+        );
+      }
+    }
+    /*
+     * 英字
+     */
+    const letterMatch =
+      value.match(
+        /^T?([A-Za-z]+)$/
+      );
+    if (
+      letterMatch
+    ) {
+      return (
+        `熱帯低気圧${letterMatch[1]}`
+      );
+    }
+    /*
+     * その他
+     */
+    if (value) {
+      return (
+        `熱帯低気圧${value.replace(/^T/, '')}`
+      );
+    }
+    return '熱帯低気圧';
+  }
+  /*
+   * 中心位置
+   */
+  function centerMarker(
+    pos,
+    typhoonLabel,
+    galeArea
+  ) {
+    const p1 =
+      L.polyline(
+        [
+          [
+            pos[0] -
+              0.35,
+            pos[1]
+          ],
+          [
+            pos[0] +
+              0.35,
+            pos[1]
+          ]
+        ],
+        {
+          color:
+            'rgba(255,255,255,0.7)',
+          weight: 3,
+          opacity: 0.7
+        }
+      );
+    const p2 =
+      L.polyline(
+        [
+          [
+            pos[0],
+            pos[1] -
+              0.45
+          ],
+          [
+            pos[0],
+            pos[1] +
+              0.45
+          ]
+        ],
+        {
+          color:
+            'rgba(255,255,255,0.7)',
+          weight: 3,
+          opacity: 0.7
+        }
+      );
+    layerGroup.addLayer(
+      p1
+    );
+    layerGroup.addLayer(
+      p2
+    );
+    /*
+     * 強風域の右下・円の外側
+     */
+    if (
+      galeArea &&
+      galeArea.center &&
+      Number(
+        galeArea.radius
+      ) > 0
+    ) {
+      const labelPos =
+        getBottomRightPosition(
+          galeArea.center,
+          galeArea.radius,
+          1.12
+        );
+      layerGroup.addLayer(
+        createTextLabel(
+          labelPos,
+          typhoonLabel,
+          'typhoon-label',
+          140
+        )
+      );
+    }
+  }
+  function polarToLatLng(
+    center,
+    radiusMeters,
+    ang
+  ) {
+    const lat =
+      center[0] +
+      (radiusMeters /
+        111000) *
+        Math.sin(
+          (ang - 90) *
+            Math.PI /
+            180
+        );
+    const lng =
+      center[1] +
+      (radiusMeters /
+        (111000 *
+          Math.cos(
+            center[0] *
+              Math.PI /
+              180
+          ))) *
+        Math.cos(
+          (ang - 90) *
+            Math.PI /
+            180
+        );
+    return [
+      lat,
+      lng
+    ];
+  }
+  function makeArc(
+    center,
+    radius,
+    start,
+    end
+  ) {
+    const pts = [];
+    for (
+      let a = start;
+      a <= end;
+      a += 1
+    ) {
+      pts.push(
+        polarToLatLng(
+          center,
+          radius,
+          a
+        )
+      );
+    }
+    return L.polygon(
+      pts,
+      {
+        color:
+          '#ff4b4b',
+        fillColor:
+          '#ff4b4b',
+        fillOpacity:
+          0.25,
+        opacity: 1,
+        weight: 1.5
+      }
+    );
+  }
+  function drawTyphoon(
+    item,
+    forecast
+  ) {
+    const actualPoints = [];
+    const forecastPoints = [];
+    const allBounds = [];
+    /*
+     * 台風番号は
+     * typhoonNumber を使用
+     */
+    const typhoonNumber =
+      item.typhoonNumber;
+    const typhoonLabel =
+      getTyphoonLabel(
+        typhoonNumber
+      );
+    for (
+      const itemForecast of forecast
+    ) {
+      const track =
+        itemForecast.track ||
+        {};
+      /*
+       * 実際の経路
+       */
+      if (
+        Array.isArray(
+          track.preTyphoon
+        )
+      ) {
+        actualPoints.push(
+          ...track.preTyphoon
+        );
+        allBounds.push(
+          ...track.preTyphoon
+        );
+      }
+      if (
+        Array.isArray(
+          track.typhoon
+        )
+      ) {
+        actualPoints.push(
+          ...track.typhoon
+        );
+        allBounds.push(
+          ...track.typhoon
+        );
+      }
+      /*
+       * 予想経路
+       */
+      if (
+        Array.isArray(
+          itemForecast.center
+        )
+      ) {
+        forecastPoints.push(
+          itemForecast.center
+        );
+        allBounds.push(
+          itemForecast.center
+        );
+      }
+      const advancedHours =
+        Number(
+          itemForecast
+            .advancedHours ||
+          0
+        );
+      /*
+       * 強風域
+       */
+      if (
+        itemForecast
+          .galeWarningArea &&
+        advancedHours === 0
+      ) {
+        layerGroup.addLayer(
+          L.circle(
+            itemForecast
+              .galeWarningArea
+              .center,
+            {
+              radius:
+                Number(
+                  itemForecast
+                    .galeWarningArea
+                    .radius
+                ) || 0,
+              color:
+                '#f8e76b',
+              weight: 2,
+              opacity: 1,
+              fillColor:
+                '#f8e76b',
+              fillOpacity:
+                0.42
+            }
+          )
+        );
+      }
+      /*
+       * 暴風域
+       */
+      if (
+        itemForecast
+          .stormWarningArea &&
+        advancedHours === 0
+      ) {
+        for (
+          const arc of
+          itemForecast
+            .stormWarningArea
+            .arc || []
+        ) {
+          const center =
+            arc[0];
+          const radius =
+            Number(
+              arc[1]
+            ) || 0;
+          const start =
+            Number(
+              arc[2][0]
+            ) || 0;
+          const end =
+            Number(
+              arc[2][1]
+            ) || 360;
+          layerGroup.addLayer(
+            makeArc(
+              center,
+              radius,
+              start,
+              end
+            )
+          );
+        }
+      }
+      /*
+       * 現在位置
+       */
+      if (
+        itemForecast.center &&
+        advancedHours === 0
+      ) {
+        centerMarker(
+          itemForecast.center,
+          typhoonLabel,
+          itemForecast
+            .galeWarningArea
+        );
+      }
+      /*
+       * 予報円
+       */
+      if (
+        itemForecast
+          .probabilityCircle
+      ) {
+        const pc =
+          itemForecast
+            .probabilityCircle;
+        const radius =
+          Number(
+            pc.radius
+          ) || 0;
+        layerGroup.addLayer(
+          L.circle(
+            itemForecast.center,
+            {
+              radius:
+                radius,
+              color:
+                '#ffffff',
+              weight:
+                1.5,
+              opacity:
+                0.7,
+              fillOpacity:
+                0,
+              dashArray:
+                '6 8'
+            }
+          )
+        );
+        /*
+         * 接線
+         */
+        for (
+          const tangent of
+          pc.tangent || []
+        ) {
+          if (
+            Array.isArray(
+              tangent
+            ) &&
+            tangent.length === 2
+          ) {
+            layerGroup.addLayer(
+              L.polyline(
+                tangent,
+                {
+                  color:
+                    '#ffffff',
+                  weight:
+                    1.5,
+                  opacity:
+                    0.7
+                }
+              )
+            );
+          }
+        }
+        /*
+         * 予報日時
+         *
+         * Z4以上だけ表示
+         */
+        if (
+          map.getZoom() >= 4 &&
+          itemForecast.validtime &&
+          itemForecast.validtime.JST &&
+          itemForecast.center
+        ) {
+          const labelPos =
+            getBottomRightPosition(
+              itemForecast.center,
+              radius,
+              1.12
+            );
+          const label =
+            createTextLabel(
+              labelPos,
+              formatLabel(
+                itemForecast
+                  .validtime
+                  .JST
+              ),
+              'forecast-label',
+              100
+            );
+          /*
+           * ズーム変更時に
+           * 表示・非表示を切り替える
+           */
+          label._isForecastDateLabel =
+            true;
+          layerGroup.addLayer(
+            label
+          );
+        }
+      }
+    }
+    /*
+     * 実際に通った経路
+     */
+    if (
+      actualPoints.length >= 2
+    ) {
+      actualPathGroup.addLayer(
+        L.polyline(
+          actualPoints,
+          {
+            color:
+              '#f1c40f',
+            weight: 4,
+            opacity: 0.9
+          }
+        )
+      );
+    }
+    /*
+     * 予想経路
+     */
+    if (
+      forecastPoints.length >= 2
+    ) {
+      forecastPathGroup.addLayer(
+        L.polyline(
+          forecastPoints,
+          {
+            color:
+              '#1ea6ff',
+            weight: 3,
+            opacity: 0.9,
+            dashArray:
+              '8 8'
+          }
+        )
+      );
+    }
+    /*
+     * 最終予報の暴風域
+     */
+    const last =
+      forecast[
+        forecast.length - 1
+      ];
+    if (
+      last &&
+      last.stormWarningArea
+    ) {
+      for (
+        const arc of
+        last.stormWarningArea
+          .arc || []
+      ) {
+        const center =
+          arc[0];
+        const radius =
+          Number(
+            arc[1]
+          ) || 0;
+        const start =
+          Number(
+            arc[2][0]
+          ) || 0;
+        const end =
+          Number(
+            arc[2][1]
+          ) || 360;
+        layerGroup.addLayer(
+          makeArc(
+            center,
+            radius,
+            start,
+            end
+          )
+        );
+      }
+      for (
+        const line of
+        last.stormWarningArea
+          .line || []
+      ) {
+        if (
+          Array.isArray(line) &&
+          line.length >= 2
+        ) {
+          layerGroup.addLayer(
+            L.polyline(
+              line,
+              {
+                color:
+                  '#ff4b4b',
+                weight:
+                  2,
+                opacity:
+                  1
+              }
+            )
+          );
+        }
+      }
+    }
+    return allBounds;
+  }
+  /*
+   * ズームレベル変更時に
+   * 予報日時を表示・非表示
+   */
+  function updateForecastDateLabels() {
+    const zoom =
+      map.getZoom();
+    layerGroup.eachLayer(
+      layer => {
+        if (
+          layer._isForecastDateLabel
+        ) {
+          const element =
+            layer.getElement();
+          if (element) {
+            element.style.display =
+              zoom >= 4
+                ? ''
+                : 'none';
+          }
+        }
+      }
+    );
+  }
+  /*
+   * ズーム変更を監視
+   */
+  map.on(
+    'zoomend',
+    updateForecastDateLabels
+  );
+  /*
+   * 台風データ取得
+   */
+  function loadAllTyphoons() {
+    layerGroup.clearLayers();
+    actualPathGroup.clearLayers();
+    forecastPathGroup.clearLayers();
+    fetch(
+      'https://www.jma.go.jp/bosai/typhoon/data/targetTc.json'
+    )
+      .then(
+        response => {
+          if (!response.ok) {
+            throw new Error(
+              `HTTP ${response.status}`
+            );
+          }
+          return response.json();
+        }
+      )
+      .then(items => {
+        return Promise.all(
+          items.map(item =>
+            fetch(
+              `https://www.jma.go.jp/bosai/typhoon/data/${item.tropicalCyclone}/forecast.json`
+            )
+              .then(
+                response => {
+                  if (!response.ok) {
+                    throw new Error(
+                      `HTTP ${response.status}: ${item.tropicalCyclone}`
+                    );
+                  }
+                  return response.json();
+                }
+              )
+              .then(
+                forecast => ({
+                  item,
+                  forecast
+                })
+              )
+          )
+        );
+      })
+      .then(all => {
+        const bounds = [];
+        all.forEach(
+          ({
+            item,
+            forecast
+          }) => {
+            const result =
+              drawTyphoon(
+                item,
+                forecast
+              );
+            if (
+              Array.isArray(
+                result
+              )
+            ) {
+              bounds.push(
+                ...result
+              );
+            }
+          }
+        );
+        if (
+          bounds.length
+        ) {
+          map.fitBounds(
+            bounds,
+            {
+              padding: [
+                20,
+                20
+              ]
+            }
+          );
+        }
+        /*
+         * 初期ズーム確定後に
+         * ラベル表示状態を反映
+         */
+        updateForecastDateLabels();
+      })
+      .catch(error => {
+        console.error(
+          '台風データ取得に失敗しました',
+          error
+        );
+      });
+  }
+  loadAllTyphoons();
+</script>
+  </body>
+</html>
