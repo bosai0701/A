@@ -360,13 +360,63 @@ let locationEnabled = false;
 let locationFirstMove = true;
 
 /* =========================================================
-   5分以上離れていたらページ全体をリロード
+   非表示5分で自動リロード
 ========================================================= */
-
-let hiddenAt = null;
 
 const RETURN_RELOAD_TIME =
   5 * 60 * 1000;
+
+let hiddenAt = null;
+let returnReloadTimer = null;
+
+function startReturnReloadTimer(){
+
+  if(returnReloadTimer){
+
+    clearTimeout(
+      returnReloadTimer
+    );
+
+    returnReloadTimer = null;
+  }
+
+  hiddenAt =
+    Date.now();
+
+  returnReloadTimer =
+    setTimeout(
+      () => {
+
+        returnReloadTimer = null;
+
+        /*
+         * タイマー実行時点でも非表示ならリロード。
+         * すでに表示中なら、復帰時の処理に任せる。
+         */
+        if(document.hidden){
+
+          window.location.reload();
+
+        }
+
+      },
+      RETURN_RELOAD_TIME
+    );
+}
+
+function cancelReturnReloadTimer(){
+
+  if(returnReloadTimer){
+
+    clearTimeout(
+      returnReloadTimer
+    );
+
+    returnReloadTimer = null;
+  }
+
+  hiddenAt = null;
+}
 
 /* =========================================================
    DOM
@@ -3726,49 +3776,34 @@ map.on(
 );
 
 /* =========================================================
-   復帰
-   5分以上離れていたらページ全体をリロード
+   復帰・非表示5分タイマー
 ========================================================= */
 
 document.addEventListener(
   'visibilitychange',
   () => {
 
-    if(document.hidden){
-
-      hiddenAt =
-        Date.now();
-
-      return;
-    }
-
-    if(hiddenAt === null){
-      return;
-    }
-
-    const elapsed =
-      Date.now() -
-      hiddenAt;
-
-    hiddenAt = null;
-
     /* ---------------------------------------------
-       5分以上離れていた
-       → ページ全体をリロード
+       ページが非表示になった
+       → ここから5分タイマー開始
     --------------------------------------------- */
 
-    if(
-      elapsed >=
-      RETURN_RELOAD_TIME
-    ){
+    if(document.hidden){
 
-      window.location.reload();
+      startReturnReloadTimer();
 
       return;
     }
 
     /* ---------------------------------------------
-       5分未満なら通常の復帰処理
+       ページが表示に戻った
+       → 5分タイマーをキャンセル
+    --------------------------------------------- */
+
+    cancelReturnReloadTimer();
+
+    /* ---------------------------------------------
+       通常の復帰処理
     --------------------------------------------- */
 
     if(mapReady){
