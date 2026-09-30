@@ -297,16 +297,6 @@ const APP_CACHE_BUSTER =
   'fresh=' +
   encodeURIComponent(APP_BOOT_ID);
 
-/*
- * ページ内の状態を毎回完全に初期化。
- * 自サイトのService Workerがあれば解除。
- * Cache APIに残っている自サイトのキャッシュも削除。
- *
- * ブラウザのHTTPキャッシュそのものはWebページから
- * 強制消去できないため、外部データURLには毎回異なる
- * APP_CACHE_BUSTERを付ける。
- */
-
 (async function resetBrowserSideState(){
 
   try{
@@ -364,7 +354,6 @@ let nowcastTimer = null;
 let satelliteTimer = null;
 let initialDisplayTimer = null;
 
-/* 現在地 */
 let locationMarker = null;
 let locationTimer = null;
 let locationEnabled = false;
@@ -669,24 +658,14 @@ const CONCURRENCY = 8;
 
 const TILE_TIMEOUT = 8000;
 
-/*
- * 降水モザイク
- */
 const TILE_X_MIN = 212;
 const TILE_X_MAX = 243;
 
 const TILE_Y_MIN = 92;
 const TILE_Y_MAX = 115;
 
-/*
- * 重要:
- * 元の256pxタイルを縮小しない。
- */
 const NOWCAST_SCALE = 1;
 
-/*
- * 衛星
- */
 const SAT_ZOOM = 4;
 
 const SAT_SCALE =
@@ -707,9 +686,6 @@ const SAT_Y_MIN =
 const SAT_Y_MAX =
   15 * SAT_SCALE - 1;
 
-/*
- * 衛星も縮小しない。
- */
 const SATELLITE_SCALE = 1;
 
 let latestTime1 = '';
@@ -722,8 +698,6 @@ let z10Generation = 0;
 let switchingToZ10 = false;
 
 let nowcastBusy = false;
-
-/* 衛星 */
 
 let latestSatValidTime = null;
 let latestSatBaseTime = null;
@@ -1042,7 +1016,6 @@ function mosaicCoordinates(
   ];
 }
 
-
 /* =========================================================
    高画質モザイク
 ========================================================= */
@@ -1245,7 +1218,6 @@ async function buildMosaic(options){
           }
         }
       }catch(error){
-        /* 取得失敗タイルは空白 */
       }finally{
         clearTimeout(timer);
         done++;
@@ -1269,6 +1241,7 @@ async function buildMosaic(options){
     return null;
   }
 }
+
 /* =========================================================
    Canvasレイヤー
 ========================================================= */
@@ -1314,6 +1287,7 @@ function swapCanvasLayer(key, chunks, layerOptions, beforeId){
   activeCanvasLayers[key] = {sourceIds, layerIds, canvases};
   map.triggerRepaint();
 }
+
 function activeLayerId(key){
   const active = activeCanvasLayers[key];
   if(!active) return null;
@@ -1327,6 +1301,7 @@ function setNowcastOpacity(value){
     if(map.getLayer(id)) map.setPaintProperty(id, 'raster-opacity', value);
   });
 }
+
 /* =========================================================
    衛星
 ========================================================= */
@@ -2048,9 +2023,6 @@ async function createMosaic(){
       yMax:
         TILE_Y_MAX,
 
-      /*
-       * 256px → 128pxにしない。
-       */
       scale:
         NOWCAST_SCALE,
 
@@ -2563,9 +2535,6 @@ async function initialize(){
     3
   );
 
-  /*
-   * 前回の時刻を明示的に破棄。
-   */
   latestTime1 = '';
   latestTime2 = '';
   previousTimestamp = '';
@@ -2681,9 +2650,6 @@ window.addEventListener(
 
 startConnectionMonitor();
 
-/*
- * 降水 3秒
- */
 nowcastTimer =
   setInterval(
     () => {
@@ -2700,9 +2666,6 @@ nowcastTimer =
     3000
   );
 
-/*
- * 衛星 30秒
- */
 satelliteTimer =
   setInterval(
     () => {
@@ -2819,9 +2782,6 @@ map.on(
   'load',
   () => {
 
-    /*
-     * 衛星と降水を初回から完全に新規取得。
-     */
     updateSatellite();
 
     initialize();
