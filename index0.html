@@ -360,6 +360,15 @@ let locationEnabled = false;
 let locationFirstMove = true;
 
 /* =========================================================
+   5分以上離れていたらページ全体をリロード
+========================================================= */
+
+let hiddenAt = null;
+
+const RETURN_RELOAD_TIME =
+  5 * 60 * 1000;
+
+/* =========================================================
    DOM
 ========================================================= */
 
@@ -1022,222 +1031,984 @@ function mosaicCoordinates(
 
 function createMosaicRenderer(width, height){
   const canvas = document.createElement('canvas');
+
   canvas.width = width;
   canvas.height = height;
-  const gl = canvas.getContext('webgl', {
-    alpha:true, antialias:false, depth:false, stencil:false,
-    premultipliedAlpha:false, preserveDrawingBuffer:true
-  });
-  if(!gl) throw new Error('WebGLコンテキストを作成できません');
-  const vs = gl.createShader(gl.VERTEX_SHADER);
-  const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  if(!vs || !fs) throw new Error('WebGLシェーダーを作成できません');
-  gl.shaderSource(vs, 'attribute vec2 p;attribute vec2 t;varying vec2 uv;void main(){gl_Position=vec4(p,0.0,1.0);uv=t;}');
-  gl.shaderSource(fs, 'precision mediump float;uniform sampler2D tex;varying vec2 uv;void main(){gl_FragColor=texture2D(tex,uv);}');
+
+  const gl =
+    canvas.getContext(
+      'webgl',
+      {
+        alpha:true,
+        antialias:false,
+        depth:false,
+        stencil:false,
+        premultipliedAlpha:false,
+        preserveDrawingBuffer:true
+      }
+    );
+
+  if(!gl){
+    throw new Error(
+      'WebGLコンテキストを作成できません'
+    );
+  }
+
+  const vs =
+    gl.createShader(
+      gl.VERTEX_SHADER
+    );
+
+  const fs =
+    gl.createShader(
+      gl.FRAGMENT_SHADER
+    );
+
+  if(!vs || !fs){
+    throw new Error(
+      'WebGLシェーダーを作成できません'
+    );
+  }
+
+  gl.shaderSource(
+    vs,
+    'attribute vec2 p;attribute vec2 t;varying vec2 uv;void main(){gl_Position=vec4(p,0.0,1.0);uv=t;}'
+  );
+
+  gl.shaderSource(
+    fs,
+    'precision mediump float;uniform sampler2D tex;varying vec2 uv;void main(){gl_FragColor=texture2D(tex,uv);}'
+  );
+
   gl.compileShader(vs);
   gl.compileShader(fs);
-  if(!gl.getShaderParameter(vs, gl.COMPILE_STATUS) || !gl.getShaderParameter(fs, gl.COMPILE_STATUS)){
-    throw new Error(gl.getShaderInfoLog(vs) || gl.getShaderInfoLog(fs) || 'シェーダーのコンパイルに失敗しました');
+
+  if(
+    !gl.getShaderParameter(
+      vs,
+      gl.COMPILE_STATUS
+    ) ||
+    !gl.getShaderParameter(
+      fs,
+      gl.COMPILE_STATUS
+    )
+  ){
+
+    throw new Error(
+      gl.getShaderInfoLog(vs) ||
+      gl.getShaderInfoLog(fs) ||
+      'シェーダーのコンパイルに失敗しました'
+    );
   }
-  const program = gl.createProgram();
-  if(!program) throw new Error('WebGLプログラムを作成できません');
-  gl.attachShader(program, vs);
-  gl.attachShader(program, fs);
-  gl.linkProgram(program);
-  if(!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || 'WebGLプログラムのリンクに失敗しました');
+
+  const program =
+    gl.createProgram();
+
+  if(!program){
+    throw new Error(
+      'WebGLプログラムを作成できません'
+    );
+  }
+
+  gl.attachShader(
+    program,
+    vs
+  );
+
+  gl.attachShader(
+    program,
+    fs
+  );
+
+  gl.linkProgram(
+    program
+  );
+
+  if(
+    !gl.getProgramParameter(
+      program,
+      gl.LINK_STATUS
+    )
+  ){
+
+    throw new Error(
+      gl.getProgramInfoLog(program) ||
+      'WebGLプログラムのリンクに失敗しました'
+    );
+  }
+
   gl.deleteShader(vs);
   gl.deleteShader(fs);
-  const buffer = gl.createBuffer();
-  const input = gl.createTexture();
-  const output = gl.createTexture();
-  const framebuffer = gl.createFramebuffer();
-  if(!buffer || !input || !output || !framebuffer) throw new Error('WebGL描画リソースを作成できません');
+
+  const buffer =
+    gl.createBuffer();
+
+  const input =
+    gl.createTexture();
+
+  const output =
+    gl.createTexture();
+
+  const framebuffer =
+    gl.createFramebuffer();
+
+  if(
+    !buffer ||
+    !input ||
+    !output ||
+    !framebuffer
+  ){
+
+    throw new Error(
+      'WebGL描画リソースを作成できません'
+    );
+  }
+
   gl.useProgram(program);
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  const p = gl.getAttribLocation(program, 'p');
-  const t = gl.getAttribLocation(program, 't');
+
+  gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    buffer
+  );
+
+  const p =
+    gl.getAttribLocation(
+      program,
+      'p'
+    );
+
+  const t =
+    gl.getAttribLocation(
+      program,
+      't'
+    );
+
   gl.enableVertexAttribArray(p);
   gl.enableVertexAttribArray(t);
-  gl.vertexAttribPointer(p, 2, gl.FLOAT, false, 16, 0);
-  gl.vertexAttribPointer(t, 2, gl.FLOAT, false, 16, 8);
-  gl.uniform1i(gl.getUniformLocation(program, 'tex'), 0);
-  gl.activeTexture(gl.TEXTURE0);
-  [input, output].forEach(texture => {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  });
-  gl.bindTexture(gl.TEXTURE_2D, output);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, output, 0);
-  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('WebGLフレームバッファを初期化できません');
-  gl.viewport(0, 0, width, height);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  return {canvas, gl, width, height, program, buffer, input, output, framebuffer, p, t};
+
+  gl.vertexAttribPointer(
+    p,
+    2,
+    gl.FLOAT,
+    false,
+    16,
+    0
+  );
+
+  gl.vertexAttribPointer(
+    t,
+    2,
+    gl.FLOAT,
+    false,
+    16,
+    8
+  );
+
+  gl.uniform1i(
+    gl.getUniformLocation(
+      program,
+      'tex'
+    ),
+    0
+  );
+
+  gl.activeTexture(
+    gl.TEXTURE0
+  );
+
+  [input,output].forEach(
+    texture => {
+
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        texture
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MIN_FILTER,
+        gl.NEAREST
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MAG_FILTER,
+        gl.NEAREST
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_WRAP_S,
+        gl.CLAMP_TO_EDGE
+      );
+
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_WRAP_T,
+        gl.CLAMP_TO_EDGE
+      );
+    }
+  );
+
+  gl.bindTexture(
+    gl.TEXTURE_2D,
+    output
+  );
+
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    width,
+    height,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    null
+  );
+
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    framebuffer
+  );
+
+  gl.framebufferTexture2D(
+    gl.FRAMEBUFFER,
+    gl.COLOR_ATTACHMENT0,
+    gl.TEXTURE_2D,
+    output,
+    0
+  );
+
+  if(
+    gl.checkFramebufferStatus(
+      gl.FRAMEBUFFER
+    ) !== gl.FRAMEBUFFER_COMPLETE
+  ){
+
+    throw new Error(
+      'WebGLフレームバッファを初期化できません'
+    );
+  }
+
+  gl.viewport(
+    0,
+    0,
+    width,
+    height
+  );
+
+  gl.clearColor(
+    0,
+    0,
+    0,
+    0
+  );
+
+  gl.clear(
+    gl.COLOR_BUFFER_BIT
+  );
+
+  return {
+    canvas,
+    gl,
+    width,
+    height,
+    program,
+    buffer,
+    input,
+    output,
+    framebuffer,
+    p,
+    t
+  };
 }
 
-function renderMosaicQuad(renderer, vertices){
-  const gl = renderer.gl;
-  gl.bindBuffer(gl.ARRAY_BUFFER, renderer.buffer);
-  gl.vertexAttribPointer(renderer.p, 2, gl.FLOAT, false, 16, 0);
-  gl.vertexAttribPointer(renderer.t, 2, gl.FLOAT, false, 16, 8);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+function renderMosaicQuad(
+  renderer,
+  vertices
+){
+
+  const gl =
+    renderer.gl;
+
+  gl.bindBuffer(
+    gl.ARRAY_BUFFER,
+    renderer.buffer
+  );
+
+  gl.vertexAttribPointer(
+    renderer.p,
+    2,
+    gl.FLOAT,
+    false,
+    16,
+    0
+  );
+
+  gl.vertexAttribPointer(
+    renderer.t,
+    2,
+    gl.FLOAT,
+    false,
+    16,
+    8
+  );
+
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array(vertices),
+    gl.STREAM_DRAW
+  );
+
+  gl.drawArrays(
+    gl.TRIANGLE_STRIP,
+    0,
+    4
+  );
 }
 
-function drawMosaicImage(renderer, image, x, y, size){
-  const gl = renderer.gl;
-  const left = -1 + 2 * x / renderer.width;
-  const right = -1 + 2 * (x + size) / renderer.width;
-  const top = 1 - 2 * y / renderer.height;
-  const bottom = 1 - 2 * (y + size) / renderer.height;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.framebuffer);
-  gl.viewport(0, 0, renderer.width, renderer.height);
-  gl.bindTexture(gl.TEXTURE_2D, renderer.input);
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  gl.useProgram(renderer.program);
-  renderMosaicQuad(renderer, [left,top,0,1, left,bottom,0,0, right,top,1,1, right,bottom,1,0]);
+function drawMosaicImage(
+  renderer,
+  image,
+  x,
+  y,
+  size
+){
+
+  const gl =
+    renderer.gl;
+
+  const left =
+    -1 +
+    2 * x /
+    renderer.width;
+
+  const right =
+    -1 +
+    2 * (
+      x + size
+    ) /
+    renderer.width;
+
+  const top =
+    1 -
+    2 * y /
+    renderer.height;
+
+  const bottom =
+    1 -
+    2 * (
+      y + size
+    ) /
+    renderer.height;
+
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    renderer.framebuffer
+  );
+
+  gl.viewport(
+    0,
+    0,
+    renderer.width,
+    renderer.height
+  );
+
+  gl.bindTexture(
+    gl.TEXTURE_2D,
+    renderer.input
+  );
+
+  gl.pixelStorei(
+    gl.UNPACK_FLIP_Y_WEBGL,
+    true
+  );
+
+  gl.pixelStorei(
+    gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,
+    false
+  );
+
+  gl.pixelStorei(
+    gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,
+    gl.NONE
+  );
+
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    image
+  );
+
+  gl.useProgram(
+    renderer.program
+  );
+
+  renderMosaicQuad(
+    renderer,
+    [
+      left,top,0,1,
+      left,bottom,0,0,
+      right,top,1,1,
+      right,bottom,1,0
+    ]
+  );
 }
 
-function finishMosaicRenderer(renderer){
-  const gl = renderer.gl;
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  gl.viewport(0, 0, renderer.width, renderer.height);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.bindTexture(gl.TEXTURE_2D, renderer.output);
-  gl.useProgram(renderer.program);
-  renderMosaicQuad(renderer, [-1,1,0,1, -1,-1,0,0, 1,1,1,1, 1,-1,1,0]);
-  gl.deleteBuffer(renderer.buffer);
-  gl.deleteTexture(renderer.input);
-  gl.deleteTexture(renderer.output);
-  gl.deleteFramebuffer(renderer.framebuffer);
-  gl.deleteProgram(renderer.program);
+function finishMosaicRenderer(
+  renderer
+){
+
+  const gl =
+    renderer.gl;
+
+  gl.bindFramebuffer(
+    gl.FRAMEBUFFER,
+    null
+  );
+
+  gl.viewport(
+    0,
+    0,
+    renderer.width,
+    renderer.height
+  );
+
+  gl.clearColor(
+    0,
+    0,
+    0,
+    0
+  );
+
+  gl.clear(
+    gl.COLOR_BUFFER_BIT
+  );
+
+  gl.bindTexture(
+    gl.TEXTURE_2D,
+    renderer.output
+  );
+
+  gl.useProgram(
+    renderer.program
+  );
+
+  renderMosaicQuad(
+    renderer,
+    [
+      -1,1,0,1,
+      -1,-1,0,0,
+      1,1,1,1,
+      1,-1,1,0
+    ]
+  );
+
+  gl.deleteBuffer(
+    renderer.buffer
+  );
+
+  gl.deleteTexture(
+    renderer.input
+  );
+
+  gl.deleteTexture(
+    renderer.output
+  );
+
+  gl.deleteFramebuffer(
+    renderer.framebuffer
+  );
+
+  gl.deleteProgram(
+    renderer.program
+  );
+
   return renderer.canvas;
 }
 
-function disposeMosaicRenderer(renderer){
-  const gl = renderer.gl;
-  gl.deleteBuffer(renderer.buffer);
-  gl.deleteTexture(renderer.input);
-  gl.deleteTexture(renderer.output);
-  gl.deleteFramebuffer(renderer.framebuffer);
-  gl.deleteProgram(renderer.program);
-  const extension = gl.getExtension('WEBGL_lose_context');
-  if(extension) extension.loseContext();
+function disposeMosaicRenderer(
+  renderer
+){
+
+  const gl =
+    renderer.gl;
+
+  gl.deleteBuffer(
+    renderer.buffer
+  );
+
+  gl.deleteTexture(
+    renderer.input
+  );
+
+  gl.deleteTexture(
+    renderer.output
+  );
+
+  gl.deleteFramebuffer(
+    renderer.framebuffer
+  );
+
+  gl.deleteProgram(
+    renderer.program
+  );
+
+  const extension =
+    gl.getExtension(
+      'WEBGL_lose_context'
+    );
+
+  if(extension){
+    extension.loseContext();
+  }
+
   renderer.canvas.width = 0;
   renderer.canvas.height = 0;
 }
 
-async function buildMosaic(options){
-  const xMin = options.xMin;
-  const yMin = options.yMin;
-  const cols = options.xMax - xMin + 1;
-  const rows = options.yMax - yMin + 1;
-  const total = cols * rows;
-  const scale = options.scale === undefined ? 1 : options.scale;
-  const outputTileSize = TILE_SIZE * scale;
-  const probeCanvas = document.createElement('canvas');
-  const probeGL = probeCanvas.getContext('webgl', {alpha:true, antialias:false});
+async function buildMosaic(
+  options
+){
+
+  const xMin =
+    options.xMin;
+
+  const yMin =
+    options.yMin;
+
+  const cols =
+    options.xMax -
+    xMin +
+    1;
+
+  const rows =
+    options.yMax -
+    yMin +
+    1;
+
+  const total =
+    cols * rows;
+
+  const scale =
+    options.scale === undefined
+      ? 1
+      : options.scale;
+
+  const outputTileSize =
+    TILE_SIZE * scale;
+
+  const probeCanvas =
+    document.createElement(
+      'canvas'
+    );
+
+  const probeGL =
+    probeCanvas.getContext(
+      'webgl',
+      {
+        alpha:true,
+        antialias:false
+      }
+    );
+
   if(!probeGL){
-    console.error('WebGLモザイクを初期化できません: WebGL非対応');
+
+    console.error(
+      'WebGLモザイクを初期化できません: WebGL非対応'
+    );
+
     return null;
   }
-  const viewport = probeGL.getParameter(probeGL.MAX_VIEWPORT_DIMS);
-  const maxSize = Math.min(probeGL.getParameter(probeGL.MAX_TEXTURE_SIZE), viewport[0], viewport[1]);
-  const probeExtension = probeGL.getExtension('WEBGL_lose_context');
-  if(probeExtension) probeExtension.loseContext();
-  const tilesPerChunk = Math.floor(maxSize / outputTileSize);
+
+  const viewport =
+    probeGL.getParameter(
+      probeGL.MAX_VIEWPORT_DIMS
+    );
+
+  const maxSize =
+    Math.min(
+      probeGL.getParameter(
+        probeGL.MAX_TEXTURE_SIZE
+      ),
+      viewport[0],
+      viewport[1]
+    );
+
+  const probeExtension =
+    probeGL.getExtension(
+      'WEBGL_lose_context'
+    );
+
+  if(probeExtension){
+    probeExtension.loseContext();
+  }
+
+  const tilesPerChunk =
+    Math.floor(
+      maxSize /
+      outputTileSize
+    );
+
   if(tilesPerChunk < 1){
-    console.error('WebGLモザイクを初期化できません: タイルサイズが上限を超えています');
+
+    console.error(
+      'WebGLモザイクを初期化できません: タイルサイズが上限を超えています'
+    );
+
     return null;
   }
+
   const chunks = [];
   const renderers = [];
+
   try{
-    for(let y = yMin; y <= options.yMax; y += tilesPerChunk){
-      for(let x = xMin; x <= options.xMax; x += tilesPerChunk){
-        const xMax = Math.min(options.xMax, x + tilesPerChunk - 1);
-        const yMax = Math.min(options.yMax, y + tilesPerChunk - 1);
-        const renderer = createMosaicRenderer((xMax - x + 1) * outputTileSize, (yMax - y + 1) * outputTileSize);
-        renderers.push(renderer);
-        chunks.push({xMin:x, xMax, yMin:y, yMax, renderer});
+
+    for(
+      let y = yMin;
+      y <= options.yMax;
+      y += tilesPerChunk
+    ){
+
+      for(
+        let x = xMin;
+        x <= options.xMax;
+        x += tilesPerChunk
+      ){
+
+        const xMax =
+          Math.min(
+            options.xMax,
+            x + tilesPerChunk - 1
+          );
+
+        const yMax =
+          Math.min(
+            options.yMax,
+            y + tilesPerChunk - 1
+          );
+
+        const renderer =
+          createMosaicRenderer(
+            (
+              xMax -
+              x +
+              1
+            ) *
+            outputTileSize,
+
+            (
+              yMax -
+              y +
+              1
+            ) *
+            outputTileSize
+          );
+
+        renderers.push(
+          renderer
+        );
+
+        chunks.push({
+          xMin:x,
+          xMax,
+          yMin:y,
+          yMax,
+          renderer
+        });
       }
     }
+
   }catch(error){
-    console.error('WebGLフレームバッファ初期化エラー:', error);
-    renderers.forEach(disposeMosaicRenderer);
+
+    console.error(
+      'WebGLフレームバッファ初期化エラー:',
+      error
+    );
+
+    renderers.forEach(
+      disposeMosaicRenderer
+    );
+
     return null;
   }
+
   let next = 0;
   let done = 0;
   let loaded = 0;
-  const chunkColumns = Math.ceil(cols / tilesPerChunk);
-  const worker = async () => {
-    while(true){
-      const i = next++;
-      if(i >= total || !navigator.onLine) return;
-      const x = xMin + (i % cols);
-      const y = yMin + Math.floor(i / cols);
-      const chunk = chunks[Math.floor((y - yMin) / tilesPerChunk) * chunkColumns + Math.floor((x - xMin) / tilesPerChunk)];
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TILE_TIMEOUT);
-      try{
-        const response = await fetch(options.urlFn(x, y), {signal:controller.signal, cache:'no-store'});
-        if(response.ok){
-          const blob = await response.blob();
-          let image;
-          if(window.createImageBitmap){
-            image = await createImageBitmap(blob, {colorSpaceConversion:'none', imageOrientation:'flipY', premultiplyAlpha:'none'});
-          }else{
-            const element = new Image();
-            const objectURL = URL.createObjectURL(blob);
-            try{
-              element.src = objectURL;
-              await new Promise((resolve, reject) => {
-                element.onload = resolve;
-                element.onerror = () => reject(new Error('タイル画像をデコードできません'));
-              });
-              image = element;
-            }finally{ URL.revokeObjectURL(objectURL); }
-          }
-          try{
-            if(image && image.width && image.height){
-              drawMosaicImage(chunk.renderer, image, (x - chunk.xMin) * outputTileSize, (y - chunk.yMin) * outputTileSize, outputTileSize);
-              loaded++;
+
+  const chunkColumns =
+    Math.ceil(
+      cols /
+      tilesPerChunk
+    );
+
+  const worker =
+    async () => {
+
+      while(true){
+
+        const i =
+          next++;
+
+        if(
+          i >= total ||
+          !navigator.onLine
+        ){
+          return;
+        }
+
+        const x =
+          xMin +
+          (
+            i %
+            cols
+          );
+
+        const y =
+          yMin +
+          Math.floor(
+            i /
+            cols
+          );
+
+        const chunk =
+          chunks[
+            Math.floor(
+              (
+                y -
+                yMin
+              ) /
+              tilesPerChunk
+            ) *
+            chunkColumns +
+            Math.floor(
+              (
+                x -
+                xMin
+              ) /
+              tilesPerChunk
+            )
+          ];
+
+        const controller =
+          new AbortController();
+
+        const timer =
+          setTimeout(
+            () =>
+              controller.abort(),
+            TILE_TIMEOUT
+          );
+
+        try{
+
+          const response =
+            await fetch(
+              options.urlFn(
+                x,
+                y
+              ),
+              {
+                signal:
+                  controller.signal,
+                cache:'no-store'
+              }
+            );
+
+          if(response.ok){
+
+            const blob =
+              await response.blob();
+
+            let image;
+
+            if(
+              window.createImageBitmap
+            ){
+
+              image =
+                await createImageBitmap(
+                  blob,
+                  {
+                    colorSpaceConversion:
+                      'none',
+                    imageOrientation:
+                      'flipY',
+                    premultiplyAlpha:
+                      'none'
+                  }
+                );
+
+            }else{
+
+              const element =
+                new Image();
+
+              const objectURL =
+                URL.createObjectURL(
+                  blob
+                );
+
+              try{
+
+                element.src =
+                  objectURL;
+
+                await new Promise(
+                  (
+                    resolve,
+                    reject
+                  ) => {
+
+                    element.onload =
+                      resolve;
+
+                    element.onerror =
+                      () =>
+                        reject(
+                          new Error(
+                            'タイル画像をデコードできません'
+                          )
+                        );
+                  }
+                );
+
+                image =
+                  element;
+
+              }finally{
+
+                URL.revokeObjectURL(
+                  objectURL
+                );
+              }
             }
-          }finally{
-            if(image && image.close) image.close();
+
+            try{
+
+              if(
+                image &&
+                image.width &&
+                image.height
+              ){
+
+                drawMosaicImage(
+                  chunk.renderer,
+                  image,
+                  (
+                    x -
+                    chunk.xMin
+                  ) *
+                  outputTileSize,
+                  (
+                    y -
+                    chunk.yMin
+                  ) *
+                  outputTileSize,
+                  outputTileSize
+                );
+
+                loaded++;
+              }
+
+            }finally{
+
+              if(
+                image &&
+                image.close
+              ){
+                image.close();
+              }
+            }
+          }
+
+        }catch(error){
+
+        }finally{
+
+          clearTimeout(
+            timer
+          );
+
+          done++;
+
+          if(
+            options.onProgress &&
+            (
+              done % 8 === 0 ||
+              done === total
+            )
+          ){
+
+            options.onProgress(
+              done,
+              total
+            );
           }
         }
-      }catch(error){
-      }finally{
-        clearTimeout(timer);
-        done++;
-        if(options.onProgress && (done % 8 === 0 || done === total)) options.onProgress(done, total);
       }
-    }
-  };
-  await Promise.all(Array.from({length:CONCURRENCY}, worker));
-  if(!navigator.onLine || loaded === 0){
-    renderers.forEach(disposeMosaicRenderer);
+    };
+
+  await Promise.all(
+    Array.from(
+      {
+        length:
+          CONCURRENCY
+      },
+      worker
+    )
+  );
+
+  if(
+    !navigator.onLine ||
+    loaded === 0
+  ){
+
+    renderers.forEach(
+      disposeMosaicRenderer
+    );
+
     return null;
   }
+
   try{
-    return chunks.map(chunk => ({
-      canvas:finishMosaicRenderer(chunk.renderer),
-      coordinates:mosaicCoordinates(chunk.xMin, chunk.xMax, chunk.yMin, chunk.yMax, options.zoom)
-    }));
+
+    return chunks.map(
+      chunk => ({
+
+        canvas:
+          finishMosaicRenderer(
+            chunk.renderer
+          ),
+
+        coordinates:
+          mosaicCoordinates(
+            chunk.xMin,
+            chunk.xMax,
+            chunk.yMin,
+            chunk.yMax,
+            options.zoom
+          )
+
+      })
+    );
+
   }catch(error){
-    console.error('WebGLモザイク描画エラー:', error);
-    renderers.forEach(disposeMosaicRenderer);
+
+    console.error(
+      'WebGLモザイク描画エラー:',
+      error
+    );
+
+    renderers.forEach(
+      disposeMosaicRenderer
+    );
+
     return null;
   }
 }
@@ -1250,56 +2021,221 @@ let canvasSeq = 0;
 
 const activeCanvasLayers = {};
 
-function swapCanvasLayer(key, chunks, layerOptions, beforeId){
-  const n = ++canvasSeq;
-  const previous = activeCanvasLayers[key];
+function swapCanvasLayer(
+  key,
+  chunks,
+  layerOptions,
+  beforeId
+){
+
+  const n =
+    ++canvasSeq;
+
+  const previous =
+    activeCanvasLayers[key];
+
   const layerIds = [];
   const sourceIds = [];
   const canvases = [];
-  const layers = map.getStyle().layers || [];
-  for(const layer of layers){
-    if(layer.id.startsWith(key + '-layer-') && map.getLayer(layer.id)) map.removeLayer(layer.id);
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  for(
+    const layer of layers
+  ){
+
+    if(
+      layer.id.startsWith(
+        key + '-layer-'
+      ) &&
+      map.getLayer(
+        layer.id
+      )
+    ){
+
+      map.removeLayer(
+        layer.id
+      );
+    }
   }
-  const sources = map.getStyle().sources || {};
-  for(const srcId in sources){
-    if(srcId.startsWith(key + '-src-') && map.getSource(srcId)) map.removeSource(srcId);
+
+  const sources =
+    map.getStyle().sources ||
+    {};
+
+  for(
+    const srcId in sources
+  ){
+
+    if(
+      srcId.startsWith(
+        key + '-src-'
+      ) &&
+      map.getSource(
+        srcId
+      )
+    ){
+
+      map.removeSource(
+        srcId
+      );
+    }
   }
-  chunks.forEach((chunk, index) => {
-    const sourceId = key + '-src-' + n + '-' + index;
-    const layerId = key + '-layer-' + n + '-' + index;
-    map.addSource(sourceId, {type:'canvas', canvas:chunk.canvas, coordinates:chunk.coordinates, animate:false});
-    map.addLayer({
-      id:layerId, type:'raster', source:sourceId,
-      minzoom:layerOptions.minzoom, maxzoom:layerOptions.maxzoom,
-      paint:{'raster-opacity':layerOptions.opacity, 'raster-resampling':layerOptions.resampling, 'raster-fade-duration':0}
-    }, beforeId);
-    sourceIds.push(sourceId);
-    layerIds.push(layerId);
-    canvases.push(chunk.canvas);
-  });
-  if(previous) previous.canvases.forEach(canvas => {
-    const gl = canvas.getContext('webgl');
-    const extension = gl && gl.getExtension('WEBGL_lose_context');
-    if(extension) extension.loseContext();
-    canvas.width = 0;
-    canvas.height = 0;
-  });
-  activeCanvasLayers[key] = {sourceIds, layerIds, canvases};
+
+  chunks.forEach(
+    (
+      chunk,
+      index
+    ) => {
+
+      const sourceId =
+        key +
+        '-src-' +
+        n +
+        '-' +
+        index;
+
+      const layerId =
+        key +
+        '-layer-' +
+        n +
+        '-' +
+        index;
+
+      map.addSource(
+        sourceId,
+        {
+          type:'canvas',
+          canvas:
+            chunk.canvas,
+          coordinates:
+            chunk.coordinates,
+          animate:false
+        }
+      );
+
+      map.addLayer(
+        {
+
+          id:
+            layerId,
+
+          type:'raster',
+
+          source:
+            sourceId,
+
+          minzoom:
+            layerOptions.minzoom,
+
+          maxzoom:
+            layerOptions.maxzoom,
+
+          paint:{
+            'raster-opacity':
+              layerOptions.opacity,
+
+            'raster-resampling':
+              layerOptions.resampling,
+
+            'raster-fade-duration':
+              0
+          }
+
+        },
+        beforeId
+      );
+
+      sourceIds.push(
+        sourceId
+      );
+
+      layerIds.push(
+        layerId
+      );
+
+      canvases.push(
+        chunk.canvas
+      );
+    }
+  );
+
+  if(previous){
+
+    previous.canvases.forEach(
+      canvas => {
+
+        const gl =
+          canvas.getContext(
+            'webgl'
+          );
+
+        const extension =
+          gl &&
+          gl.getExtension(
+            'WEBGL_lose_context'
+          );
+
+        if(extension){
+          extension.loseContext();
+        }
+
+        canvas.width = 0;
+        canvas.height = 0;
+      }
+    );
+  }
+
+  activeCanvasLayers[key] = {
+    sourceIds,
+    layerIds,
+    canvases
+  };
+
   map.triggerRepaint();
 }
 
-function activeLayerId(key){
-  const active = activeCanvasLayers[key];
-  if(!active) return null;
-  return active.layerIds.find(id => map.getLayer(id)) || null;
+function activeLayerId(
+  key
+){
+
+  const active =
+    activeCanvasLayers[key];
+
+  if(!active){
+    return null;
+  }
+
+  return active.layerIds.find(
+    id =>
+      map.getLayer(id)
+  ) || null;
 }
 
-function setNowcastOpacity(value){
-  const active = activeCanvasLayers.nowcast;
+function setNowcastOpacity(
+  value
+){
+
+  const active =
+    activeCanvasLayers.nowcast;
+
   if(!active) return;
-  active.layerIds.forEach(id => {
-    if(map.getLayer(id)) map.setPaintProperty(id, 'raster-opacity', value);
-  });
+
+  active.layerIds.forEach(
+    id => {
+
+      if(map.getLayer(id)){
+
+        map.setPaintProperty(
+          id,
+          'raster-opacity',
+          value
+        );
+      }
+    }
+  );
 }
 
 /* =========================================================
@@ -1445,6 +2381,7 @@ async function updateSatellite(){
         'satellite'
       )
     ){
+
       return;
     }
 
@@ -2790,16 +3727,51 @@ map.on(
 
 /* =========================================================
    復帰
+   5分以上離れていたらページ全体をリロード
 ========================================================= */
 
 document.addEventListener(
   'visibilitychange',
   () => {
 
+    if(document.hidden){
+
+      hiddenAt =
+        Date.now();
+
+      return;
+    }
+
+    if(hiddenAt === null){
+      return;
+    }
+
+    const elapsed =
+      Date.now() -
+      hiddenAt;
+
+    hiddenAt = null;
+
+    /* ---------------------------------------------
+       5分以上離れていた
+       → ページ全体をリロード
+    --------------------------------------------- */
+
     if(
-      !document.hidden &&
-      mapReady
+      elapsed >=
+      RETURN_RELOAD_TIME
     ){
+
+      window.location.reload();
+
+      return;
+    }
+
+    /* ---------------------------------------------
+       5分未満なら通常の復帰処理
+    --------------------------------------------- */
+
+    if(mapReady){
 
       updateSatellite();
 
