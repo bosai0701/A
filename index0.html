@@ -1,0 +1,2869 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>降水ナウキャスト</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="favicon.ico">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.css">
+
+<style>
+html,body{
+  width:100%;
+  height:100%;
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  background:#fff;
+}
+
+#map{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  visibility:hidden;
+  background:#fff;
+}
+
+.maplibregl-canvas{
+  image-rendering:auto;
+  transform:translateZ(0);
+}
+
+#loading{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fff;
+  transition:opacity .25s ease;
+  font-family:Arial,sans-serif;
+}
+
+#loading.hide{
+  opacity:0;
+  pointer-events:none;
+}
+
+.loading-box{
+  width:min(82vw,360px);
+  text-align:center;
+}
+
+.loading-title{
+  font-size:20px;
+  font-weight:bold;
+  color:#222;
+  margin-bottom:8px;
+}
+
+.loading-status{
+  min-height:22px;
+  font-size:14px;
+  color:#666;
+  margin-bottom:18px;
+  line-height:1.6;
+}
+
+.loading-spinner{
+  width:34px;
+  height:34px;
+  margin:0 auto 18px;
+  border:4px solid #e5e5e5;
+  border-top-color:#1976d2;
+  border-radius:50%;
+  animation:loading-spin .8s linear infinite;
+}
+
+@keyframes loading-spin{
+  to{transform:rotate(360deg)}
+}
+
+.loading-progress{
+  width:100%;
+  height:5px;
+  overflow:hidden;
+  border-radius:10px;
+  background:#e8e8e8;
+}
+
+.loading-progress-bar{
+  width:0%;
+  height:100%;
+  border-radius:10px;
+  background:#1976d2;
+  transition:width .1s ease;
+}
+
+.loading-percent{
+  margin-top:9px;
+  font-size:12px;
+  color:#888;
+}
+
+#connection-status{
+  position:fixed;
+  top:10px;
+  right:10px;
+  z-index:5000;
+  padding:6px 10px;
+  border-radius:14px;
+  background:rgba(255,255,255,.88);
+  box-shadow:0 2px 6px rgba(0,0,0,.18);
+  font-family:Arial,sans-serif;
+  font-size:12px;
+  font-weight:bold;
+  color:#16823b;
+  pointer-events:none;
+  display:none;
+  white-space:nowrap;
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+}
+
+#connection-status.unstable{
+  color:#d88a00;
+}
+
+#connection-status.offline{
+  color:#d32f2f;
+}
+
+#info-panel{
+  position:absolute;
+  top:10px;
+  left:10px;
+  background:rgba(255,255,255,.85);
+  padding:10px 14px;
+  border-radius:6px;
+  font-size:14px;
+  font-family:Arial,sans-serif;
+  box-shadow:0 2px 6px rgba(0,0,0,.2);
+  z-index:1000;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translateZ(0);
+  line-height:1.5;
+}
+
+#clock{
+  font-weight:bold;
+}
+
+#sat-time,
+#nowcast-time{
+  margin-top:2px;
+}
+
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right{
+  display:none !important;
+}
+
+#location-btn{
+  position:fixed;
+  right:12px;
+  bottom:12px;
+  z-index:5000;
+  width:52px;
+  height:52px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.95);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  transition:background .15s ease,transform .15s ease;
+}
+
+#location-btn:active{
+  transform:scale(.92);
+}
+
+#location-btn.active{
+  background:#1976d2;
+}
+
+#location-btn svg{
+  width:25px;
+  height:25px;
+  display:block;
+  fill:none;
+  stroke:#333;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+#location-btn.active svg{
+  stroke:#fff;
+}
+
+.user-location-marker{
+  position:relative;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#1976d2;
+  border:3px solid #fff;
+  box-shadow:
+    0 0 0 2px rgba(25,118,210,.45),
+    0 2px 6px rgba(0,0,0,.35);
+}
+
+.user-location-marker::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:6px;
+  height:6px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:#fff;
+}
+</style>
+</head>
+
+<body>
+
+<div id="loading">
+  <div class="loading-box">
+    <div id="loading-spinner" class="loading-spinner"></div>
+    <div class="loading-title">降水ナウキャスト</div>
+    <div id="loading-status" class="loading-status">地図を準備しています…</div>
+
+    <div id="loading-progress" class="loading-progress">
+      <div id="loading-progress-bar" class="loading-progress-bar"></div>
+    </div>
+
+    <div id="loading-percent" class="loading-percent">0%</div>
+  </div>
+</div>
+
+<div id="connection-status">● オンライン</div>
+
+<div id="map"></div>
+
+<div id="info-panel">
+  <div id="clock">----/--/-- --:--:--</div>
+  <div id="sat-time">衛星: --</div>
+  <div id="nowcast-time">降水: --</div>
+</div>
+
+<button
+  id="location-btn"
+  type="button"
+  aria-label="現在地を表示"
+  title="現在地"
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="7"></circle>
+    <line x1="12" y1="2" x2="12" y2="5"></line>
+    <line x1="12" y1="19" x2="12" y2="22"></line>
+    <line x1="2" y1="12" x2="5" y2="12"></line>
+    <line x1="19" y1="12" x2="22" y2="12"></line>
+  </svg>
+</button>
+
+<script src="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.js"></script>
+
+<script>
+
+/* =========================================================
+   完全リセット
+========================================================= */
+
+const APP_BOOT_ID =
+  Date.now().toString(36) +
+  '-' +
+  Math.random().toString(36).slice(2);
+
+const APP_CACHE_BUSTER =
+  'fresh=' +
+  encodeURIComponent(APP_BOOT_ID);
+
+/*
+ * ページ内の状態を毎回完全に初期化。
+ * 自サイトのService Workerがあれば解除。
+ * Cache APIに残っている自サイトのキャッシュも削除。
+ *
+ * ブラウザのHTTPキャッシュそのものはWebページから
+ * 強制消去できないため、外部データURLには毎回異なる
+ * APP_CACHE_BUSTERを付ける。
+ */
+
+(async function resetBrowserSideState(){
+
+  try{
+    if(window.localStorage){
+      window.localStorage.clear();
+    }
+  }catch(e){}
+
+  try{
+    if(window.sessionStorage){
+      window.sessionStorage.clear();
+    }
+  }catch(e){}
+
+  try{
+    if('caches' in window){
+      const keys = await caches.keys();
+
+      await Promise.all(
+        keys.map(key => caches.delete(key))
+      );
+    }
+  }catch(e){}
+
+  try{
+    if(
+      'serviceWorker' in navigator &&
+      navigator.serviceWorker.getRegistrations
+    ){
+      const registrations =
+        await navigator.serviceWorker.getRegistrations();
+
+      await Promise.all(
+        registrations.map(
+          registration =>
+            registration.unregister()
+        )
+      );
+    }
+  }catch(e){}
+
+})();
+
+/* =========================================================
+   初期状態
+========================================================= */
+
+let loadingError = false;
+let mapReady = false;
+let initializing = false;
+let initGeneration = 0;
+
+let jmaConnectionTimer = null;
+let nowcastTimer = null;
+let satelliteTimer = null;
+let initialDisplayTimer = null;
+
+/* 現在地 */
+let locationMarker = null;
+let locationTimer = null;
+let locationEnabled = false;
+let locationFirstMove = true;
+
+/* =========================================================
+   DOM
+========================================================= */
+
+const loading =
+  document.getElementById('loading');
+
+const loadingStatus =
+  document.getElementById('loading-status');
+
+const loadingProgress =
+  document.getElementById('loading-progress');
+
+const loadingProgressBar =
+  document.getElementById('loading-progress-bar');
+
+const loadingPercent =
+  document.getElementById('loading-percent');
+
+const loadingSpinner =
+  document.getElementById('loading-spinner');
+
+const connectionStatus =
+  document.getElementById('connection-status');
+
+const mapElement =
+  document.getElementById('map');
+
+const infoPanel =
+  document.getElementById('info-panel');
+
+const locationBtn =
+  document.getElementById('location-btn');
+
+/* =========================================================
+   接続状態
+========================================================= */
+
+function setConnectionStatus(state){
+
+  connectionStatus.className = '';
+
+  if(state === 'online'){
+
+    connectionStatus.textContent =
+      '● オンライン';
+
+  }else if(state === 'unstable'){
+
+    connectionStatus.textContent =
+      '● 接続不安定';
+
+    connectionStatus.classList.add(
+      'unstable'
+    );
+
+  }else{
+
+    connectionStatus.textContent =
+      '● オフライン';
+
+    connectionStatus.classList.add(
+      'offline'
+    );
+  }
+
+  if(mapReady){
+    connectionStatus.style.display =
+      'block';
+  }
+}
+
+/* =========================================================
+   初期エラー
+========================================================= */
+
+function showInitialError(message){
+
+  loadingError = true;
+
+  initGeneration++;
+
+  if(initialDisplayTimer){
+
+    clearTimeout(
+      initialDisplayTimer
+    );
+
+    initialDisplayTimer = null;
+  }
+
+  mapElement.style.visibility =
+    'hidden';
+
+  infoPanel.style.visibility =
+    'hidden';
+
+  loading.style.display =
+    'flex';
+
+  loading.classList.remove(
+    'hide'
+  );
+
+  loadingSpinner.style.display =
+    'none';
+
+  loadingProgress.style.display =
+    'none';
+
+  loadingPercent.style.display =
+    'none';
+
+  loadingStatus.innerHTML =
+    message ||
+    '降水ナウキャストのデータがありません。<br>' +
+    'データがないか、通信に障害が発生しています。';
+
+  setConnectionStatus(
+    navigator.onLine
+      ? 'unstable'
+      : 'offline'
+  );
+}
+
+/* =========================================================
+   ローディング
+========================================================= */
+
+function showLoading(){
+
+  loadingError = false;
+
+  if(initialDisplayTimer){
+
+    clearTimeout(
+      initialDisplayTimer
+    );
+
+    initialDisplayTimer = null;
+  }
+
+  loading.style.display =
+    'flex';
+
+  loading.classList.remove(
+    'hide'
+  );
+
+  loadingSpinner.style.display =
+    'block';
+
+  loadingProgress.style.display =
+    'block';
+
+  loadingPercent.style.display =
+    'block';
+
+  loadingProgressBar.style.width =
+    '0%';
+
+  loadingPercent.textContent =
+    '0%';
+}
+
+function setLoading(
+  text,
+  percent
+){
+
+  if(loadingError) return;
+
+  if(!navigator.onLine){
+
+    if(!mapReady){
+
+      showInitialError(
+        'インターネットに接続されていません。<br>' +
+        '接続を確認しています…'
+      );
+    }
+
+    return;
+  }
+
+  loadingStatus.textContent =
+    text;
+
+  const value =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        percent
+      )
+    );
+
+  loadingProgressBar.style.width =
+    value + '%';
+
+  loadingPercent.textContent =
+    Math.round(value) + '%';
+}
+
+function showMapAfterLoading(){
+
+  if(
+    loadingError ||
+    !navigator.onLine
+  ){
+    return;
+  }
+
+  loadingProgressBar.style.width =
+    '100%';
+
+  loadingPercent.textContent =
+    '100%';
+
+  loadingStatus.textContent =
+    '地図の表示準備が完了しました';
+
+  if(initialDisplayTimer){
+
+    clearTimeout(
+      initialDisplayTimer
+    );
+
+    initialDisplayTimer = null;
+  }
+
+  initialDisplayTimer =
+    setTimeout(() => {
+
+      initialDisplayTimer = null;
+
+      if(
+        loadingError ||
+        !navigator.onLine
+      ){
+        return;
+      }
+
+      mapElement.style.visibility =
+        'visible';
+
+      infoPanel.style.visibility =
+        'visible';
+
+      mapReady = true;
+
+      connectionStatus.style.display =
+        'block';
+
+      setConnectionStatus(
+        'online'
+      );
+
+      requestAnimationFrame(() => {
+
+        map.resize();
+        map.triggerRepaint();
+
+      });
+
+      loading.classList.add(
+        'hide'
+      );
+
+      setTimeout(() => {
+
+        if(
+          !loadingError &&
+          navigator.onLine
+        ){
+          loading.style.display =
+            'none';
+        }
+
+      },300);
+
+    },50);
+}
+
+/* =========================================================
+   定数
+========================================================= */
+
+const NOWCAST_OPACITY = 0.55;
+
+const BASE_ZOOM = 8;
+const HIGH_ZOOM = 10;
+
+const TILE_SIZE = 256;
+
+const CONCURRENCY = 8;
+
+const TILE_TIMEOUT = 8000;
+
+/*
+ * 降水モザイク
+ */
+const TILE_X_MIN = 212;
+const TILE_X_MAX = 243;
+
+const TILE_Y_MIN = 92;
+const TILE_Y_MAX = 115;
+
+/*
+ * 重要:
+ * 元の256pxタイルを縮小しない。
+ */
+const NOWCAST_SCALE = 1;
+
+/*
+ * 衛星
+ */
+const SAT_ZOOM = 4;
+
+const SAT_SCALE =
+  Math.pow(
+    2,
+    SAT_ZOOM - 4
+  );
+
+const SAT_X_MIN =
+  11 * SAT_SCALE;
+
+const SAT_X_MAX =
+  19 * SAT_SCALE - 1;
+
+const SAT_Y_MIN =
+  1 * SAT_SCALE;
+
+const SAT_Y_MAX =
+  15 * SAT_SCALE - 1;
+
+/*
+ * 衛星も縮小しない。
+ */
+const SATELLITE_SCALE = 1;
+
+let latestTime1 = '';
+let latestTime2 = '';
+
+let previousTimestamp = '';
+
+let z10Generation = 0;
+
+let switchingToZ10 = false;
+
+let nowcastBusy = false;
+
+/* 衛星 */
+
+let latestSatValidTime = null;
+let latestSatBaseTime = null;
+
+let satChecking = false;
+
+/* =========================================================
+   現在地
+========================================================= */
+
+function updateUserLocation(){
+
+  if(!locationEnabled) return;
+
+  if(!navigator.geolocation) return;
+
+  navigator.geolocation.getCurrentPosition(
+
+    position => {
+
+      if(!locationEnabled) return;
+
+      const lng =
+        position.coords.longitude;
+
+      const lat =
+        position.coords.latitude;
+
+      if(
+        !Number.isFinite(lng) ||
+        !Number.isFinite(lat)
+      ){
+        return;
+      }
+
+      if(!locationMarker){
+
+        const element =
+          document.createElement(
+            'div'
+          );
+
+        element.className =
+          'user-location-marker';
+
+        locationMarker =
+          new maplibregl.Marker({
+            element:element,
+            anchor:'center'
+          })
+          .setLngLat([
+            lng,
+            lat
+          ])
+          .addTo(map);
+
+      }else{
+
+        locationMarker.setLngLat([
+          lng,
+          lat
+        ]);
+      }
+
+      if(locationFirstMove){
+
+        locationFirstMove = false;
+
+        map.flyTo({
+
+          center:[
+            lng,
+            lat
+          ],
+
+          zoom:10,
+
+          duration:1000
+
+        });
+      }
+
+    },
+
+    error => {
+
+      console.warn(
+        '位置情報取得エラー:',
+        error
+      );
+
+    },
+
+    {
+      enableHighAccuracy:true,
+      timeout:10000,
+      maximumAge:0
+    }
+  );
+}
+
+function startLocationTracking(){
+
+  if(locationEnabled) return;
+
+  if(!navigator.geolocation) return;
+
+  locationEnabled = true;
+
+  locationFirstMove = true;
+
+  locationBtn.classList.add(
+    'active'
+  );
+
+  updateUserLocation();
+
+  if(locationTimer){
+
+    clearInterval(
+      locationTimer
+    );
+  }
+
+  locationTimer =
+    setInterval(() => {
+
+      if(
+        locationEnabled &&
+        !document.hidden
+      ){
+        updateUserLocation();
+      }
+
+    },3000);
+}
+
+function stopLocationTracking(){
+
+  locationEnabled = false;
+
+  locationBtn.classList.remove(
+    'active'
+  );
+
+  if(locationTimer){
+
+    clearInterval(
+      locationTimer
+    );
+
+    locationTimer = null;
+  }
+}
+
+locationBtn.addEventListener(
+  'click',
+  () => {
+
+    if(locationEnabled){
+
+      stopLocationTracking();
+
+    }else{
+
+      startLocationTracking();
+    }
+  }
+);
+
+/* =========================================================
+   時刻
+========================================================= */
+
+function formatSatJST(
+  utcString
+){
+
+  const value =
+    String(utcString);
+
+  const date =
+    new Date(
+      Date.UTC(
+
+        Number(
+          value.slice(0,4)
+        ),
+
+        Number(
+          value.slice(4,6)
+        ) - 1,
+
+        Number(
+          value.slice(6,8)
+        ),
+
+        Number(
+          value.slice(8,10)
+        ),
+
+        Number(
+          value.slice(10,12)
+        )
+      )
+    );
+
+  date.setUTCHours(
+    date.getUTCHours() + 9
+  );
+
+  const m =
+    String(
+      date.getUTCMonth() + 1
+    ).padStart(2,'0');
+
+  const d =
+    String(
+      date.getUTCDate()
+    ).padStart(2,'0');
+
+  const h =
+    String(
+      date.getUTCHours()
+    ).padStart(2,'0');
+
+  const min =
+    String(
+      date.getUTCMinutes()
+    ).padStart(2,'0');
+
+  return (
+    `${date.getUTCFullYear()}/${m}/${d} ${h}:${min} JST`
+  );
+}
+
+/* =========================================================
+   座標
+========================================================= */
+
+function tileXToLng(
+  x,
+  z
+){
+
+  return (
+    x /
+    Math.pow(2,z)
+  ) * 360 - 180;
+}
+
+function tileYToLat(
+  y,
+  z
+){
+
+  const n =
+    Math.PI -
+    (
+      2 *
+      Math.PI *
+      y /
+      Math.pow(2,z)
+    );
+
+  return (
+    180 /
+    Math.PI
+  ) *
+  Math.atan(
+    0.5 *
+    (
+      Math.exp(n) -
+      Math.exp(-n)
+    )
+  );
+}
+
+function mosaicCoordinates(
+  xMin,
+  xMax,
+  yMin,
+  yMax,
+  z
+){
+
+  const w =
+    tileXToLng(
+      xMin,
+      z
+    );
+
+  const e =
+    tileXToLng(
+      xMax + 1,
+      z
+    );
+
+  const n =
+    tileYToLat(
+      yMin,
+      z
+    );
+
+  const s =
+    tileYToLat(
+      yMax + 1,
+      z
+    );
+
+  return [
+    [w,n],
+    [e,n],
+    [e,s],
+    [w,s]
+  ];
+}
+
+
+/* =========================================================
+   高画質モザイク
+========================================================= */
+
+function createMosaicRenderer(width, height){
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const gl = canvas.getContext('webgl', {
+    alpha:true, antialias:false, depth:false, stencil:false,
+    premultipliedAlpha:false, preserveDrawingBuffer:true
+  });
+  if(!gl) throw new Error('WebGLコンテキストを作成できません');
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  const fs = gl.createShader(gl.FRAGMENT_SHADER);
+  if(!vs || !fs) throw new Error('WebGLシェーダーを作成できません');
+  gl.shaderSource(vs, 'attribute vec2 p;attribute vec2 t;varying vec2 uv;void main(){gl_Position=vec4(p,0.0,1.0);uv=t;}');
+  gl.shaderSource(fs, 'precision mediump float;uniform sampler2D tex;varying vec2 uv;void main(){gl_FragColor=texture2D(tex,uv);}');
+  gl.compileShader(vs);
+  gl.compileShader(fs);
+  if(!gl.getShaderParameter(vs, gl.COMPILE_STATUS) || !gl.getShaderParameter(fs, gl.COMPILE_STATUS)){
+    throw new Error(gl.getShaderInfoLog(vs) || gl.getShaderInfoLog(fs) || 'シェーダーのコンパイルに失敗しました');
+  }
+  const program = gl.createProgram();
+  if(!program) throw new Error('WebGLプログラムを作成できません');
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if(!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program) || 'WebGLプログラムのリンクに失敗しました');
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  const buffer = gl.createBuffer();
+  const input = gl.createTexture();
+  const output = gl.createTexture();
+  const framebuffer = gl.createFramebuffer();
+  if(!buffer || !input || !output || !framebuffer) throw new Error('WebGL描画リソースを作成できません');
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  const p = gl.getAttribLocation(program, 'p');
+  const t = gl.getAttribLocation(program, 't');
+  gl.enableVertexAttribArray(p);
+  gl.enableVertexAttribArray(t);
+  gl.vertexAttribPointer(p, 2, gl.FLOAT, false, 16, 0);
+  gl.vertexAttribPointer(t, 2, gl.FLOAT, false, 16, 8);
+  gl.uniform1i(gl.getUniformLocation(program, 'tex'), 0);
+  gl.activeTexture(gl.TEXTURE0);
+  [input, output].forEach(texture => {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  });
+  gl.bindTexture(gl.TEXTURE_2D, output);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, output, 0);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('WebGLフレームバッファを初期化できません');
+  gl.viewport(0, 0, width, height);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  return {canvas, gl, width, height, program, buffer, input, output, framebuffer, p, t};
+}
+
+function renderMosaicQuad(renderer, vertices){
+  const gl = renderer.gl;
+  gl.bindBuffer(gl.ARRAY_BUFFER, renderer.buffer);
+  gl.vertexAttribPointer(renderer.p, 2, gl.FLOAT, false, 16, 0);
+  gl.vertexAttribPointer(renderer.t, 2, gl.FLOAT, false, 16, 8);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STREAM_DRAW);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function drawMosaicImage(renderer, image, x, y, size){
+  const gl = renderer.gl;
+  const left = -1 + 2 * x / renderer.width;
+  const right = -1 + 2 * (x + size) / renderer.width;
+  const top = 1 - 2 * y / renderer.height;
+  const bottom = 1 - 2 * (y + size) / renderer.height;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.framebuffer);
+  gl.viewport(0, 0, renderer.width, renderer.height);
+  gl.bindTexture(gl.TEXTURE_2D, renderer.input);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  gl.useProgram(renderer.program);
+  renderMosaicQuad(renderer, [left,top,0,1, left,bottom,0,0, right,top,1,1, right,bottom,1,0]);
+}
+
+function finishMosaicRenderer(renderer){
+  const gl = renderer.gl;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, renderer.width, renderer.height);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindTexture(gl.TEXTURE_2D, renderer.output);
+  gl.useProgram(renderer.program);
+  renderMosaicQuad(renderer, [-1,1,0,1, -1,-1,0,0, 1,1,1,1, 1,-1,1,0]);
+  gl.deleteBuffer(renderer.buffer);
+  gl.deleteTexture(renderer.input);
+  gl.deleteTexture(renderer.output);
+  gl.deleteFramebuffer(renderer.framebuffer);
+  gl.deleteProgram(renderer.program);
+  return renderer.canvas;
+}
+
+function disposeMosaicRenderer(renderer){
+  const gl = renderer.gl;
+  gl.deleteBuffer(renderer.buffer);
+  gl.deleteTexture(renderer.input);
+  gl.deleteTexture(renderer.output);
+  gl.deleteFramebuffer(renderer.framebuffer);
+  gl.deleteProgram(renderer.program);
+  const extension = gl.getExtension('WEBGL_lose_context');
+  if(extension) extension.loseContext();
+  renderer.canvas.width = 0;
+  renderer.canvas.height = 0;
+}
+
+async function buildMosaic(options){
+  const xMin = options.xMin;
+  const yMin = options.yMin;
+  const cols = options.xMax - xMin + 1;
+  const rows = options.yMax - yMin + 1;
+  const total = cols * rows;
+  const scale = options.scale === undefined ? 1 : options.scale;
+  const outputTileSize = TILE_SIZE * scale;
+  const probeCanvas = document.createElement('canvas');
+  const probeGL = probeCanvas.getContext('webgl', {alpha:true, antialias:false});
+  if(!probeGL){
+    console.error('WebGLモザイクを初期化できません: WebGL非対応');
+    return null;
+  }
+  const viewport = probeGL.getParameter(probeGL.MAX_VIEWPORT_DIMS);
+  const maxSize = Math.min(probeGL.getParameter(probeGL.MAX_TEXTURE_SIZE), viewport[0], viewport[1]);
+  const probeExtension = probeGL.getExtension('WEBGL_lose_context');
+  if(probeExtension) probeExtension.loseContext();
+  const tilesPerChunk = Math.floor(maxSize / outputTileSize);
+  if(tilesPerChunk < 1){
+    console.error('WebGLモザイクを初期化できません: タイルサイズが上限を超えています');
+    return null;
+  }
+  const chunks = [];
+  const renderers = [];
+  try{
+    for(let y = yMin; y <= options.yMax; y += tilesPerChunk){
+      for(let x = xMin; x <= options.xMax; x += tilesPerChunk){
+        const xMax = Math.min(options.xMax, x + tilesPerChunk - 1);
+        const yMax = Math.min(options.yMax, y + tilesPerChunk - 1);
+        const renderer = createMosaicRenderer((xMax - x + 1) * outputTileSize, (yMax - y + 1) * outputTileSize);
+        renderers.push(renderer);
+        chunks.push({xMin:x, xMax, yMin:y, yMax, renderer});
+      }
+    }
+  }catch(error){
+    console.error('WebGLフレームバッファ初期化エラー:', error);
+    renderers.forEach(disposeMosaicRenderer);
+    return null;
+  }
+  let next = 0;
+  let done = 0;
+  let loaded = 0;
+  const chunkColumns = Math.ceil(cols / tilesPerChunk);
+  const worker = async () => {
+    while(true){
+      const i = next++;
+      if(i >= total || !navigator.onLine) return;
+      const x = xMin + (i % cols);
+      const y = yMin + Math.floor(i / cols);
+      const chunk = chunks[Math.floor((y - yMin) / tilesPerChunk) * chunkColumns + Math.floor((x - xMin) / tilesPerChunk)];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TILE_TIMEOUT);
+      try{
+        const response = await fetch(options.urlFn(x, y), {signal:controller.signal, cache:'no-store'});
+        if(response.ok){
+          const blob = await response.blob();
+          let image;
+          if(window.createImageBitmap){
+            image = await createImageBitmap(blob, {colorSpaceConversion:'none', imageOrientation:'flipY', premultiplyAlpha:'none'});
+          }else{
+            const element = new Image();
+            const objectURL = URL.createObjectURL(blob);
+            try{
+              element.src = objectURL;
+              await new Promise((resolve, reject) => {
+                element.onload = resolve;
+                element.onerror = () => reject(new Error('タイル画像をデコードできません'));
+              });
+              image = element;
+            }finally{ URL.revokeObjectURL(objectURL); }
+          }
+          try{
+            if(image && image.width && image.height){
+              drawMosaicImage(chunk.renderer, image, (x - chunk.xMin) * outputTileSize, (y - chunk.yMin) * outputTileSize, outputTileSize);
+              loaded++;
+            }
+          }finally{
+            if(image && image.close) image.close();
+          }
+        }
+      }catch(error){
+        /* 取得失敗タイルは空白 */
+      }finally{
+        clearTimeout(timer);
+        done++;
+        if(options.onProgress && (done % 8 === 0 || done === total)) options.onProgress(done, total);
+      }
+    }
+  };
+  await Promise.all(Array.from({length:CONCURRENCY}, worker));
+  if(!navigator.onLine || loaded === 0){
+    renderers.forEach(disposeMosaicRenderer);
+    return null;
+  }
+  try{
+    return chunks.map(chunk => ({
+      canvas:finishMosaicRenderer(chunk.renderer),
+      coordinates:mosaicCoordinates(chunk.xMin, chunk.xMax, chunk.yMin, chunk.yMax, options.zoom)
+    }));
+  }catch(error){
+    console.error('WebGLモザイク描画エラー:', error);
+    renderers.forEach(disposeMosaicRenderer);
+    return null;
+  }
+}
+/* =========================================================
+   Canvasレイヤー
+========================================================= */
+
+let canvasSeq = 0;
+
+const activeCanvasLayers = {};
+
+function swapCanvasLayer(key, chunks, layerOptions, beforeId){
+  const n = ++canvasSeq;
+  const previous = activeCanvasLayers[key];
+  const layerIds = [];
+  const sourceIds = [];
+  const canvases = [];
+  const layers = map.getStyle().layers || [];
+  for(const layer of layers){
+    if(layer.id.startsWith(key + '-layer-') && map.getLayer(layer.id)) map.removeLayer(layer.id);
+  }
+  const sources = map.getStyle().sources || {};
+  for(const srcId in sources){
+    if(srcId.startsWith(key + '-src-') && map.getSource(srcId)) map.removeSource(srcId);
+  }
+  chunks.forEach((chunk, index) => {
+    const sourceId = key + '-src-' + n + '-' + index;
+    const layerId = key + '-layer-' + n + '-' + index;
+    map.addSource(sourceId, {type:'canvas', canvas:chunk.canvas, coordinates:chunk.coordinates, animate:false});
+    map.addLayer({
+      id:layerId, type:'raster', source:sourceId,
+      minzoom:layerOptions.minzoom, maxzoom:layerOptions.maxzoom,
+      paint:{'raster-opacity':layerOptions.opacity, 'raster-resampling':layerOptions.resampling, 'raster-fade-duration':0}
+    }, beforeId);
+    sourceIds.push(sourceId);
+    layerIds.push(layerId);
+    canvases.push(chunk.canvas);
+  });
+  if(previous) previous.canvases.forEach(canvas => {
+    const gl = canvas.getContext('webgl');
+    const extension = gl && gl.getExtension('WEBGL_lose_context');
+    if(extension) extension.loseContext();
+    canvas.width = 0;
+    canvas.height = 0;
+  });
+  activeCanvasLayers[key] = {sourceIds, layerIds, canvases};
+  map.triggerRepaint();
+}
+function activeLayerId(key){
+  const active = activeCanvasLayers[key];
+  if(!active) return null;
+  return active.layerIds.find(id => map.getLayer(id)) || null;
+}
+
+function setNowcastOpacity(value){
+  const active = activeCanvasLayers.nowcast;
+  if(!active) return;
+  active.layerIds.forEach(id => {
+    if(map.getLayer(id)) map.setPaintProperty(id, 'raster-opacity', value);
+  });
+}
+/* =========================================================
+   衛星
+========================================================= */
+
+async function getSatLatestTime(){
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      5000
+    );
+
+  try{
+
+    const response =
+      await fetch(
+
+        'https://www.jma.go.jp/bosai/himawari/data/satimg/targetTimes_fd.json?' +
+        APP_CACHE_BUSTER,
+
+        {
+          cache:'no-store',
+          signal:
+            controller.signal
+        }
+      );
+
+    if(!response.ok){
+
+      throw new Error(
+        'targetTimes_fd.json取得失敗'
+      );
+    }
+
+    const data =
+      await response.json();
+
+    if(
+      !Array.isArray(data) ||
+      data.length === 0
+    ){
+
+      throw new Error(
+        '時刻データがありません'
+      );
+    }
+
+    data.sort(
+      (a,b) =>
+        String(a.validtime)
+          .localeCompare(
+            String(b.validtime)
+          )
+    );
+
+    return data[
+      data.length - 1
+    ];
+
+  }finally{
+
+    clearTimeout(
+      timeout
+    );
+  }
+}
+
+function getSatelliteBeforeLayerId(){
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  const z10Layer =
+    layers.find(
+      layer =>
+        layer.id.startsWith(
+          'nowcast-z10-layer-'
+        )
+    );
+
+  if(z10Layer){
+    return z10Layer.id;
+  }
+
+  const nowcastId =
+    activeLayerId(
+      'nowcast'
+    );
+
+  if(nowcastId){
+    return nowcastId;
+  }
+
+  return 'jma-mask';
+}
+
+async function updateSatellite(){
+
+  if(satChecking) return;
+
+  if(!map.isStyleLoaded()) return;
+
+  if(!navigator.onLine){
+
+    setConnectionStatus(
+      'offline'
+    );
+
+    return;
+  }
+
+  satChecking = true;
+
+  try{
+
+    const target =
+      await getSatLatestTime();
+
+    const baseTime =
+      String(
+        target.basetime
+      );
+
+    const validTime =
+      String(
+        target.validtime
+      );
+
+    if(
+      latestSatValidTime ===
+        validTime &&
+      latestSatBaseTime ===
+        baseTime &&
+      activeLayerId(
+        'satellite'
+      )
+    ){
+      return;
+    }
+
+    const canvas =
+      await buildMosaic({
+
+        xMin:
+          SAT_X_MIN,
+
+        xMax:
+          SAT_X_MAX,
+
+        yMin:
+          SAT_Y_MIN,
+
+        yMax:
+          SAT_Y_MAX,
+
+        scale:
+          SATELLITE_SCALE,
+
+        zoom:
+          SAT_ZOOM,
+
+        urlFn:
+          (x,y) => {
+
+            const worldTiles =
+              Math.pow(
+                2,
+                SAT_ZOOM
+              );
+
+            const wx =
+              (
+                (
+                  x %
+                  worldTiles
+                ) +
+                worldTiles
+              ) %
+              worldTiles;
+
+            return (
+
+              'https://www.jma.go.jp/bosai/himawari/data/satimg/' +
+
+              baseTime +
+
+              '/fd/' +
+
+              validTime +
+
+              '/B13/TBB/' +
+
+              SAT_ZOOM +
+
+              '/' +
+
+              wx +
+
+              '/' +
+
+              y +
+
+              '.jpg?' +
+
+              APP_CACHE_BUSTER
+            );
+          }
+      });
+
+    if(!canvas){
+
+      throw new Error(
+        '衛星モザイク生成失敗'
+      );
+    }
+
+    swapCanvasLayer(
+
+      'satellite',
+
+      canvas,
+
+      {
+        minzoom:0,
+        maxzoom:19,
+        opacity:0.65,
+        resampling:'linear'
+      },
+
+      getSatelliteBeforeLayerId()
+    );
+
+    latestSatValidTime =
+      validTime;
+
+    latestSatBaseTime =
+      baseTime;
+
+    document.getElementById(
+      'sat-time'
+    ).textContent =
+      '衛星: ' +
+      formatSatJST(
+        validTime
+      );
+
+  }catch(error){
+
+    console.warn(
+      '衛星画像更新エラー:',
+      error
+    );
+
+    if(navigator.onLine){
+
+      setConnectionStatus(
+        'unstable'
+      );
+    }
+
+  }finally{
+
+    satChecking = false;
+  }
+}
+
+/* =========================================================
+   JMA通信速度チェック
+========================================================= */
+
+async function checkJMAConnection(){
+
+  if(!navigator.onLine){
+
+    setConnectionStatus(
+      'offline'
+    );
+
+    return false;
+  }
+
+  const start =
+    performance.now();
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      5000
+    );
+
+  try{
+
+    const response =
+      await fetch(
+
+        'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?' +
+        APP_CACHE_BUSTER,
+
+        {
+          cache:'no-store',
+          signal:
+            controller.signal
+        }
+      );
+
+    clearTimeout(
+      timeout
+    );
+
+    const elapsed =
+      performance.now() -
+      start;
+
+    if(!response.ok){
+
+      if(navigator.onLine){
+
+        setConnectionStatus(
+          'unstable'
+        );
+      }
+
+      return false;
+    }
+
+    setConnectionStatus(
+      elapsed >= 1000
+        ? 'unstable'
+        : 'online'
+    );
+
+    return true;
+
+  }catch(error){
+
+    clearTimeout(
+      timeout
+    );
+
+    setConnectionStatus(
+      navigator.onLine
+        ? 'unstable'
+        : 'offline'
+    );
+
+    return false;
+  }
+}
+
+function startConnectionMonitor(){
+
+  if(jmaConnectionTimer){
+
+    clearInterval(
+      jmaConnectionTimer
+    );
+  }
+
+  jmaConnectionTimer =
+    setInterval(
+      () => {
+        checkJMAConnection();
+      },
+      1000
+    );
+}
+
+/* =========================================================
+   最新時刻取得
+========================================================= */
+
+async function fetchLatestTimes(){
+
+  if(!navigator.onLine){
+
+    if(!mapReady){
+
+      showInitialError(
+        'インターネットに接続されていません。<br>' +
+        '接続を確認しています…'
+      );
+    }
+
+    return false;
+  }
+
+  const start =
+    performance.now();
+
+  const fail =
+    () => {
+
+      if(mapReady){
+
+        setConnectionStatus(
+          'unstable'
+        );
+
+      }else{
+
+        showInitialError();
+      }
+
+      return false;
+    };
+
+  try{
+
+    const response =
+      await fetch(
+
+        'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json?' +
+        APP_CACHE_BUSTER,
+
+        {
+          cache:'no-store'
+        }
+      );
+
+    const elapsed =
+      performance.now() -
+      start;
+
+    if(!response.ok){
+      return fail();
+    }
+
+    const data =
+      await response.json();
+
+    if(
+      !Array.isArray(data) ||
+      data.length === 0
+    ){
+      return fail();
+    }
+
+    const newTime1 =
+      data[0].basetime;
+
+    const newTime2 =
+      data[0].validtime;
+
+    if(
+      !newTime1 ||
+      !newTime2
+    ){
+      return fail();
+    }
+
+    const changed =
+      newTime1 !== latestTime1 ||
+      newTime2 !== latestTime2;
+
+    latestTime1 =
+      newTime1;
+
+    latestTime2 =
+      newTime2;
+
+    document.getElementById(
+      'nowcast-time'
+    ).textContent =
+      '降水: ' +
+      formatSatJST(
+        String(
+          newTime2
+        )
+      );
+
+    if(elapsed >= 1000){
+
+      setConnectionStatus(
+        'unstable'
+      );
+
+    }else if(mapReady){
+
+      setConnectionStatus(
+        'online'
+      );
+    }
+
+    return changed;
+
+  }catch(error){
+
+    console.warn(
+      'JMA時刻取得エラー:',
+      error
+    );
+
+    setConnectionStatus(
+      navigator.onLine
+        ? 'unstable'
+        : 'offline'
+    );
+
+    if(!mapReady){
+      showInitialError();
+    }
+
+    return false;
+  }
+}
+
+/* =========================================================
+   MapLibre
+========================================================= */
+
+const map =
+  new maplibregl.Map({
+
+    container:'map',
+
+    center:[
+      134.5,
+      34.5
+    ],
+
+    zoom:3.2,
+
+    minZoom:3,
+    maxZoom:13,
+
+    bearing:0,
+    pitch:0,
+
+    attributionControl:false,
+
+    antialias:false,
+
+    preserveDrawingBuffer:false,
+
+    fadeDuration:0,
+
+    style:{
+
+      version:8,
+
+      sources:{
+
+        'gsi-pale':{
+
+          type:'raster',
+
+          tiles:[
+
+            'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png?' +
+            APP_CACHE_BUSTER
+
+          ],
+
+          tileSize:256,
+
+          minzoom:0,
+          maxzoom:18,
+
+          attribution:
+            '© 国土地理院'
+        },
+
+        'jma-mask':{
+
+          type:'raster',
+
+          tiles:[
+
+            'https://www.jma.go.jp/bosai/jmatile/data/map/none/none/none/surf/mask/{z}/{x}/{y}.png?' +
+            APP_CACHE_BUSTER
+
+          ],
+
+          tileSize:256,
+
+          minzoom:0,
+          maxzoom:16
+        }
+      },
+
+      layers:[
+
+        {
+          id:'base',
+
+          type:'raster',
+
+          source:'gsi-pale',
+
+          minzoom:0,
+          maxzoom:18,
+
+          paint:{
+
+            'raster-opacity':1,
+
+            'raster-resampling':
+              'linear',
+
+            'raster-fade-duration':
+              0
+          }
+        },
+
+        {
+          id:'jma-mask',
+
+          type:'raster',
+
+          source:'jma-mask',
+
+          minzoom:0,
+          maxzoom:16,
+
+          paint:{
+
+            'raster-opacity':1,
+
+            'raster-saturation':-1,
+
+            'raster-resampling':
+              'nearest',
+
+            'raster-fade-duration':
+              0
+          }
+        }
+      ]
+    }
+  });
+
+/* =========================================================
+   降水タイルURL
+========================================================= */
+
+function jmaTileURL(
+  x,
+  y
+){
+
+  return (
+
+    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
+
+    latestTime1 +
+
+    '/none/' +
+
+    latestTime2 +
+
+    '/surf/hrpns/' +
+
+    BASE_ZOOM +
+
+    '/' +
+
+    x +
+
+    '/' +
+
+    y +
+
+    '.png?' +
+
+    APP_CACHE_BUSTER
+  );
+}
+
+/* =========================================================
+   降水モザイク
+========================================================= */
+
+async function createMosaic(){
+
+  if(
+    !latestTime1 ||
+    !latestTime2
+  ){
+    return null;
+  }
+
+  if(!navigator.onLine){
+
+    if(!mapReady){
+      showInitialError();
+    }
+
+    return null;
+  }
+
+  setLoading(
+    '降水タイルを読み込んでいます…',
+    10
+  );
+
+  const canvas =
+    await buildMosaic({
+
+      xMin:
+        TILE_X_MIN,
+
+      xMax:
+        TILE_X_MAX,
+
+      yMin:
+        TILE_Y_MIN,
+
+      yMax:
+        TILE_Y_MAX,
+
+      /*
+       * 256px → 128pxにしない。
+       */
+      scale:
+        NOWCAST_SCALE,
+
+      zoom:
+        BASE_ZOOM,
+
+      urlFn:
+        jmaTileURL,
+
+      onProgress:
+        (
+          done,
+          total
+        ) => {
+
+          setLoading(
+
+            `降水タイルを読み込み中… ${done}/${total}`,
+
+            10 +
+            (
+              done /
+              total
+            ) *
+            85
+          );
+        }
+    });
+
+  if(!canvas){
+
+    if(mapReady){
+
+      setConnectionStatus(
+        'unstable'
+      );
+
+    }else{
+
+      showInitialError();
+    }
+
+    return null;
+  }
+
+  return canvas;
+}
+
+/* =========================================================
+   Z10
+========================================================= */
+
+function getZ10BeforeLayerId(){
+
+  return undefined;
+}
+
+function addZ10Layer(
+  time1,
+  time2
+){
+
+  if(!navigator.onLine) return;
+
+  const generation =
+    ++z10Generation;
+
+  const sourceId =
+    'nowcast-z10-' +
+    generation;
+
+  const layerId =
+    'nowcast-z10-layer-' +
+    generation;
+
+  const url =
+
+    'https://www.jma.go.jp/bosai/jmatile/data/nowc/' +
+
+    time1 +
+
+    '/none/' +
+
+    time2 +
+
+    '/surf/hrpns/10/{x}/{y}.png?' +
+
+    APP_CACHE_BUSTER;
+
+  map.addSource(
+
+    sourceId,
+
+    {
+
+      type:'raster',
+
+      tiles:[
+        url
+      ],
+
+      tileSize:256,
+
+      minzoom:10,
+      maxzoom:10
+    }
+  );
+
+  map.addLayer(
+
+    {
+
+      id:layerId,
+
+      type:'raster',
+
+      source:sourceId,
+
+      minzoom:10,
+      maxzoom:14,
+
+      paint:{
+
+        'raster-opacity':
+          NOWCAST_OPACITY,
+
+        'raster-resampling':
+          'nearest',
+
+        'raster-fade-duration':
+          0
+      }
+
+    },
+
+    getZ10BeforeLayerId()
+  );
+
+  const checkLoaded =
+    () => {
+
+      if(
+        generation !==
+        z10Generation
+      ){
+        return;
+      }
+
+      if(!navigator.onLine){
+
+        setConnectionStatus(
+          'offline'
+        );
+
+        return;
+      }
+
+      if(
+        !map.getSource(
+          sourceId
+        )
+      ){
+        return;
+      }
+
+      if(
+        map.isSourceLoaded(
+          sourceId
+        )
+      ){
+
+        setNowcastOpacity(0);
+
+        const layers =
+          map.getStyle().layers ||
+          [];
+
+        for(
+          const layer of layers
+        ){
+
+          if(
+            layer.id.startsWith(
+              'nowcast-z10-layer-'
+            ) &&
+            layer.id !== layerId
+          ){
+
+            const oldSource =
+              layer.source;
+
+            if(
+              map.getLayer(
+                layer.id
+              )
+            ){
+
+              map.removeLayer(
+                layer.id
+              );
+            }
+
+            if(
+              oldSource &&
+              map.getSource(
+                oldSource
+              )
+            ){
+
+              map.removeSource(
+                oldSource
+              );
+            }
+          }
+        }
+
+        switchingToZ10 =
+          false;
+
+        map.triggerRepaint();
+
+        return;
+      }
+
+      requestAnimationFrame(
+        checkLoaded
+      );
+    };
+
+  requestAnimationFrame(
+    checkLoaded
+  );
+}
+
+/* =========================================================
+   ズーム
+========================================================= */
+
+function updateZoomLayers(){
+
+  if(!navigator.onLine){
+
+    setConnectionStatus(
+      'offline'
+    );
+
+    return;
+  }
+
+  const zoom =
+    map.getZoom();
+
+  if(
+    zoom >= HIGH_ZOOM
+  ){
+
+    const layers =
+      map.getStyle().layers ||
+      [];
+
+    const z10Exists =
+      layers.some(
+        layer =>
+          layer.id.startsWith(
+            'nowcast-z10-layer-'
+          )
+      );
+
+    if(
+      !z10Exists &&
+      !switchingToZ10 &&
+      latestTime1 &&
+      latestTime2
+    ){
+
+      switchingToZ10 =
+        true;
+
+      addZ10Layer(
+        latestTime1,
+        latestTime2
+      );
+    }
+
+    return;
+  }
+
+  setNowcastOpacity(
+    NOWCAST_OPACITY
+  );
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  for(
+    const layer of layers
+  ){
+
+    if(
+      layer.id.startsWith(
+        'nowcast-z10-layer-'
+      )
+    ){
+
+      const source =
+        layer.source;
+
+      if(
+        map.getLayer(
+          layer.id
+        )
+      ){
+
+        map.removeLayer(
+          layer.id
+        );
+      }
+
+      if(
+        source &&
+        map.getSource(
+          source
+        )
+      ){
+
+        map.removeSource(
+          source
+        );
+      }
+    }
+  }
+
+  switchingToZ10 =
+    false;
+
+  map.triggerRepaint();
+}
+
+map.on(
+  'zoom',
+  updateZoomLayers
+);
+
+/* =========================================================
+   ナウキャスト更新
+========================================================= */
+
+function getNowcastBeforeLayerId(){
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  const z10Layer =
+    layers.find(
+      layer =>
+        layer.id.startsWith(
+          'nowcast-z10-layer-'
+        )
+    );
+
+  if(z10Layer){
+    return z10Layer.id;
+  }
+
+  return undefined;
+}
+
+async function updateNowcastLayers(){
+
+  const canvas =
+    await createMosaic();
+
+  if(!canvas){
+    return false;
+  }
+
+  swapCanvasLayer(
+
+    'nowcast',
+
+    canvas,
+
+    {
+
+      minzoom:3,
+
+      maxzoom:10,
+
+      opacity:
+        NOWCAST_OPACITY,
+
+      resampling:
+        'nearest'
+    },
+
+    getNowcastBeforeLayerId()
+  );
+
+  if(
+    map.getZoom() >=
+    HIGH_ZOOM
+  ){
+
+    switchingToZ10 =
+      true;
+
+    addZ10Layer(
+      latestTime1,
+      latestTime2
+    );
+  }
+
+  return true;
+}
+
+async function checkNowcastUpdate(){
+
+  if(!mapReady) return;
+
+  if(nowcastBusy) return;
+
+  if(!navigator.onLine){
+
+    setConnectionStatus(
+      'offline'
+    );
+
+    return;
+  }
+
+  nowcastBusy = true;
+
+  try{
+
+    const changed =
+      await fetchLatestTimes();
+
+    if(!changed) return;
+
+    const timestamp =
+      latestTime1 +
+      '_' +
+      latestTime2;
+
+    if(
+      timestamp ===
+      previousTimestamp
+    ){
+      return;
+    }
+
+    previousTimestamp =
+      timestamp;
+
+    const ready =
+      await updateNowcastLayers();
+
+    if(ready){
+
+      checkJMAConnection();
+
+    }else if(
+      navigator.onLine
+    ){
+
+      setConnectionStatus(
+        'unstable'
+      );
+    }
+
+  }finally{
+
+    nowcastBusy = false;
+  }
+}
+
+/* =========================================================
+   初期化
+========================================================= */
+
+async function initialize(){
+
+  if(initializing){
+    return;
+  }
+
+  initializing = true;
+
+  const generation =
+    ++initGeneration;
+
+  showLoading();
+
+  if(!navigator.onLine){
+
+    showInitialError(
+      'インターネットに接続されていません。<br>' +
+      '接続を確認しています…'
+    );
+
+    initializing = false;
+
+    return;
+  }
+
+  setLoading(
+    '気象庁データの時刻を取得しています…',
+    3
+  );
+
+  /*
+   * 前回の時刻を明示的に破棄。
+   */
+  latestTime1 = '';
+  latestTime2 = '';
+  previousTimestamp = '';
+
+  latestSatValidTime = null;
+  latestSatBaseTime = null;
+
+  await fetchLatestTimes();
+
+  if(
+    generation !==
+      initGeneration ||
+    loadingError ||
+    !navigator.onLine ||
+    !latestTime1 ||
+    !latestTime2
+  ){
+
+    if(!mapReady){
+      showInitialError();
+    }
+
+    initializing = false;
+
+    return;
+  }
+
+  previousTimestamp =
+    latestTime1 +
+    '_' +
+    latestTime2;
+
+  const ready =
+    await updateNowcastLayers();
+
+  if(
+    generation !==
+      initGeneration ||
+    !ready ||
+    !navigator.onLine
+  ){
+
+    if(!mapReady){
+      showInitialError();
+    }
+
+    initializing = false;
+
+    return;
+  }
+
+  showMapAfterLoading();
+
+  initializing = false;
+
+  startConnectionMonitor();
+}
+
+/* =========================================================
+   オフライン
+========================================================= */
+
+window.addEventListener(
+  'offline',
+  () => {
+
+    setConnectionStatus(
+      'offline'
+    );
+
+    if(!mapReady){
+
+      showInitialError(
+        'インターネットに接続されていません。<br>' +
+        '接続を確認しています…'
+      );
+    }
+  }
+);
+
+/* =========================================================
+   オンライン復帰
+========================================================= */
+
+window.addEventListener(
+  'online',
+  () => {
+
+    if(mapReady){
+
+      checkJMAConnection();
+
+      updateSatellite();
+
+      checkNowcastUpdate();
+
+      if(locationEnabled){
+        updateUserLocation();
+      }
+
+      return;
+    }
+
+    if(!initializing){
+      initialize();
+    }
+  }
+);
+
+/* =========================================================
+   定期処理
+========================================================= */
+
+startConnectionMonitor();
+
+/*
+ * 降水 3秒
+ */
+nowcastTimer =
+  setInterval(
+    () => {
+
+      if(
+        mapReady &&
+        !document.hidden
+      ){
+
+        checkNowcastUpdate();
+      }
+
+    },
+    3000
+  );
+
+/*
+ * 衛星 30秒
+ */
+satelliteTimer =
+  setInterval(
+    () => {
+
+      if(
+        mapReady &&
+        !document.hidden
+      ){
+
+        updateSatellite();
+      }
+
+    },
+    30000
+  );
+
+/* =========================================================
+   時計
+========================================================= */
+
+function updateClock(){
+
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const hours =
+    String(
+      now.getHours()
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const minutes =
+    String(
+      now.getMinutes()
+    ).padStart(
+      2,
+      '0'
+    );
+
+  const seconds =
+    String(
+      now.getSeconds()
+    ).padStart(
+      2,
+      '0'
+    );
+
+  document.getElementById(
+    'clock'
+  ).textContent =
+    `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+setInterval(
+  updateClock,
+  1000
+);
+
+updateClock();
+
+/* =========================================================
+   MapLibreエラー
+========================================================= */
+
+map.on(
+  'error',
+  event => {
+
+    if(
+      event &&
+      event.error
+    ){
+
+      console.warn(
+        'MapLibre:',
+        event.error
+      );
+
+      setConnectionStatus(
+        navigator.onLine
+          ? 'unstable'
+          : 'offline'
+      );
+    }
+  }
+);
+
+/* =========================================================
+   初回ロード
+========================================================= */
+
+map.on(
+  'load',
+  () => {
+
+    /*
+     * 衛星と降水を初回から完全に新規取得。
+     */
+    updateSatellite();
+
+    initialize();
+  }
+);
+
+/* =========================================================
+   復帰
+========================================================= */
+
+document.addEventListener(
+  'visibilitychange',
+  () => {
+
+    if(
+      !document.hidden &&
+      mapReady
+    ){
+
+      updateSatellite();
+
+      checkNowcastUpdate();
+
+      checkJMAConnection();
+
+      if(locationEnabled){
+        updateUserLocation();
+      }
+
+      requestAnimationFrame(
+        () => {
+
+          map.resize();
+
+          map.triggerRepaint();
+
+        }
+      );
+    }
+  }
+);
+
+</script>
+</body>
+</html>
