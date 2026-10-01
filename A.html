@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>降水ナウキャスト</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="favicon.ico">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.css">
+
+<style>
+html,body{
+  width:100%;
+  height:100%;
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  background:#fff;
+}
+#map{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  visibility:hidden;
+  background:#fff;
+}
+.maplibregl-canvas{
+  image-rendering:auto;
+  transform:translateZ(0);
+}
+#loading{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#fff;
+  transition:opacity .25s ease;
+  font-family:Arial,sans-serif;
+}
+#loading.hide{ opacity:0; pointer-events:none; }
+.loading-box{ width:min(82vw,360px); text-align:center; }
+.loading-title{ font-size:20px; font-weight:bold; color:#222; margin-bottom:8px; }
+.loading-status{ min-height:22px; font-size:14px; color:#666; margin-bottom:18px; line-height:1.6; }
+.loading-spinner{
+  width:34px; height:34px; margin:0 auto 18px;
+  border:4px solid #e5e5e5; border-top-color:#1976d2; border-radius:50%;
+  animation:loading-spin .8s linear infinite;
+}
+@keyframes loading-spin{ to{transform:rotate(360deg)} }
+.loading-progress{ width:100%; height:5px; overflow:hidden; border-radius:10px; background:#e8e8e8; }
+.loading-progress-bar{ width:0%; height:100%; border-radius:10px; background:#1976d2; transition:width .1s ease; }
+.loading-percent{ margin-top:9px; font-size:12px; color:#888; }
+#connection-status{
+  position:fixed; top:10px; right:10px; z-index:5000; padding:6px 10px;
+  border-radius:14px; background:rgba(255,255,255,.88);
+  box-shadow:0 2px 6px rgba(0,0,0,.18); font-family:Arial,sans-serif; font-size:12px; font-weight:bold;
+  color:#16823b; pointer-events:none; display:none; white-space:nowrap;
+  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+}
+#connection-status.unstable{ color:#d88a00; }
+#connection-status.offline{ color:#d32f2f; }
+#info-panel{
+  position:absolute; top:10px; left:10px; background:rgba(255,255,255,.85);
+  padding:10px 14px; border-radius:6px; font-size:14px; font-family:Arial,sans-serif;
+  box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:1000; visibility:hidden; pointer-events:none;
+  transform:translateZ(0); line-height:1.5;
+}
+#clock{ font-weight:bold; }
+#sat-time,#nowcast-time{ margin-top:2px; }
+.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{ display:none !important; }
+
+#location-btn{
+  position:fixed; right:12px; bottom:12px; z-index:5000; width:52px; height:52px;
+  padding:0; border:0; border-radius:50%; background:rgba(255,255,255,.95);
+  box-shadow:0 2px 8px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center;
+  cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
+  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+  transition:background .15s ease,transform .15s ease;
+}
+#location-btn:active{ transform:scale(.92); }
+#location-btn.active{ background:#1976d2; }
+#location-btn svg{
+  width:25px; height:25px; display:block; fill:none; stroke:#333; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+#location-btn.active svg{ stroke:#fff; }
+.user-location-marker{
+  position:relative; width:18px; height:18px; border-radius:50%;
+  background:#1976d2; border:3px solid #fff;
+  box-shadow:0 0 0 2px rgba(25,118,210,.45), 0 2px 6px rgba(0,0,0,.35);
+}
+.user-location-marker::after{
+  content:""; position:absolute; left:50%; top:50%; width:6px; height:6px;
+  transform:translate(-50%,-50%); border-radius:50%; background:#fff;
+}
+</style>
+</head>
+
+<body>
+
+<div id="loading">
+  <div class="loading-box">
+    <div id="loading-spinner" class="loading-spinner"></div>
+    <div class="loading-title">降水ナウキャスト</div>
+    <div id="loading-status" class="loading-status">地図を準備しています…</div>
+    <div id="loading-progress" class="loading-progress">
+      <div id="loading-progress-bar" class="loading-progress-bar"></div>
+    </div>
+    <div id="loading-percent" class="loading-percent">0%</div>
+  </div>
+</div>
+
+<div id="connection-status">● オンライン</div>
+<div id="map"></div>
+
+<div id="info-panel">
+  <div id="clock">----/--/-- --:--:--</div>
+  <div id="sat-time">衛星: --</div>
+  <div id="nowcast-time">降水: --</div>
+</div>
+
+<button id="location-btn" type="button" aria-label="現在地を表示" title="現在地">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="7"></circle>
+    <line x1="12" y1="2" x2="12" y2="5"></line>
+    <line x1="12" y1="19" x2="12" y2="22"></line>
+    <line x1="2" y1="12" x2="5" y2="12"></line>
+    <line x1="19" y1="12" x2="22" y2="12"></line>
+  </svg>
+</button>
+
+<script src="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.js"></script>
+
+<script>
+const APP_BOOT_ID =
+  Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+
+const APP_CACHE_BUSTER =
+  'fresh=' + encodeURIComponent(APP_BOOT_ID);
+
+let loadingError = false;
+let mapReady = false;
+let initializing = false;
+let initGeneration = 0;
+
+let jmaConnectionTimer = null;
+let nowcastTimer = null;
+let satelliteTimer = null;
+let initialDisplayTimer = null;
+
+let locationMarker = null;
+let locationTimer = null;
+let locationEnabled = false;
+let locationFirstMove = true;
+
+const RETURN_RELOAD_TIME = 5 * 60 * 1000;
+let hiddenAt = null;
+let returnReloadTimer = null;
+
+function startReturnReloadTimer(){
+  if(returnReloadTimer){
+    clearTimeout(returnReloadTimer);
+    returnReloadTimer = null;
+  }
+  hiddenAt = Date.now();
+  returnReloadTimer = setTimeout(() => {
+    returnReloadTimer = null;
+    if(document.hidden){
+      window.location.reload();
+    }
+  }, RETURN_RELOAD_TIME);
+}
+
+function cancelReturnReloadTimer(){
+  if(returnReloadTimer){
+    clearTimeout(returnReloadTimer);
+    returnReloadTimer = null;
+  }
+  hiddenAt = null;
+}
+
+// DOM
+const loading = document.getElementById('loading');
+const loadingStatus = document.getElementById('loading-status');
+const loadingProgress = document.getElementById('loading-progress');
+const loadingProgressBar = document.getElementById('loading-progress-bar');
+const loadingPercent = document.getElementById('loading-percent');
+const loadingSpinner = document.getElementById('loading-spinner');
+const connectionStatus = document.getElementById('connection-status');
+const mapElement = document.getElementById('map');
+const infoPanel = document.getElementById('info-panel');
+const locationBtn = document.getElementById('location-btn');
+
+function forceMapRefresh(){
+  if(!window.map) return;
+
+  requestAnimationFrame(() => {
+    try{
+      if(typeof window.map.resize === 'function') window.map.resize();
+      if(typeof window.map.triggerRepaint === 'function') window.map.triggerRepaint();
+    }catch(e){}
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && window.map){
+    forceMapRefresh();
+  }
+});
+
+window.addEventListener('pageshow', (event) => {
+  if(!document.hidden && window.map){
+    forceMapRefresh();
+  }
+});
+
+window.addEventListener('focus', () => {
+  if(window.map){
+    forceMapRefresh();
+  }
+});
+
+function setConnectionStatus(state){
+  connectionStatus.className = '';
+
+  if(state === 'online'){
+    connectionStatus.textContent = '● オンライン';
+  }else if(state === 'unstable'){
+    connectionStatus.textContent = '● 接続不安定';
+    connectionStatus.classList.add('unstable');
+  }else{
+    connectionStatus.textContent = '● オフライン';
+    connectionStatus.classList.add('offline');
+  }
+
+  if(mapReady){
+    connectionStatus.style.display = 'block';
+  }
+}
+
+function showInitialError(message){
+  loadingError = true;
+  initGeneration++;
+
+  if(initialDisplayTimer){
+    clearTimeout(initialDisplayTimer);
+    initialDisplayTimer = null;
+  }
+
+  mapElement.style.visibility = 'hidden';
+  infoPanel.style.visibility = 'hidden';
+
+  loading.style.display = 'flex';
+  loading.classList.remove('hide');
+
+  loadingSpinner.style.display = 'none';
+  loadingProgress.style.display = 'none';
+  loadingPercent.style.display = 'none';
+
+  loadingStatus.innerHTML =
+    message || '降水ナウキャストのデータがありません。<br>' +
+    'データがないか、通信に障害が発生しています。';
+
+  setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
+}
+
+function showLoading(){
+  loadingError = false;
+  if(initialDisplayTimer){
+    clearTimeout(initialDisplayTimer);
+    initialDisplayTimer = null;
+  }
+
+  loading.style.display = 'flex';
+  loading.classList.remove('hide');
+  loadingSpinner.style.display = 'block';
+  loadingProgress.style.display = 'block';
+  loadingPercent.style.display = 'block';
+  loadingProgressBar.style.width = '0%';
+  loadingPercent.textContent = '0%';
+}
+
+function setLoading(text, percent){
+  if(loadingError) return;
+
+  if(!navigator.onLine){
+    if(!mapReady){
+      showInitialError('インターネットに接続されていません。<br>接続を確認しています…');
+    }
+    return;
+  }
+
+  loadingStatus.textContent = text;
+
+  const value = Math.max(0, Math.min(100, percent));
+  loadingProgressBar.style.width = value + '%';
+  loadingPercent.textContent = Math.round(value) + '%';
+}
+
+function showMapAfterLoading(){
+  if(loadingError || !navigator.onLine) return;
+
+  loadingProgressBar.style.width = '100%';
+  loadingPercent.textContent = '100%';
+  loadingStatus.textContent = '地図の表示準備が完了しました';
+
+  if(initialDisplayTimer){
+    clearTimeout(initialDisplayTimer);
+    initialDisplayTimer = null;
+  }
+
+  initialDisplayTimer = setTimeout(() => {
+    initialDisplayTimer = null;
+
+    if(loadingError || !navigator.onLine) return;
+
+    mapElement.style.visibility = 'visible';
+    infoPanel.style.visibility = 'visible';
+    mapReady = true;
+    connectionStatus.style.display = 'block';
+    setConnectionStatus('online');
+
+    forceMapRefresh();
+
+    loading.classList.add('hide');
+
+    setTimeout(() => {
+      if(!loadingError && navigator.onLine){
+        loading.style.display = 'none';
+      }
+    }, 300);
+
+  }, 50);
+}
+
+// ここから地図初期化の元のコードはそのまま残す
+// ただし、以前の「localStorage.clear / caches.clear / serviceWorker.unregister」を含む完全リセット処理は削除
+// 代わりに、ページ復帰時の再描画だけここで強制実行する
+
+// 例: 地図作成後に window.map = map; を追加
+// map = new maplibregl.Map({...});
+// window.map = map;
+
+</script>
+
+</body>
+</html>
