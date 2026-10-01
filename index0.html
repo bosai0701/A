@@ -954,3 +954,860 @@ function tileXToLng(
   x,
   z
 ){
+
+  return (
+    (x / Math.pow(2, z) - 0.5) * 360
+  );
+}
+
+function tileYToLat(
+  y,
+  z
+){
+
+  const n =
+    Math.PI -
+    (
+      2 * Math.PI * y
+    ) /
+    Math.pow(2, z);
+
+  return (
+    (
+      180 /
+      Math.PI *
+      Math.atan(
+        Math.sinh(n)
+      )
+    )
+  );
+}
+
+/* =========================================================
+   降水ナウキャスト
+========================================================= */
+
+let nowcastSources = {};
+
+function addNowcastSource(
+  sourceId,
+  urls
+){
+
+  if(
+    nowcastSources[sourceId]
+  ){
+    return;
+  }
+
+  nowcastSources[sourceId] = urls;
+
+  map.addSource(
+    sourceId,
+    {
+      type:'raster',
+      tiles:urls,
+      tileSize:256
+    }
+  );
+}
+
+function removeNowcastSource(
+  sourceId
+){
+
+  if(!nowcastSources[sourceId]){
+    return;
+  }
+
+  const layers =
+    map.getStyle().layers;
+
+  for(const layer of layers){
+
+    if(
+      layer.source === sourceId
+    ){
+
+      map.removeLayer(
+        layer.id
+      );
+    }
+  }
+
+  map.removeSource(
+    sourceId
+  );
+
+  delete nowcastSources[
+    sourceId
+  ];
+}
+
+function addNowcastLayer(
+  layerId,
+  sourceId,
+  zIndex
+){
+
+  const style =
+    map.getStyle();
+
+  if(!style) return;
+
+  const layers =
+    style.layers || [];
+
+  let insertBeforeId = null;
+
+  for(const layer of layers){
+
+    if(
+      layer.metadata &&
+      layer.metadata['layer-type'] ===
+      'boundary'
+    ){
+
+      insertBeforeId =
+        layer.id;
+
+      break;
+    }
+  }
+
+  if(
+    map.getLayer(
+      layerId
+    )
+  ){
+    map.removeLayer(
+      layerId
+    );
+  }
+
+  map.addLayer(
+    {
+      id:layerId,
+      type:'raster',
+      source:sourceId,
+      paint:{
+        'raster-opacity':
+          NOWCAST_OPACITY
+      }
+    },
+    insertBeforeId
+  );
+}
+
+let nowcastLoadingCount = 0;
+
+function loadNowcastTiles(
+  generation
+){
+
+  if(
+    nowcastBusy ||
+    generation !== z10Generation
+  ){
+    return;
+  }
+
+  nowcastBusy = true;
+
+  const now =
+    new Date();
+
+  const timestamp =
+    [
+      now.getUTCFullYear(),
+      String(
+        now.getUTCMonth() + 1
+      ).padStart(2,'0'),
+      String(
+        now.getUTCDate()
+      ).padStart(2,'0'),
+      String(
+        now.getUTCHours()
+      ).padStart(2,'0'),
+      String(
+        now.getUTCMinutes()
+      ).padStart(2,'0')
+    ]
+    .join('');
+
+  if(
+    previousTimestamp ===
+    timestamp
+  ){
+
+    nowcastBusy = false;
+
+    return;
+  }
+
+  previousTimestamp =
+    timestamp;
+
+  nowcastLoadingCount = 0;
+
+  setLoading(
+    '降水ナウキャストを読み込み中…',
+    10
+  );
+
+  (async () => {
+
+    try{
+
+      const urls = [];
+
+      for(
+        let x = TILE_X_MIN;
+        x <= TILE_X_MAX;
+        x++
+      ){
+
+        for(
+          let y = TILE_Y_MIN;
+          y <= TILE_Y_MAX;
+          y++
+        ){
+
+          const url =
+            `https://www.jma.go.jp/bosai/jmatile/data/nowc/${timestamp}/none/${HIGH_ZOOM}/${x}/${y}.png?${APP_CACHE_BUSTER}`;
+
+          urls.push({
+            url:url,
+            x:x,
+            y:y
+          });
+        }
+      }
+
+      const sourceId =
+        `nowcast-${timestamp}`;
+
+      const tileUrls =
+        urls.map(
+          item =>
+            item.url
+        );
+
+      addNowcastSource(
+        sourceId,
+        tileUrls
+      );
+
+      const layerId =
+        `nowcast-${timestamp}-layer`;
+
+      addNowcastLayer(
+        layerId,
+        sourceId,
+        0
+      );
+
+      latestTime1 =
+        timestamp;
+
+      const oldSourceId =
+        nowcastSources[
+          sourceId
+        ]
+          ? Object.keys(
+              nowcastSources
+            ).find(
+              id =>
+                id.startsWith(
+                  'nowcast-'
+                ) &&
+                id !== sourceId
+            )
+          : null;
+
+      if(oldSourceId){
+
+        removeNowcastSource(
+          oldSourceId
+        );
+      }
+
+      setLoading(
+        '降水ナウキャストを読み込み中…',
+        100
+      );
+
+      setTimeout(() => {
+
+        nowcastBusy = false;
+
+        if(
+          generation ===
+          z10Generation
+        ){
+          loadNowcastTiles(
+            generation
+          );
+        }
+
+      },60000);
+
+    }catch(e){
+
+      console.error(
+        '降水ナウキャスト読み込みエラー:',
+        e
+      );
+
+      nowcastBusy = false;
+
+      if(
+        generation ===
+        z10Generation
+      ){
+
+        setTimeout(() => {
+
+          loadNowcastTiles(
+            generation
+          );
+
+        },10000);
+      }
+    }
+
+  })();
+}
+
+/* =========================================================
+   気象衛星
+========================================================= */
+
+let satelliteSources = {};
+
+function addSatelliteSource(
+  sourceId,
+  urls
+){
+
+  if(
+    satelliteSources[sourceId]
+  ){
+    return;
+  }
+
+  satelliteSources[sourceId] =
+    urls;
+
+  map.addSource(
+    sourceId,
+    {
+      type:'raster',
+      tiles:urls,
+      tileSize:256
+    }
+  );
+}
+
+function removeSatelliteSource(
+  sourceId
+){
+
+  if(
+    !satelliteSources[sourceId]
+  ){
+    return;
+  }
+
+  const layers =
+    map.getStyle().layers;
+
+  for(const layer of layers){
+
+    if(
+      layer.source === sourceId
+    ){
+
+      map.removeLayer(
+        layer.id
+      );
+    }
+  }
+
+  map.removeSource(
+    sourceId
+  );
+
+  delete satelliteSources[
+    sourceId
+  ];
+}
+
+function addSatelliteLayer(
+  layerId,
+  sourceId
+){
+
+  const style =
+    map.getStyle();
+
+  if(!style) return;
+
+  const layers =
+    style.layers || [];
+
+  let insertBeforeId = null;
+
+  for(const layer of layers){
+
+    if(
+      layer.metadata &&
+      (
+        layer.metadata[
+          'layer-type'
+        ] ===
+        'nowcast' ||
+        layer.metadata[
+          'layer-type'
+        ] ===
+        'boundary'
+      )
+    ){
+
+      insertBeforeId =
+        layer.id;
+
+      break;
+    }
+  }
+
+  if(
+    map.getLayer(
+      layerId
+    )
+  ){
+    map.removeLayer(
+      layerId
+    );
+  }
+
+  map.addLayer(
+    {
+      id:layerId,
+      type:'raster',
+      source:sourceId,
+      paint:{
+        'raster-opacity':0.5
+      }
+    },
+    insertBeforeId
+  );
+}
+
+let satLoadingCount = 0;
+
+function loadSatelliteTiles(){
+
+  if(satChecking) return;
+
+  satChecking = true;
+
+  setLoading(
+    '気象衛星画像を確認中…',
+    5
+  );
+
+  (async () => {
+
+    try{
+
+      const validTimesUrl =
+        'https://www.jma.go.jp/bosai/jmatile/data/sat/20220801_0900/targetTimes_nHem.json';
+
+      const resp =
+        await fetch(
+          validTimesUrl +
+          '?' +
+          APP_CACHE_BUSTER
+        );
+
+      if(!resp.ok){
+
+        throw new Error(
+          `Failed to fetch valid times: ${resp.status}`
+        );
+      }
+
+      const data =
+        await resp.json();
+
+      if(
+        !Array.isArray(
+          data.ValidTimes
+        )
+      ){
+
+        throw new Error(
+          'Invalid response format'
+        );
+      }
+
+      const latestTime =
+        data.ValidTimes[
+          data.ValidTimes.length - 1
+        ];
+
+      if(
+        !latestTime ||
+        typeof latestTime !==
+        'string'
+      ){
+
+        throw new Error(
+          'No valid time available'
+        );
+      }
+
+      latestSatValidTime =
+        latestTime;
+
+      latestSatBaseTime =
+        '20220801_0900';
+
+      setLoading(
+        '気象衛星画像を読み込み中…',
+        10
+      );
+
+      const urls = [];
+
+      for(
+        let x = SAT_X_MIN;
+        x <= SAT_X_MAX;
+        x++
+      ){
+
+        for(
+          let y = SAT_Y_MIN;
+          y <= SAT_Y_MAX;
+          y++
+        ){
+
+          const url =
+            `https://www.jma.go.jp/bosai/jmatile/data/sat/${latestSatBaseTime}/${latestSatValidTime}/${SAT_ZOOM}/${x}/${y}.png?${APP_CACHE_BUSTER}`;
+
+          urls.push(url);
+        }
+      }
+
+      const sourceId =
+        `satellite-${latestSatValidTime}`;
+
+      addSatelliteSource(
+        sourceId,
+        urls
+      );
+
+      const layerId =
+        `satellite-${latestSatValidTime}-layer`;
+
+      addSatelliteLayer(
+        layerId,
+        sourceId
+      );
+
+      latestTime2 =
+        latestSatValidTime;
+
+      const oldSourceId =
+        Object.keys(
+          satelliteSources
+        ).find(
+          id =>
+            id.startsWith(
+              'satellite-'
+            ) &&
+            id !== sourceId
+        );
+
+      if(oldSourceId){
+
+        removeSatelliteSource(
+          oldSourceId
+        );
+      }
+
+      setLoading(
+        '気象衛星画像を読み込み中…',
+        100
+      );
+
+      satChecking = false;
+
+      if(satelliteTimer){
+
+        clearTimeout(
+          satelliteTimer
+        );
+      }
+
+      satelliteTimer =
+        setTimeout(() => {
+
+          loadSatelliteTiles();
+
+        },60000);
+
+    }catch(e){
+
+      console.error(
+        '気象衛星読み込みエラー:',
+        e
+      );
+
+      satChecking = false;
+
+      if(satelliteTimer){
+
+        clearTimeout(
+          satelliteTimer
+        );
+      }
+
+      satelliteTimer =
+        setTimeout(() => {
+
+          loadSatelliteTiles();
+
+        },30000);
+    }
+
+  })();
+}
+
+/* =========================================================
+   境界線
+========================================================= */
+
+let boundarySources = {};
+
+function loadBoundaryTiles(){
+
+  if(
+    boundarySources.boundary
+  ){
+    return;
+  }
+
+  const urls = [];
+
+  for(
+    let x = TILE_X_MIN;
+    x <= TILE_X_MAX;
+    x++
+  ){
+
+    for(
+      let y = TILE_Y_MIN;
+      y <= TILE_Y_MAX;
+      y++
+    ){
+
+      const url =
+        `https://www.jma.go.jp/bosai/jmatile/data/jikei_100000_wnull/2023010100000000/12/${x}/${y}.png?${APP_CACHE_BUSTER}`;
+
+      urls.push(url);
+    }
+  }
+
+  boundarySources.boundary = urls;
+
+  map.addSource(
+    'boundary',
+    {
+      type:'raster',
+      tiles:urls,
+      tileSize:256
+    }
+  );
+
+  map.addLayer(
+    {
+      id:'boundary-layer',
+      type:'raster',
+      source:'boundary',
+      paint:{
+        'raster-opacity':1
+      }
+    }
+  );
+}
+
+/* =========================================================
+   マ��プ初期化
+========================================================= */
+
+let map;
+
+(async () => {
+
+  try{
+
+    showLoading();
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          100
+        )
+    );
+
+    map =
+      new maplibregl.Map({
+        container:'map',
+        style:'https://maps.gsi.go.jp/xyz/pale/style.json',
+        center:[
+          137.7,
+          35.7
+        ],
+        zoom:BASE_ZOOM,
+        attributionControl:false
+      });
+
+    map.on(
+      'load',
+      () => {
+
+        document.addEventListener(
+          'visibilitychange',
+          () => {
+
+            if(
+              document.hidden
+            ){
+
+              startReturnReloadTimer();
+
+            }else{
+
+              cancelReturnReloadTimer();
+
+            }
+          }
+        );
+
+        document.addEventListener(
+          'visibilitychange',
+          () => {
+
+            if(
+              !document.hidden
+            ){
+
+              const currentZoom =
+                map.getZoom();
+
+              if(
+                currentZoom >= HIGH_ZOOM
+              ){
+
+                if(
+                  z10Generation > 0
+                ){
+
+                  loadNowcastTiles(
+                    z10Generation
+                  );
+                }
+
+                loadSatelliteTiles();
+
+              }
+            }
+          }
+        );
+
+        loadBoundaryTiles();
+
+        loadSatelliteTiles();
+
+        map.on(
+          'zoom',
+          () => {
+
+            const currentZoom =
+              map.getZoom();
+
+            if(
+              currentZoom >= HIGH_ZOOM &&
+              !switchingToZ10
+            ){
+
+              if(
+                z10Generation === 0
+              ){
+
+                z10Generation = 1;
+
+              }else{
+
+                z10Generation++;
+              }
+
+              switchingToZ10 = true;
+
+              loadNowcastTiles(
+                z10Generation
+              );
+
+              setTimeout(() => {
+
+                switchingToZ10 = false;
+
+              },1000);
+
+            }
+          }
+        );
+
+        showMapAfterLoading();
+
+      }
+    );
+
+    map.on(
+      'error',
+      event => {
+
+        console.error(
+          'Map error:',
+          event
+        );
+
+        showInitialError(
+          'マップ読み込みエラーが発生しました。<br>' +
+          '画面をリロードしてください。'
+        );
+      }
+    );
+
+  }catch(e){
+
+    console.error(
+      'Failed to initialize map:',
+      e
+    );
+
+    showInitialError(
+      'マップ初期化に失敗しました。<br>' +
+      '画面をリロードしてください。'
+    );
+  }
+
+})();
+
+</script>
+
+</body>
+</html>
