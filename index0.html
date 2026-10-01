@@ -389,10 +389,6 @@ function startReturnReloadTimer(){
 
         returnReloadTimer = null;
 
-        /*
-         * タイマー実行時点でも非表示ならリロード。
-         * すでに表示中なら、復帰時の処理に任せる。
-         */
         if(document.hidden){
 
           window.location.reload();
@@ -1080,7 +1076,9 @@ function mosaicCoordinates(
 ========================================================= */
 
 function createMosaicRenderer(width, height){
-  const canvas = document.createElement('canvas');
+
+  const canvas =
+    document.createElement('canvas');
 
   canvas.width = width;
   canvas.height = height;
@@ -2390,7 +2388,14 @@ function getSatelliteBeforeLayerId(){
   return 'jma-mask';
 }
 
-async function updateSatellite(){
+/* =========================================================
+   衛星更新
+   force=true:
+   ページ復帰・BFCache復帰・通信復帰時に
+   同じ時刻でもWebGL Canvasを再生成する
+========================================================= */
+
+async function updateSatellite(force = false){
 
   if(satChecking) return;
 
@@ -2422,7 +2427,16 @@ async function updateSatellite(){
         target.validtime
       );
 
+    /*
+     * 通常時は同じ衛星時刻なら更新しない。
+     *
+     * force=true の場合は、
+     * ブラウザがバックグラウンド中に
+     * WebGL Canvasを破棄している可能性があるため、
+     * 同じ時刻でも必ず再生成する。
+     */
     if(
+      !force &&
       latestSatValidTime ===
         validTime &&
       latestSatBaseTime ===
@@ -2435,7 +2449,7 @@ async function updateSatellite(){
       return;
     }
 
-    const canvas =
+    const chunks =
       await buildMosaic({
 
         xMin:
@@ -2504,18 +2518,22 @@ async function updateSatellite(){
           }
       });
 
-    if(!canvas){
+    if(!chunks){
 
       throw new Error(
         '衛星モザイク生成失敗'
       );
     }
 
+    /*
+     * 新しいCanvasを生成してからレイヤーを交換。
+     * 古いCanvasはswapCanvasLayer()側で破棄する。
+     */
     swapCanvasLayer(
 
       'satellite',
 
-      canvas,
+      chunks,
 
       {
         minzoom:0,
@@ -2540,6 +2558,8 @@ async function updateSatellite(){
       formatSatJST(
         validTime
       );
+
+    map.triggerRepaint();
 
   }catch(error){
 
@@ -3614,7 +3634,11 @@ window.addEventListener(
 
       checkJMAConnection();
 
-      updateSatellite();
+      /*
+       * 通信復帰時も衛星Canvasを強制再生成。
+       * 同じ衛星時刻でも古いWebGL Canvasを再利用しない。
+       */
+      updateSatellite(true);
 
       checkNowcastUpdate();
 
@@ -3808,7 +3832,15 @@ document.addEventListener(
 
     if(mapReady){
 
-      updateSatellite();
+      /*
+       * ここが今回の重要な修正。
+       *
+       * 数分間サイトを離れている間にブラウザが
+       * 衛星CanvasのWebGLコンテキストを破棄しても、
+       * 同じ時刻だから更新不要とはせず、
+       * 新しい衛星Canvasを強制的に作り直す。
+       */
+      updateSatellite(true);
 
       checkNowcastUpdate();
 
@@ -3828,6 +3860,47 @@ document.addEventListener(
         }
       );
     }
+  }
+);
+
+/* =========================================================
+   ページ復帰
+   BFCache等から戻った場合にも衛星を再生成
+========================================================= */
+
+window.addEventListener(
+  'pageshow',
+  event => {
+
+    if(!mapReady) return;
+
+    if(!navigator.onLine){
+
+      setConnectionStatus(
+        'offline'
+      );
+
+      return;
+    }
+
+    /*
+     * pageshow直後はブラウザの描画/GPU復帰が
+     * 完了していない場合があるため1フレーム待つ。
+     */
+    requestAnimationFrame(
+      () => {
+
+        map.resize();
+
+        map.triggerRepaint();
+
+        /*
+         * 同じ衛星時刻でもCanvasを再生成する。
+         */
+        updateSatellite(true);
+
+      }
+    );
   }
 );
 
