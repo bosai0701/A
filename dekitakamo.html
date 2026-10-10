@@ -743,6 +743,9 @@ const SAT_Y_MAX =
 
 const SATELLITE_SCALE = 1;
 
+/* z10レイヤー待機中の不可視値（0だと描画スキップされるため微小値） */
+const Z10_HIDDEN_OPACITY = 0.001;
+
 let latestTime1 = '';
 let latestTime2 = '';
 
@@ -2185,6 +2188,11 @@ function swapCanvasLayer(
             'raster-opacity':
               layerOptions.opacity,
 
+            'raster-opacity-transition':{
+              duration:0,
+              delay:0
+            },
+
             'raster-resampling':
               layerOptions.resampling,
 
@@ -3115,11 +3123,86 @@ async function createMosaic(){
 
 /* =========================================================
    Z10
+   - z8モザイクは高ズームでも残す（maxzoom:14）
+   - z10タイルは不可視で先読みし、全タイル読込完了後に
+     同一フレームで z10 表示 / z8 非表示 に切り替える
+   → ズーム切替時に一瞬消えない
 ========================================================= */
 
 function getZ10BeforeLayerId(){
 
   return undefined;
+}
+
+function z10LayerExists(){
+
+  const layers =
+    map.getStyle().layers ||
+    [];
+
+  return layers.some(
+    layer =>
+      layer.id.startsWith(
+        'nowcast-z10-layer-'
+      )
+  );
+}
+
+/* 現在表示範囲のz10タイルが全て読み込み済みか */
+function isZ10SourceReady(
+  sourceId
+){
+
+  try{
+
+    if(
+      !map.isSourceLoaded(
+        sourceId
+      )
+    ){
+      return false;
+    }
+
+    const sourceCache =
+      map.style &&
+      map.style.sourceCaches &&
+      map.style.sourceCaches[
+        sourceId
+      ];
+
+    if(!sourceCache){
+      return true;
+    }
+
+    const ids =
+      sourceCache.getIds();
+
+    if(!ids.length){
+      return false;
+    }
+
+    return ids.every(
+      id => {
+
+        const tile =
+          sourceCache._tiles[id];
+
+        return (
+          tile &&
+          (
+            tile.state === 'loaded' ||
+            tile.state === 'errored'
+          )
+        );
+      }
+    );
+
+  }catch(e){
+
+    return map.isSourceLoaded(
+      sourceId
+    );
+  }
 }
 
 function addZ10Layer(
@@ -3189,7 +3272,12 @@ function addZ10Layer(
       paint:{
 
         'raster-opacity':
-          NOWCAST_OPACITY,
+          Z10_HIDDEN_OPACITY,
+
+        'raster-opacity-transition':{
+          duration:0,
+          delay:0
+        },
 
         'raster-resampling':
           'nearest',
@@ -3202,6 +3290,8 @@ function addZ10Layer(
 
     getZ10BeforeLayerId()
   );
+
+  let frames = 0;
 
   const checkLoaded =
     () => {
@@ -3225,16 +3315,29 @@ function addZ10Layer(
       if(
         !map.getSource(
           sourceId
+        ) ||
+        !map.getLayer(
+          layerId
         )
       ){
         return;
       }
 
+      frames++;
+
       if(
-        map.isSourceLoaded(
+        frames >= 3 &&
+        isZ10SourceReady(
           sourceId
         )
       ){
+
+        /* 同一フレームで入れ替え */
+        map.setPaintProperty(
+          layerId,
+          'raster-opacity',
+          NOWCAST_OPACITY
+        );
 
         setNowcastOpacity(0);
 
@@ -3289,6 +3392,8 @@ function addZ10Layer(
         return;
       }
 
+      map.triggerRepaint();
+
       requestAnimationFrame(
         checkLoaded
       );
@@ -3321,17 +3426,8 @@ function updateZoomLayers(){
     zoom >= HIGH_ZOOM
   ){
 
-    const layers =
-      map.getStyle().layers ||
-      [];
-
     const z10Exists =
-      layers.some(
-        layer =>
-          layer.id.startsWith(
-            'nowcast-z10-layer-'
-          )
-      );
+      z10LayerExists();
 
     if(
       !z10Exists &&
@@ -3352,6 +3448,7 @@ function updateZoomLayers(){
     return;
   }
 
+  /* z8モザイクを先に復帰させてからz10を撤去 */
   setNowcastOpacity(
     NOWCAST_OPACITY
   );
@@ -3401,6 +3498,8 @@ function updateZoomLayers(){
   switchingToZ10 =
     false;
 
+  z10Generation++;
+
   map.triggerRepaint();
 }
 
@@ -3443,6 +3542,11 @@ async function updateNowcastLayers(){
     return false;
   }
 
+  /* z10が表示中なら新モザイクは非表示で差し替え（二重表示防止） */
+  const z10Showing =
+    z10LayerExists() &&
+    map.getZoom() >= HIGH_ZOOM;
+
   swapCanvasLayer(
 
     'nowcast',
@@ -3453,10 +3557,12 @@ async function updateNowcastLayers(){
 
       minzoom:3,
 
-      maxzoom:10,
+      maxzoom:14,
 
       opacity:
-        NOWCAST_OPACITY,
+        z10Showing
+          ? 0
+          : NOWCAST_OPACITY,
 
       resampling:
         'nearest'
