@@ -2370,34 +2370,40 @@ async function getSatLatestTime(){
   }
 }
 
-function getSatelliteBeforeLayerId(){
+/* =========================================================
+   レイヤー順序（境界線が消える問題の修正）
+   下から: base → 衛星 → jma-mask(境界線) → 降水(z8) → 降水(z10)
+   - 衛星は常に jma-mask の「下」に挿入する
+   - jma-mask は常に最下位の降水レイヤーの「下」に挿入する
+========================================================= */
+
+/* 降水レイヤー(z8 / z10)のうち最も下にあるレイヤーID */
+function getFirstNowcastLayerId(){
 
   const layers =
     map.getStyle().layers ||
     [];
 
-  const z10Layer =
+  const target =
     layers.find(
       layer =>
         layer.id.startsWith(
-          'nowcast-z10-layer-'
+          'nowcast-'
         )
     );
 
-  if(z10Layer){
-    return z10Layer.id;
+  return target
+    ? target.id
+    : undefined;
+}
+
+function getSatelliteBeforeLayerId(){
+
+  if(map.getLayer('jma-mask')){
+    return 'jma-mask';
   }
 
-  const nowcastId =
-    activeLayerId(
-      'nowcast'
-    );
-
-  if(nowcastId){
-    return nowcastId;
-  }
-
-  return 'jma-mask';
+  return getFirstNowcastLayerId();
 }
 
 /* =========================================================
@@ -2953,7 +2959,7 @@ const map =
 /* =========================================================
    JMAマスク再生成（境界線が消えるのを防ぐ）
    - page hidden / visible で必ず再生成
-   - addLayer(..., undefined) で base の上に固定
+   - 最下位の降水レイヤーの直下に挿入（衛星の上・降水の下）
 ========================================================= */
 
 function rebuildJmaMask() {
@@ -2993,7 +2999,7 @@ function rebuildJmaMask() {
       'raster-resampling': 'nearest',
       'raster-fade-duration': 0
     }
-  }, undefined);
+  }, getFirstNowcastLayerId());
 
   map.triggerRepaint();
 }
