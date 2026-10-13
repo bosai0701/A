@@ -167,6 +167,45 @@ html,body{
   display:none !important;
 }
 
+/* 追加：ホームボタン */
+#home-btn{
+  position:fixed;
+  right:12px;
+  bottom:74px;
+  z-index:5000;
+  width:52px;
+  height:52px;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:rgba(255,255,255,.95);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  transition:background .15s ease,transform .15s ease;
+}
+
+#home-btn:active{
+  transform:scale(.92);
+}
+
+#home-btn svg{
+  width:25px;
+  height:25px;
+  display:block;
+  fill:none;
+  stroke:#333;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
 #location-btn{
   position:fixed;
   right:12px;
@@ -264,6 +303,20 @@ html,body{
   <div id="sat-time">衛星: --</div>
   <div id="nowcast-time">降水: --</div>
 </div>
+
+<!-- 追加：初期位置へ戻るホームボタン -->
+<button
+  id="home-btn"
+  type="button"
+  aria-label="初期位置に戻る"
+  title="ホーム"
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 10.5L12 3l9 7.5"></path>
+    <path d="M5.5 9.5V21h13V9.5"></path>
+    <path d="M9.5 21v-7h5v7"></path>
+  </svg>
+</button>
 
 <button
   id="location-btn"
@@ -447,6 +500,9 @@ const infoPanel =
 
 const locationBtn =
   document.getElementById('location-btn');
+
+const homeBtn =
+  document.getElementById('home-btn');
 
 /* =========================================================
    接続状態
@@ -929,6 +985,37 @@ locationBtn.addEventListener(
     }
   }
 );
+
+/* =========================================================
+   追加：ホームボタン
+   現在地の追跡状態は変更せず、初期表示位置へ戻す
+========================================================= */
+
+const HOME_CENTER = [134.5, 34.5];
+const HOME_ZOOM = 3.2;
+
+homeBtn.addEventListener('click', () => {
+
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+
+  const alreadyHome =
+    Math.abs(center.lng - HOME_CENTER[0]) < 0.000001 &&
+    Math.abs(center.lat - HOME_CENTER[1]) < 0.000001 &&
+    Math.abs(zoom - HOME_ZOOM) < 0.0001 &&
+    Math.abs(map.getBearing()) < 0.0001 &&
+    Math.abs(map.getPitch()) < 0.0001;
+
+  if (alreadyHome) return;
+
+  map.flyTo({
+    center: HOME_CENTER,
+    zoom: HOME_ZOOM,
+    bearing: 0,
+    pitch: 0,
+    duration: 800
+  });
+});
 
 /* =========================================================
    時刻
@@ -3554,11 +3641,6 @@ function updateZoomLayers(){
 
   map.triggerRepaint();
 }
-
-map.on(
-  'zoom',
-  updateZoomLayers
-);
 
 /* =========================================================
    ナウキャスト更新
