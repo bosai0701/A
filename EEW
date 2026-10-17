@@ -1,0 +1,649 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#080d18">
+<title>JMA EEW | Earthquake Monitor</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #080d18;
+  --panel: #101827;
+  --panel2: #141f31;
+  --border: #263449;
+  --text: #f1f5f9;
+  --muted: #8ea0b8;
+  --red: #ff4058;
+  --orange: #ffad42;
+  --green: #36dfaa;
+  --blue: #63b3ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 50% -15%, #1b3150 0, transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
+  font-size: 14px;
+}
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.wrap { max-width: 1440px; margin: auto; padding: 20px; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 16px; margin-bottom: 20px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-icon {
+  width: 46px; height: 46px; border-radius: 14px;
+  display: grid; place-items: center;
+  color: white; background: linear-gradient(135deg,#ff4058,#d51f47);
+  font-size: 24px; box-shadow: 0 5px 24px #ff405826;
+}
+.brand h1 { font-size: 19px; margin: 0; letter-spacing: .04em; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.connection {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 99px;
+  padding: 9px 13px; background: #101827;
+  color: var(--muted); font-size: 12px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+.dot.online { background: var(--green); box-shadow: 0 0 12px #36dfaa80; }
+.dot.error { background: var(--red); }
+.hero {
+  border: 1px solid #ff40583b; border-radius: 18px;
+  background: linear-gradient(125deg,#281421,#171624 52%,#111b2d);
+  padding: 22px; margin-bottom: 16px; position: relative; overflow: hidden;
+}
+.hero::after {
+  content: "EEW"; position: absolute; right: 14px; top: 2px;
+  font-size: clamp(65px,12vw,145px); font-weight: 900;
+  color: #ffffff08; pointer-events: none; letter-spacing: -.08em;
+}
+.hero-top {
+  position: relative; z-index: 1;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
+}
+.tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 6px; padding: 6px 9px; font-size: 11px;
+  font-weight: 800; letter-spacing: .03em;
+  background: #ffffff0b; border: 1px solid #ffffff14;
+}
+.tag.red { background: #ff40581b; color: #ff7888; border-color: #ff40583b; }
+.tag.green { color: var(--green); }
+.tag.orange { color: var(--orange); }
+.hero h2 { margin: 17px 0 5px; font-size: clamp(23px,4vw,36px); letter-spacing: .02em; }
+.hero-desc { color: #b7c2d3; margin: 0; font-size: 13px; }
+.metrics {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 12px; margin-top: 23px; position: relative; z-index: 1;
+}
+.metric {
+  min-width: 0; border: 1px solid #ffffff14;
+  background: #090f1b75; border-radius: 12px; padding: 16px;
+}
+.metric .label { color: var(--muted); font-size: 11px; margin-bottom: 12px; }
+.metric .value { font-size: clamp(22px,3.4vw,38px); font-weight: 850; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.metric .unit { font-size: 12px; font-weight: 500; color: #b0bfd2; margin-left: 5px; }
+.metric .sub { margin-top: 8px; color: #8ea0b8; font-size: 11px; overflow-wrap: anywhere; }
+.grid {
+  display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,.85fr);
+  gap: 16px; align-items: start;
+}
+.panel {
+  min-width: 0; background: linear-gradient(145deg,#111b2b,#0e1624);
+  border: 1px solid var(--border); border-radius: 15px; overflow: hidden;
+}
+.panel-head {
+  padding: 16px 18px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 10px;
+}
+.panel-head h3 { margin: 0; font-size: 14px; }
+.panel-head span { color: var(--muted); font-size: 11px; }
+.panel-body { padding: 17px 18px; }
+.kv {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 0 22px;
+}
+.kv-item {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 13px 0; border-bottom: 1px solid #ffffff0c;
+}
+.kv-item .k { color: var(--muted); font-size: 12px; }
+.kv-item .v { text-align: right; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.section { margin-top: 16px; }
+.section:first-child { margin-top: 0; }
+.pill {
+  display: inline-block; padding: 4px 8px; border-radius: 5px;
+  font-size: 10px; font-weight: 800; background: #1b2c42; color: #a9c7ed;
+}
+.pill.warning { background: #ff40581c; color: #ff8490; }
+.pill.cancel { background: #64748b26; color: #b7c2d3; }
+.pill.training { background: #ffad421b; color: var(--orange); }
+.area-list { display: grid; gap: 9px; }
+.area {
+  background: #ffffff04; border: 1px solid #ffffff10;
+  border-radius: 10px; padding: 13px;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.area-name { font-weight: 700; font-size: 13px; overflow-wrap: anywhere; }
+.area-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.intensity {
+  flex-shrink: 0; min-width: 49px; text-align: center;
+  border-radius: 8px; padding: 9px 7px;
+  color: #fff; font-weight: 900; background: #334155;
+}
+.intensity.high { background: #c92743; }
+.intensity.mid { background: #a85b21; }
+.intensity.low { background: #245b91; }
+.empty { color: var(--muted); text-align: center; padding: 28px 10px; font-size: 12px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 8px 11px; background: #172337; color: #dce7f5; font-size: 11px;
+}
+.btn:hover { background: #22334b; }
+.btn.active { border-color: #63b3ff75; color: var(--blue); }
+pre {
+  margin: 0; padding: 15px; max-height: 480px; overflow: auto;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  background: #080e19; color: #b9d7f7; font-size: 11px; line-height: 1.7;
+}
+.footer {
+  display: flex; justify-content: space-between; flex-wrap: wrap;
+  gap: 8px; color: #667890; font-size: 10px; padding: 18px 2px;
+}
+.hidden { display: none !important; }
+@media(max-width: 850px) {
+  .grid { grid-template-columns: minmax(0,1fr); }
+  .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width: 460px) {
+  .wrap { padding: 12px; }
+  .hero { padding: 16px; }
+  .metric { padding: 12px; }
+  .kv { grid-template-columns: minmax(0,1fr); }
+  .panel-body { padding: 13px; }
+  .brand h1 { font-size: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    <div>
+      <h1>JMA EARTHQUAKE MONITOR</h1>
+      <p>緊急地震速報 リアルタイムモニター</p>
+    </div>
+  </div>
+  <div class="connection">
+    <span id="dot" class="dot"></span>
+    <span id="connectionText">接続準備中</span>
+    <span id="latency">--</span>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-top">
+    <span id="typeTag" class="tag red">EEW MONITOR</span>
+    <span id="statusTag" class="tag">速報待機中</span>
+    <span id="trainingTag" class="tag orange hidden">訓練報</span>
+    <span id="finalTag" class="tag green hidden">最終報</span>
+  </div>
+  <h2 id="headline">緊急地震速報を待機中</h2>
+  <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
+
+  <div class="metrics">
+    <div class="metric">
+      <div class="label">最大震度 / MAX INTENSITY</div>
+      <div class="value" id="maxIntensity">--</div>
+      <div class="sub" id="intensitySub">観測情報待ち</div>
+    </div>
+    <div class="metric">
+      <div class="label">マグニチュード / MAGNITUDE</div>
+      <div class="value" id="magnitude">--<span class="unit">M</span></div>
+      <div class="sub">地震の規模</div>
+    </div>
+    <div class="metric">
+      <div class="label">震源の深さ / DEPTH</div>
+      <div class="value" id="depth">--<span class="unit">km</span></div>
+      <div class="sub">震源情報に基づく値</div>
+    </div>
+    <div class="metric">
+      <div class="label">速報回数 / SERIAL</div>
+      <div class="value" id="serial">--</div>
+      <div class="sub" id="eventId">イベントID: --</div>
+    </div>
+  </div>
+</section>
+
+<div class="grid">
+  <div>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>地震情報</h3>
+        <span id="updateTime">受信待機中</span>
+      </div>
+      <div class="panel-body">
+        <div class="kv">
+          <div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div>
+          <div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
+          <div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div>
+          <div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
+          <div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div>
+          <div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
+          <div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div>
+          <div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
+          <div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div>
+          <div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
+          <div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div>
+          <div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
+          <div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div>
+          <div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
+          <div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div>
+          <div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <div class="panel-head">
+        <h3>警報対象地域</h3>
+        <span id="areaCount">0 地域</span>
+      </div>
+      <div class="panel-body">
+        <div id="areas" class="area-list">
+          <div class="empty">警報対象地域のデータを待っています</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <div class="panel-head">
+        <h3>震度変更情報</h3>
+        <span>MaxIntChange</span>
+      </div>
+      <div class="panel-body">
+        <div class="kv">
+          <div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div>
+          <div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>受信モニター</h3>
+        <span id="receiveCount">0 件受信</span>
+      </div>
+      <div class="panel-body">
+        <div class="kv">
+          <div class="kv-item"><span class="k">WebSocket</span><span class="v" id="wsState">未接続</span></div>
+          <div class="kv-item"><span class="k">メッセージ受信</span><span class="v" id="lastReceive">--</span></div>
+          <div class="kv-item"><span class="k">JSON解析</span><span class="v" id="parseState">待機中</span></div>
+          <div class="kv-item"><span class="k">訓練報</span><span class="v" id="isTraining">--</span></div>
+        </div>
+        <div class="toolbar" style="margin-top:16px">
+          <button class="btn" id="reconnectBtn">再接続</button>
+          <button class="btn" id="clearBtn">生データをクリア</button>
+          <button class="btn" id="rawToggle">生 JSON を表示</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel section">
+      <div class="panel-head">
+        <h3>気象庁原文</h3>
+        <span>OriginalText</span>
+      </div>
+      <div class="panel-body">
+        <pre id="originalText" style="max-height:240px;white-space:pre-wrap">原文待機中...</pre>
+      </div>
+    </section>
+
+    <section class="panel section hidden" id="rawPanel">
+      <div class="panel-head">
+        <h3>受信 JSON</h3>
+        <span>Raw payload</span>
+      </div>
+      <pre id="rawJson">受信待機中...</pre>
+    </section>
+  </div>
+</div>
+
+<footer class="footer">
+  <span>DATA SOURCE: Wolfx JMA EEW WebSocket</span>
+  <span>受信データを基に表示。速報の到達時間は通信状況に依存します。</span>
+</footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const WS_URL = "wss://ws-api.wolfx.jp/jma_eew";
+  const COMMAND = "query_jmaeew";
+
+  const $ = id => document.getElementById(id);
+
+  let socket = null;
+  let reconnectTimer = null;
+  let reconnectDelay = 1000;
+  let stopped = false;
+  let receivedCount = 0;
+  let lastPayload = "";
+  let lastEventKey = "";
+  let openedAt = 0;
+
+  function text(id, value) {
+    $(id).textContent =
+      value === null || value === undefined || value === ""
+        ? "--"
+        : String(value);
+  }
+
+  function boolText(value) {
+    if (value === true) return "はい";
+    if (value === false) return "いいえ";
+    return "--";
+  }
+
+  function setConnection(label, state) {
+    text("connectionText", label);
+    $("dot").className = "dot " + state;
+    text("wsState", label);
+  }
+
+  function formatNumber(value, digits = 2) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return "--";
+    }
+    return value.toFixed(digits);
+  }
+
+  function intensityClass(value) {
+    const s = String(value || "");
+    if (/5強|6弱|6強|7/.test(s)) return "high";
+    if (/4|5弱/.test(s)) return "mid";
+    if (/1|2|3/.test(s)) return "low";
+    return "";
+  }
+
+  function setTag(id, value, visible = true) {
+    $(id).textContent = value;
+    $(id).classList.toggle("hidden", !visible);
+  }
+
+  function render(data, raw) {
+    const issue = data.Issue || {};
+    const accuracy = data.Accuracy || {};
+    const change = data.MaxIntChange || {};
+    const areas = Array.isArray(data.WarnArea) ? data.WarnArea : [];
+
+    text("headline", data.Title || "緊急地震速報");
+    text("description", data.Hypocenter
+      ? "震源: " + data.Hypocenter
+      : "震源情報は未設定、またはまだ発表されていません。");
+
+    const canceled = data.isCancel === true;
+    const warned = data.isWarn === true;
+    const training = data.isTraining === true;
+    const finalReport = data.isFinal === true;
+
+    setTag("typeTag", canceled ? "CANCEL REPORT" :
+      warned ? "WARNING" : "EEW MONITOR", true);
+
+    setTag("statusTag",
+      canceled ? "取消報" :
+      warned ? "警報発表" :
+      "速報情報", true);
+
+    $("statusTag").className = "tag " +
+      (canceled ? "" : warned ? "red" : "");
+
+    setTag("trainingTag", "訓練報", training);
+    setTag("finalTag", "最終報", finalReport);
+
+    text("maxIntensity", data.MaxIntensity || "--");
+    $("intensitySub").textContent =
+      data.MaxIntensity ? "発表された最大震度" : "震度情報なし";
+
+    text("magnitude", data.Magnitude ?? data.Magunitude);
+    if ($("magnitude").textContent !== "--") {
+      $("magnitude").innerHTML =
+        '<span id="magValue"></span><span class="unit">M</span>';
+      text("magValue", data.Magnitude ?? data.Magunitude);
+    }
+
+    text("depth", data.Depth);
+    text("serial", data.Serial);
+    text("eventId", "イベントID: " + (data.EventID || "--"));
+
+    text("hypocenter", data.Hypocenter);
+    text("source", issue.Source);
+    text("announced", data.AnnouncedTime);
+    text("origin", data.OriginTime);
+    text("latitude", formatNumber(data.Latitude, 3));
+    text("longitude", formatNumber(data.Longitude, 3));
+    text("codeType", data.CodeType);
+    text("issueStatus", issue.Status);
+
+    text("accEpicenter", accuracy.Epicenter);
+    text("accDepth", accuracy.Depth);
+    text("accMagnitude", accuracy.Magnitude);
+
+    text("isSea", boolText(data.isSea));
+    text("isFinal", boolText(data.isFinal));
+    text("isCancel", boolText(data.isCancel));
+    text("isWarn", boolText(data.isWarn));
+    text("isAssumption", boolText(data.isAssumption));
+    text("isTraining", boolText(data.isTraining));
+
+    text("changeString", change.String);
+    text("changeReason", change.Reason);
+
+    $("areas").replaceChildren();
+    text("areaCount", areas.length + " 地域");
+
+    if (areas.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = canceled
+        ? "取消報です。警報対象地域はありません。"
+        : "警報対象地域のデータはありません。";
+      $("areas").appendChild(empty);
+    } else {
+      const fragment = document.createDocumentFragment();
+
+      for (const area of areas) {
+        const row = document.createElement("div");
+        row.className = "area";
+
+        const left = document.createElement("div");
+        const name = document.createElement("div");
+        name.className = "area-name";
+        name.textContent = area.Chiiki || "地域名未設定";
+
+        const meta = document.createElement("div");
+        meta.className = "area-meta";
+        meta.textContent = [
+          area.Type || "",
+          area.Time || "",
+          area.Arrive === true ? "到達" :
+            area.Arrive === false ? "未到達" : ""
+        ].filter(Boolean).join(" ・ ") || "詳細情報なし";
+
+        left.append(name, meta);
+
+        const badge = document.createElement("div");
+        badge.className = "intensity " +
+          intensityClass(area.Shindo1);
+        badge.textContent = area.Shindo1 || "--";
+
+        row.append(left, badge);
+        fragment.appendChild(row);
+      }
+
+      $("areas").appendChild(fragment);
+    }
+
+    text("originalText", data.OriginalText || "原文はありません。");
+    text("updateTime", "更新 " + new Date().toLocaleTimeString("ja-JP"));
+    text("lastReceive", new Date().toLocaleTimeString("ja-JP"));
+    text("parseState", "成功");
+
+    // 生データは別枠に原文のまま保持
+    $("rawJson").textContent = raw;
+  }
+
+  function processMessage(raw) {
+    receivedCount++;
+    text("receiveCount", receivedCount + " 件受信");
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      text("parseState", "JSON以外のデータ");
+      $("rawJson").textContent = raw;
+      if ($("rawPanel").classList.contains("hidden")) {
+        // 生データの表示は利用者が切り替え可能
+      }
+      return;
+    }
+
+    // WebSocketの別種メッセージを誤って速報として扱わない
+    if (data.type && data.type !== "jma_eew") {
+      $("rawJson").textContent = raw;
+      text("parseState", "別タイプ: " + data.type);
+      return;
+    }
+
+    const eventKey = [
+      data.EventID || "",
+      data.Serial ?? "",
+      data.AnnouncedTime || "",
+      data.isCancel === true ? "cancel" : ""
+    ].join("|");
+
+    // 同じイベント・同じ速報回数の重複表示を抑制。
+    // 生 JSON は最新受信内容に更新する。
+    $("rawJson").textContent = raw;
+    if (eventKey && eventKey === lastEventKey) return;
+    lastEventKey = eventKey;
+
+    lastPayload = raw;
+    render(data, raw);
+  }
+
+  function connect() {
+    if (stopped) return;
+
+    setConnection("接続中", "");
+    openedAt = performance.now();
+
+    try {
+      socket = new WebSocket(WS_URL);
+    } catch (error) {
+      setConnection("接続エラー", "error");
+      scheduleReconnect();
+      return;
+    }
+
+    socket.onopen = () => {
+      reconnectDelay = 1000;
+      setConnection("接続済み", "online");
+
+      // 配信仕様に基づく取得コマンド
+      socket.send(COMMAND);
+      text("latency", "受信待機中");
+    };
+
+    socket.onmessage = event => {
+      text("latency",
+        Math.round(performance.now() - openedAt) + " ms");
+      if (typeof event.data === "string") {
+        processMessage(event.data);
+      } else if (event.data instanceof Blob) {
+        event.data.text().then(processMessage).catch(() => {
+          text("parseState", "読み取り失敗");
+        });
+      } else if (event.data instanceof ArrayBuffer) {
+        processMessage(new TextDecoder("utf-8").decode(event.data));
+      }
+    };
+
+    socket.onerror = () => {
+      setConnection("通信エラー", "error");
+    };
+
+    socket.onclose = () => {
+      setConnection("切断・再接続待ち", "error");
+      scheduleReconnect();
+    };
+  }
+
+  function scheduleReconnect() {
+    if (stopped || reconnectTimer !== null) return;
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      connect();
+    }, reconnectDelay);
+  }
+
+  $("reconnectBtn").addEventListener("click", () => {
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
+    if (socket) {
+      socket.onclose = null;
+      socket.close();
+    }
+
+    reconnectDelay = 1000;
+    connect();
+  });
+
+  $("clearBtn").addEventListener("click", () => {
+    $("rawJson").textContent = "受信データをクリアしました。";
+    lastPayload = "";
+  });
+
+  $("rawToggle").addEventListener("click", () => {
+    const panel = $("rawPanel");
+    const hidden = panel.classList.toggle("hidden");
+    $("rawToggle").textContent =
+      hidden ? "生 JSON を表示" : "生 JSON を隠す";
+    $("rawToggle").classList.toggle("active", !hidden);
+  });
+
+  window.addEventListener("beforeunload", () => {
+    stopped = true;
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    if (socket) {
+      socket.onclose = null;
+      socket.close();
+    }
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>
