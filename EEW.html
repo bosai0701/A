@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -177,7 +176,6 @@ pre {
 </head>
 <body>
 <div class="wrap">
-
 <header class="topbar">
   <div class="brand">
     <div class="brand-icon">⚡</div>
@@ -189,10 +187,9 @@ pre {
   <div class="connection">
     <span id="dot" class="dot"></span>
     <span id="connectionText">接続準備中</span>
-    <span id="latency">--</span>
+    <span id="latency">未測定</span>
   </div>
 </header>
-
 <section class="hero">
   <div class="hero-top">
     <span id="typeTag" class="tag red">EEW MONITOR</span>
@@ -202,7 +199,6 @@ pre {
   </div>
   <h2 id="headline">緊急地震速報を待機中</h2>
   <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
-
   <div class="metrics">
     <div class="metric">
       <div class="label">最大震度 / MAX INTENSITY</div>
@@ -226,7 +222,6 @@ pre {
     </div>
   </div>
 </section>
-
 <div class="grid">
   <div>
     <section class="panel">
@@ -255,7 +250,6 @@ pre {
         </div>
       </div>
     </section>
-
     <section class="panel section">
       <div class="panel-head">
         <h3>警報対象地域</h3>
@@ -267,7 +261,6 @@ pre {
         </div>
       </div>
     </section>
-
     <section class="panel section">
       <div class="panel-head">
         <h3>震度変更情報</h3>
@@ -281,7 +274,6 @@ pre {
       </div>
     </section>
   </div>
-
   <div>
     <section class="panel">
       <div class="panel-head">
@@ -302,7 +294,6 @@ pre {
         </div>
       </div>
     </section>
-
     <section class="panel section">
       <div class="panel-head">
         <h3>気象庁原文</h3>
@@ -312,7 +303,6 @@ pre {
         <pre id="originalText" style="max-height:240px;white-space:pre-wrap">原文待機中...</pre>
       </div>
     </section>
-
     <section class="panel section hidden" id="rawPanel">
       <div class="panel-head">
         <h3>受信 JSON</h3>
@@ -322,22 +312,19 @@ pre {
     </section>
   </div>
 </div>
-
 <footer class="footer">
   <span>DATA SOURCE: Wolfx JMA EEW WebSocket</span>
   <span>受信データを基に表示。速報の到達時間は通信状況に依存します。</span>
 </footer>
 </div>
-
 <script>
 (() => {
   "use strict";
-
   const WS_URL = "wss://ws-api.wolfx.jp/jma_eew";
   const COMMAND = "query_jmaeew";
-
+  const PING_INTERVAL = 5000;
+  const PING_TIMEOUT = 10000;
   const $ = id => document.getElementById(id);
-
   let socket = null;
   let reconnectTimer = null;
   let reconnectDelay = 1000;
@@ -345,34 +332,30 @@ pre {
   let receivedCount = 0;
   let lastPayload = "";
   let lastEventKey = "";
-  let openedAt = 0;
-
+  let pingTimer = null;
+  let pingSentAt = 0;
+  let pingPending = false;
+  let pingToken = 0;
   function text(id, value) {
     $(id).textContent =
       value === null || value === undefined || value === ""
         ? "--"
         : String(value);
   }
-
   function boolText(value) {
     if (value === true) return "はい";
     if (value === false) return "いいえ";
     return "--";
   }
-
   function setConnection(label, state) {
     text("connectionText", label);
     $("dot").className = "dot " + state;
     text("wsState", label);
   }
-
   function formatNumber(value, digits = 2) {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return "--";
-    }
+    if (typeof value !== "number" || !Number.isFinite(value)) return "--";
     return value.toFixed(digits);
   }
-
   function intensityClass(value) {
     const s = String(value || "");
     if (/5強|6弱|6強|7/.test(s)) return "high";
@@ -380,57 +363,98 @@ pre {
     if (/1|2|3/.test(s)) return "low";
     return "";
   }
-
   function setTag(id, value, visible = true) {
     $(id).textContent = value;
     $(id).classList.toggle("hidden", !visible);
   }
-
+  function stopPing() {
+    if (pingTimer !== null) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
+    pingPending = false;
+    pingToken++;
+  }
+  function sendPing() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (pingPending) {
+      if (performance.now() - pingSentAt < PING_TIMEOUT) return;
+      pingPending = false;
+      text("latency", "応答なし");
+    }
+    pingSentAt = performance.now();
+    pingPending = true;
+    pingToken++;
+    try {
+      socket.send("ping");
+    } catch (error) {
+      pingPending = false;
+      text("latency", "計測失敗");
+    }
+  }
+  function startPing() {
+    stopPing();
+    text("latency", "計測中");
+    // 最初の計測を開始し、以降は5秒間隔で測定
+    sendPing();
+    pingTimer = setInterval(sendPing, PING_INTERVAL);
+  }
+  function handlePong(data) {
+    const isPong =
+      data === "pong" ||
+      (data && typeof data === "object" &&
+       String(data.type || "").toLowerCase() === "pong");
+    if (!isPong || !pingPending) return false;
+    const rtt = performance.now() - pingSentAt;
+    text("latency", Math.round(rtt) + " ms");
+    pingPending = false;
+    return true;
+  }
   function render(data, raw) {
     const issue = data.Issue || {};
     const accuracy = data.Accuracy || {};
     const change = data.MaxIntChange || {};
     const areas = Array.isArray(data.WarnArea) ? data.WarnArea : [];
-
     text("headline", data.Title || "緊急地震速報");
     text("description", data.Hypocenter
       ? "震源: " + data.Hypocenter
       : "震源情報は未設定、またはまだ発表されていません。");
-
     const canceled = data.isCancel === true;
     const warned = data.isWarn === true;
     const training = data.isTraining === true;
     const finalReport = data.isFinal === true;
-
     setTag("typeTag", canceled ? "CANCEL REPORT" :
       warned ? "WARNING" : "EEW MONITOR", true);
-
-    setTag("statusTag",
-      canceled ? "取消報" :
-      warned ? "警報発表" :
-      "速報情報", true);
-
-    $("statusTag").className = "tag " +
-      (canceled ? "" : warned ? "red" : "");
-
+    setTag("statusTag", canceled ? "取消報" :
+      warned ? "警報発表" : "速報情報", true);
+    $("statusTag").className =
+      "tag " + (canceled ? "" : warned ? "red" : "");
     setTag("trainingTag", "訓練報", training);
     setTag("finalTag", "最終報", finalReport);
-
     text("maxIntensity", data.MaxIntensity || "--");
     $("intensitySub").textContent =
       data.MaxIntensity ? "発表された最大震度" : "震度情報なし";
-
-    text("magnitude", data.Magnitude ?? data.Magunitude);
-    if ($("magnitude").textContent !== "--") {
-      $("magnitude").innerHTML =
-        '<span id="magValue"></span><span class="unit">M</span>';
-      text("magValue", data.Magnitude ?? data.Magunitude);
-    }
-
-    text("depth", data.Depth);
+    const magnitude = data.Magnitude ?? data.Magunitude;
+    $("magnitude").replaceChildren();
+    const magValue = document.createElement("span");
+    magValue.textContent =
+      magnitude === null || magnitude === undefined || magnitude === ""
+        ? "--" : String(magnitude);
+    const magUnit = document.createElement("span");
+    magUnit.className = "unit";
+    magUnit.textContent = "M";
+    $("magnitude").append(magValue, magUnit);
+    $("depth").replaceChildren();
+    const depthValue = document.createElement("span");
+    depthValue.textContent =
+      data.Depth === null || data.Depth === undefined || data.Depth === ""
+        ? "--" : String(data.Depth);
+    const depthUnit = document.createElement("span");
+    depthUnit.className = "unit";
+    depthUnit.textContent = "km";
+    $("depth").append(depthValue, depthUnit);
     text("serial", data.Serial);
     text("eventId", "イベントID: " + (data.EventID || "--"));
-
     text("hypocenter", data.Hypocenter);
     text("source", issue.Source);
     text("announced", data.AnnouncedTime);
@@ -439,24 +463,19 @@ pre {
     text("longitude", formatNumber(data.Longitude, 3));
     text("codeType", data.CodeType);
     text("issueStatus", issue.Status);
-
     text("accEpicenter", accuracy.Epicenter);
     text("accDepth", accuracy.Depth);
     text("accMagnitude", accuracy.Magnitude);
-
     text("isSea", boolText(data.isSea));
     text("isFinal", boolText(data.isFinal));
     text("isCancel", boolText(data.isCancel));
     text("isWarn", boolText(data.isWarn));
     text("isAssumption", boolText(data.isAssumption));
     text("isTraining", boolText(data.isTraining));
-
     text("changeString", change.String);
     text("changeReason", change.Reason);
-
     $("areas").replaceChildren();
     text("areaCount", areas.length + " 地域");
-
     if (areas.length === 0) {
       const empty = document.createElement("div");
       empty.className = "empty";
@@ -466,16 +485,13 @@ pre {
       $("areas").appendChild(empty);
     } else {
       const fragment = document.createDocumentFragment();
-
       for (const area of areas) {
         const row = document.createElement("div");
         row.className = "area";
-
         const left = document.createElement("div");
         const name = document.createElement("div");
         name.className = "area-name";
         name.textContent = area.Chiiki || "地域名未設定";
-
         const meta = document.createElement("div");
         meta.className = "area-meta";
         meta.textContent = [
@@ -484,76 +500,69 @@ pre {
           area.Arrive === true ? "到達" :
             area.Arrive === false ? "未到達" : ""
         ].filter(Boolean).join(" ・ ") || "詳細情報なし";
-
         left.append(name, meta);
-
         const badge = document.createElement("div");
-        badge.className = "intensity " +
-          intensityClass(area.Shindo1);
+        badge.className = "intensity " + intensityClass(area.Shindo1);
         badge.textContent = area.Shindo1 || "--";
-
         row.append(left, badge);
         fragment.appendChild(row);
       }
-
       $("areas").appendChild(fragment);
     }
-
     text("originalText", data.OriginalText || "原文はありません。");
     text("updateTime", "更新 " + new Date().toLocaleTimeString("ja-JP"));
     text("lastReceive", new Date().toLocaleTimeString("ja-JP"));
     text("parseState", "成功");
-
-    // 生データは別枠に原文のまま保持
     $("rawJson").textContent = raw;
   }
-
   function processMessage(raw) {
     receivedCount++;
     text("receiveCount", receivedCount + " 件受信");
-
     let data;
     try {
       data = JSON.parse(raw);
     } catch {
+      if (handlePong(raw)) return;
       text("parseState", "JSON以外のデータ");
       $("rawJson").textContent = raw;
-      if ($("rawPanel").classList.contains("hidden")) {
-        // 生データの表示は利用者が切り替え可能
+      return;
+    }
+    // pong 応答は速報データとして描画しない
+    if (handlePong(data)) return;
+    // heartbeat が届いた場合は ping を返す
+    if (data && data.type === "heartbeat") {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        pingSentAt = performance.now();
+        pingPending = true;
+        try {
+          socket.send("ping");
+        } catch (error) {
+          pingPending = false;
+        }
       }
       return;
     }
-
-    // WebSocketの別種メッセージを誤って速報として扱わない
-    if (data.type && data.type !== "jma_eew") {
+    if (data && data.type && data.type !== "jma_eew") {
       $("rawJson").textContent = raw;
       text("parseState", "別タイプ: " + data.type);
       return;
     }
-
     const eventKey = [
       data.EventID || "",
       data.Serial ?? "",
       data.AnnouncedTime || "",
       data.isCancel === true ? "cancel" : ""
     ].join("|");
-
-    // 同じイベント・同じ速報回数の重複表示を抑制。
-    // 生 JSON は最新受信内容に更新する。
     $("rawJson").textContent = raw;
     if (eventKey && eventKey === lastEventKey) return;
     lastEventKey = eventKey;
-
     lastPayload = raw;
     render(data, raw);
   }
-
   function connect() {
     if (stopped) return;
-
+    stopPing();
     setConnection("接続中", "");
-    openedAt = performance.now();
-
     try {
       socket = new WebSocket(WS_URL);
     } catch (error) {
@@ -561,19 +570,13 @@ pre {
       scheduleReconnect();
       return;
     }
-
     socket.onopen = () => {
       reconnectDelay = 1000;
       setConnection("接続済み", "online");
-
-      // 配信仕様に基づく取得コマンド
       socket.send(COMMAND);
-      text("latency", "受信待機中");
+      startPing();
     };
-
     socket.onmessage = event => {
-      text("latency",
-        Math.round(performance.now() - openedAt) + " ms");
       if (typeof event.data === "string") {
         processMessage(event.data);
       } else if (event.data instanceof Blob) {
@@ -584,47 +587,41 @@ pre {
         processMessage(new TextDecoder("utf-8").decode(event.data));
       }
     };
-
     socket.onerror = () => {
       setConnection("通信エラー", "error");
     };
-
     socket.onclose = () => {
+      stopPing();
+      text("latency", "--");
       setConnection("切断・再接続待ち", "error");
       scheduleReconnect();
     };
   }
-
   function scheduleReconnect() {
     if (stopped || reconnectTimer !== null) return;
-
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       reconnectDelay = Math.min(reconnectDelay * 2, 30000);
       connect();
     }, reconnectDelay);
   }
-
   $("reconnectBtn").addEventListener("click", () => {
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-
     if (socket) {
       socket.onclose = null;
       socket.close();
     }
-
+    stopPing();
     reconnectDelay = 1000;
     connect();
   });
-
   $("clearBtn").addEventListener("click", () => {
     $("rawJson").textContent = "受信データをクリアしました。";
     lastPayload = "";
   });
-
   $("rawToggle").addEventListener("click", () => {
     const panel = $("rawPanel");
     const hidden = panel.classList.toggle("hidden");
@@ -632,16 +629,15 @@ pre {
       hidden ? "生 JSON を表示" : "生 JSON を隠す";
     $("rawToggle").classList.toggle("active", !hidden);
   });
-
   window.addEventListener("beforeunload", () => {
     stopped = true;
     if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    stopPing();
     if (socket) {
       socket.onclose = null;
       socket.close();
     }
   });
-
   connect();
 })();
 </script>
