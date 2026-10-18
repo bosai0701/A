@@ -278,7 +278,6 @@ pre {
     <section class="panel">
       <div class="panel-head">
         <h3>受信モニター</h3>
-        <span id="receiveCount">0 件受信</span>
       </div>
       <div class="panel-body">
         <div class="kv">
@@ -324,18 +323,22 @@ pre {
   const COMMAND = "query_jmaeew";
   const PING_INTERVAL = 5000;
   const PING_TIMEOUT = 10000;
+  const SILENCE_LIMIT = 20000;   // この時間無通信なら半死状態とみなして再接続
+  const RECONNECT_MIN = 300;
+  const RECONNECT_MAX = 3000;
   const $ = id => document.getElementById(id);
   let socket = null;
   let reconnectTimer = null;
-  let reconnectDelay = 1000;
+  let reconnectDelay = RECONNECT_MIN;
   let stopped = false;
-  let receivedCount = 0;
   let lastPayload = "";
+  let lastRaw = "";
   let lastEventKey = "";
+  let lastMessageAt = 0;
   let pingTimer = null;
   let pingSentAt = 0;
   let pingPending = false;
-  let pingToken = 0;
+  let watchdogTimer = null;
   function text(id, value) {
     $(id).textContent =
       value === null || value === undefined || value === ""
@@ -367,13 +370,19 @@ pre {
     $(id).textContent = value;
     $(id).classList.toggle("hidden", !visible);
   }
+  function setRaw(raw) {
+    lastRaw = raw;
+    // 生JSONパネルは表示中のみ更新(描画負荷を削減)
+    if (!$("rawPanel").classList.contains("hidden")) {
+      $("rawJson").textContent = raw;
+    }
+  }
   function stopPing() {
     if (pingTimer !== null) {
       clearInterval(pingTimer);
       pingTimer = null;
     }
     pingPending = false;
-    pingToken++;
   }
   function sendPing() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
@@ -384,7 +393,6 @@ pre {
     }
     pingSentAt = performance.now();
     pingPending = true;
-    pingToken++;
     try {
       socket.send("ping");
     } catch (error) {
@@ -395,7 +403,6 @@ pre {
   function startPing() {
     stopPing();
     text("latency", "計測中");
-    // 最初の計測を開始し、以降は5秒間隔で測定
     sendPing();
     pingTimer = setInterval(sendPing, PING_INTERVAL);
   }
@@ -510,26 +517,24 @@ pre {
       $("areas").appendChild(fragment);
     }
     text("originalText", data.OriginalText || "原文はありません。");
-    text("updateTime", "更新 " + new Date().toLocaleTimeString("ja-JP"));
-    text("lastReceive", new Date().toLocaleTimeString("ja-JP"));
+    const now = new Date().toLocaleTimeString("ja-JP");
+    text("updateTime", "更新 " + now);
+    text("lastReceive", now);
     text("parseState", "成功");
-    $("rawJson").textContent = raw;
+    setRaw(raw);
   }
   function processMessage(raw) {
-    receivedCount++;
-    text("receiveCount", receivedCount + " 件受信");
+    lastMessageAt = performance.now();
     let data;
     try {
       data = JSON.parse(raw);
     } catch {
       if (handlePong(raw)) return;
       text("parseState", "JSON以外のデータ");
-      $("rawJson").textContent = raw;
+      setRaw(raw);
       return;
     }
-    // pong 応答は速報データとして描画しない
     if (handlePong(data)) return;
-    // heartbeat が届いた場合は ping を返す
     if (data && data.type === "heartbeat") {
       if (socket && socket.readyState === WebSocket.OPEN) {
         pingSentAt = performance.now();
@@ -543,7 +548,7 @@ pre {
       return;
     }
     if (data && data.type && data.type !== "jma_eew") {
-      $("rawJson").textContent = raw;
+      setRaw(raw);
       text("parseState", "別タイプ: " + data.type);
       return;
     }
@@ -553,30 +558,50 @@ pre {
       data.AnnouncedTime || "",
       data.isCancel === true ? "cancel" : ""
     ].join("|");
-    $("rawJson").textContent = raw;
-    if (eventKey && eventKey === lastEventKey) return;
+    if (eventKey && eventKey === lastEventKey) {
+      setRaw(raw);
+      return;
+    }
     lastEventKey = eventKey;
     lastPayload = raw;
     render(data, raw);
   }
+  function closeSocket() {
+    if (!socket) return;
+    const s = socket;
+    socket = null;
+    s.onopen = s.onmessage = s.onerror = s.onclose = null;
+    try { s.close(); } catch (e) {}
+  }
   function connect() {
     if (stopped) return;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     stopPing();
+    closeSocket();
     setConnection("接続中", "");
+    let s;
     try {
-      socket = new WebSocket(WS_URL);
+      s = new WebSocket(WS_URL);
     } catch (error) {
-      setConnection("接続エラー", "error");
+      setConnection("通信エラー", "error");
       scheduleReconnect();
       return;
     }
-    socket.onopen = () => {
-      reconnectDelay = 1000;
+    socket = s;
+    lastMessageAt = performance.now();
+    s.onopen = () => {
+      if (socket !== s) return;
+      reconnectDelay = RECONNECT_MIN;
+      lastMessageAt = performance.now();
       setConnection("接続済み", "online");
-      socket.send(COMMAND);
+      s.send(COMMAND);
       startPing();
     };
-    socket.onmessage = event => {
+    s.onmessage = event => {
+      if (socket !== s) return;
       if (typeof event.data === "string") {
         processMessage(event.data);
       } else if (event.data instanceof Blob) {
@@ -587,10 +612,12 @@ pre {
         processMessage(new TextDecoder("utf-8").decode(event.data));
       }
     };
-    socket.onerror = () => {
+    s.onerror = () => {
+      if (socket !== s) return;
       setConnection("通信エラー", "error");
     };
-    socket.onclose = () => {
+    s.onclose = () => {
+      if (socket !== s) return;
       stopPing();
       text("latency", "--");
       setConnection("切断・再接続待ち", "error");
@@ -599,28 +626,47 @@ pre {
   }
   function scheduleReconnect() {
     if (stopped || reconnectTimer !== null) return;
+    const delay = reconnectDelay;
+    reconnectDelay = Math.min(Math.ceil(reconnectDelay * 1.6), RECONNECT_MAX);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
       connect();
-    }, reconnectDelay);
+    }, delay);
   }
-  $("reconnectBtn").addEventListener("click", () => {
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    if (socket) {
-      socket.onclose = null;
-      socket.close();
-    }
-    stopPing();
-    reconnectDelay = 1000;
+  function reconnectNow() {
+    reconnectDelay = RECONNECT_MIN;
     connect();
+  }
+  // 半死状態(接続は開いているが何も届かない)を検知して即再接続
+  function startWatchdog() {
+    if (watchdogTimer !== null) return;
+    watchdogTimer = setInterval(() => {
+      if (stopped) return;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        if (performance.now() - lastMessageAt > SILENCE_LIMIT) {
+          setConnection("無通信・再接続", "error");
+          reconnectNow();
+        }
+      } else if (!socket && reconnectTimer === null) {
+        reconnectNow();
+      }
+    }, 3000);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (!socket || socket.readyState !== WebSocket.OPEN ||
+        performance.now() - lastMessageAt > PING_INTERVAL * 2) {
+      reconnectNow();
+    } else {
+      sendPing();
+    }
   });
+  window.addEventListener("online", reconnectNow);
+  $("reconnectBtn").addEventListener("click", reconnectNow);
   $("clearBtn").addEventListener("click", () => {
     $("rawJson").textContent = "受信データをクリアしました。";
     lastPayload = "";
+    lastRaw = "";
   });
   $("rawToggle").addEventListener("click", () => {
     const panel = $("rawPanel");
@@ -628,17 +674,17 @@ pre {
     $("rawToggle").textContent =
       hidden ? "生 JSON を表示" : "生 JSON を隠す";
     $("rawToggle").classList.toggle("active", !hidden);
+    if (!hidden && lastRaw) $("rawJson").textContent = lastRaw;
   });
   window.addEventListener("beforeunload", () => {
     stopped = true;
     if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    if (watchdogTimer !== null) clearInterval(watchdogTimer);
     stopPing();
-    if (socket) {
-      socket.onclose = null;
-      socket.close();
-    }
+    closeSocket();
   });
   connect();
+  startWatchdog();
 })();
 </script>
 </body>
