@@ -1,246 +1,210 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>漢字ドリル帳</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
-/* Layout: 練習帳のページのように、1画面1問。上に進み具合、中央に例文、下に答え欄。 */
-:root{
-  --paper:#f4f6f8;      /* 青みのある紙 */
-  --card:#ffffff;
-  --ink:#1d2736;        /* 墨に近い紺 */
-  --sub:#5d6b7d;
-  --rule:#d5dce5;
-  --pen:#d23a2f;        /* 赤ペン */
-  --ok:#1f7a55;
-  --accent:#2a4f8f;
-  --accent-ink:#ffffff;
-  --f-body:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
-  --f-text:"Klee One","Hiragino Mincho ProN","Yu Mincho",serif;
-}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722;color-scheme:dark}}
-:root[data-theme="dark"]{
-  --paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722;color-scheme:dark}
+:root{color-scheme:light;--paper:#f4f6f8;--card:#fff;--ink:#1d2736;--sub:#5d6b7d;--rule:#d5dce5;--pen:#d23a2f;--ok:#1f7a55;--accent:#2a4f8f;--accent-ink:#fff;--f-body:"Zen Kaku Gothic New",sans-serif;--f-text:"Klee One",serif}
+:root[data-theme=dark]{color-scheme:dark;--paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722}}
 *{box-sizing:border-box}
-body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;
-  padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
-h1{font-size:22px;margin:0;letter-spacing:.04em}
-h2{font-size:13px;margin:0 0 8px;color:var(--sub);letter-spacing:.12em;font-weight:500}
-button{font:inherit;color:inherit;cursor:pointer}
-button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-.top p{margin:0;color:var(--sub);font-size:13px}
-.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:16px}
-.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
-.seg button{background:transparent;border:0;padding:8px 14px;font-size:14px}
-.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
-.kai{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px}
-.kai button{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:8px 6px;text-align:center;line-height:1.3}
-.kai button b{display:block;font-size:15px}
-.kai button small{color:var(--sub);font-size:12px;font-variant-numeric:tabular-nums}
-.kai button.done{border-color:var(--ok)}
-.kai button.done small{color:var(--ok)}
-.row{display:flex;gap:10px;flex-wrap:wrap}
-.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:11px 18px;font-weight:700}
-.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule);font-weight:500}
-.btn[disabled]{opacity:.4;cursor:default}
-/* quiz */
-.bar{height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
-.meta{display:flex;justify-content:space-between;font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
-.q{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:28px 20px;min-height:140px;display:flex;align-items:center}
-.sent{font-family:var(--f-text);font-size:clamp(22px,5.5vw,30px);line-height:2;margin:0;word-break:keep-all;overflow-wrap:anywhere}
-.tg{color:var(--accent);border-bottom:2px dotted var(--accent);padding:0 .1em;white-space:nowrap}
-.tg.right{color:var(--ok);border-bottom:2px solid var(--ok);font-weight:600}
-.tg.wrong{color:var(--pen);border-bottom:2px solid var(--pen);font-weight:600}
-.fb{min-height:60px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.mark{font-family:var(--f-text);font-size:44px;line-height:1;width:56px;height:56px;border:3px solid;border-radius:50%;display:grid;place-items:center;flex:none}
-.mark.right{color:var(--pen);border-color:var(--pen)}
-.mark.wrong{color:var(--pen);border:0;font-size:52px}
-.fb p{margin:0}
-.fb .ans{font-family:var(--f-text);font-size:26px;color:var(--pen)}
-form.ans{display:flex;gap:10px}
-form.ans input{flex:1;min-width:0;font:inherit;font-family:var(--f-text);font-size:24px;padding:10px 14px;border:2px solid var(--rule);border-radius:8px;background:var(--card);color:var(--ink)}
-.hint{font-size:13px;color:var(--sub);margin:0}
-.res{display:flex;align-items:baseline;gap:10px}
-.res b{font-size:56px;line-height:1;font-variant-numeric:tabular-nums}
-.list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}
-.list li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--rule);font-family:var(--f-text);font-size:17px}
-.list li:first-child{border-top:0}
-.list li span:last-child{color:var(--pen);white-space:nowrap}
-.padbox{position:relative}
-.q,.fb,.padbox,.meta,.bar,.top{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-#pad{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;display:block;width:100%;height:230px;touch-action:none;cursor:crosshair;border:1px solid var(--rule);border-radius:10px;background-color:var(--card);
-  background-image:linear-gradient(var(--rule),var(--rule)),linear-gradient(var(--rule),var(--rule));background-size:100% 1px,1px 100%;background-position:center,center;background-repeat:no-repeat}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--f-body);padding:20px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+main{max-width:640px;margin:auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:22px;margin:0;letter-spacing:.04em}h2{font-size:13px;margin:0 0 8px;color:var(--sub);letter-spacing:.12em;font-weight:500}
+button,input{font:inherit;color:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}.top p,.hint{margin:0;color:var(--sub);font-size:13px}
+.panel,.q{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:16px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden;max-width:100%}.seg button{background:transparent;border:0;padding:8px 12px;font-size:14px}.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.kai{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px}
+.kai button{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:8px 6px;text-align:center;line-height:1.3}.kai b{display:block;font-size:15px}.kai small{color:var(--sub);font-size:12px}.kai button.done{border-color:var(--ok)}.kai button.done small{color:var(--ok)}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:11px 18px;font-weight:700}.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule);font-weight:500}.btn:disabled{opacity:.4;cursor:default}
+.bar{height:6px;background:var(--rule);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);transition:width .25s}.meta{display:flex;justify-content:space-between;font-size:13px;color:var(--sub)}
+.q{padding:28px 20px;min-height:140px;display:flex;align-items:center}.sent{font:clamp(22px,5.5vw,30px)/2 var(--f-text);margin:0;word-break:keep-all;overflow-wrap:anywhere}
+.tg{color:var(--accent);border-bottom:2px dotted var(--accent);padding:0 .1em;white-space:nowrap}.tg.right{color:var(--ok);border-bottom:2px solid var(--ok);font-weight:600}.tg.wrong{color:var(--pen);border-bottom:2px solid var(--pen);font-weight:600}
+.fb{min-height:60px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.fb p{margin:0}.ans{font:26px var(--f-text);color:var(--pen)}.mark{font:44px/1 var(--f-text);width:56px;height:56px;border:3px solid;border-radius:50%;display:grid;place-items:center;flex:none}.mark.right{color:var(--pen);border-color:var(--pen)}.mark.wrong{color:var(--pen);border:0;font-size:52px}
+form.ans{display:flex;gap:10px}form.ans input{flex:1;min-width:0;font:24px var(--f-text);padding:10px 14px;border:2px solid var(--rule);border-radius:8px;background:var(--card);color:var(--ink)}
+.res{display:flex;align-items:baseline;gap:10px}.res b{font-size:56px;line-height:1}.list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}.list li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--rule);font:17px var(--f-text)}.list li:first-child{border-top:0}.list li span:last-child{color:var(--pen);white-space:nowrap}
+.padbox{position:relative}#pad{display:block;width:100%;height:230px;touch-action:none;border:1px solid var(--rule);border-radius:10px;background-color:var(--card);background-image:linear-gradient(var(--rule),var(--rule)),linear-gradient(var(--rule),var(--rule));background-size:100% 1px,1px 100%;background-position:center;background-repeat:no-repeat}
 #clr-pad{position:absolute;right:8px;top:8px;padding:4px 10px;font-size:13px;background:var(--card)}
-.fade{animation:in .18s ease-out}
-@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.fade{animation:none}.bar i{transition:none}}
+.fade{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(max-width:420px){.seg button{padding:8px;font-size:12px}.panel{padding:13px}form.ans{gap:6px}form.ans input{font-size:21px}.btn{padding:10px 13px}}
+@media(prefers-reduced-motion:reduce){.fade{animation:none}.bar i{transition:none}}
 </style>
-
+</head>
+<body>
 <main id="app"></main>
-
 <script>
-const DATA = [[1, "", "コウイン", "矢のごとし。", "光陰"], [1, "ことの", "ケイイ", "を述べる。", "経緯"], [1, "化学", "センイ", "が発達する。", "繊維"], [1, "見方を", "ちが", "える。", "違"], [1, "世紀の", "イギョウ", "をなしとげる。", "偉業"], [1, "親切な", "コウイ", "。", "行為"], [1, "どことなく", "イゲン", "のある人。", "威厳"], [1, "石油を海外に", "イソン", "する。", "依存"], [1, "作品を大切に", "あつか", "う。", "扱"], [1, "自分の状況を", "ハアク", "する。", "把握"], [2, "", "カンサ", "の結果を報告する。", "監査"], [2, "勝利の", "カンセイ", "をあげる。", "歓声"], [2, "辞任を", "カンコク", "する。", "勧告"], [2, "", "いねか", "りの季節。", "稲刈"], [2, "古い家を", "こわ", "す。", "壊"], [2, "", "カイモク", "見当がつかない。", "皆目"], [2, "", "いまし", "めを守る。", "戒"], [2, "不動産の", "チュウカイ", "をする。", "仲介"], [2, "", "スンカ", "をおしんで勉強する。", "寸暇"], [2, "", "するど", "い質問をする。", "鋭"], [3, "市内", "ジュンカン", "バスに乗る。", "循環"], [3, "", "インカン", "を持参する。", "印鑑"], [3, "鉄の", "ガンユウリョウ", "。", "含有量"], [3, "", "キスウ", "と偶数を区別する。", "奇数"], [3, "ダイヤモンドの", "かがや", "き。", "輝"], [3, "箱に果実を", "つ", "める。", "詰"], [3, "本の", "ヘンキャク", "期限を守る。", "返却"], [3, "", "おか", "の上に遊園地がある。", "丘"], [3, "", "く", "ち果てた屋敷が建っている。", "朽"], [3, "京都", "ゴショ", "を見る。", "御所"], [4, "一人で二役を", "か", "ねる。", "兼"], [4, "人間の", "チエ", "。", "知恵"], [4, "何回も同じことを", "く", "り返す。", "繰"], [4, "鉱石を", "サイクツ", "する。", "採掘"], [4, "話を聞いて", "ギョウテン", "する。", "仰天"], [4, "", "キョウタン", "の声をあげる。", "驚嘆"], [4, "列車の音が", "ひび", "く。", "響"], [4, "冷害を", "おそ", "れる。", "恐"], [4, "川幅が", "せば", "まる。", "狭"], [4, "予定が", "くる", "う。", "狂"], [5, "", "ケッコンシキ", "を挙げる。", "結婚式"], [5, "雑誌に", "トウコウ", "する。", "投稿"], [5, "", "コウキュウ", "の平和を望む。", "恒久"], [5, "契約を", "コウカイ", "する。", "更改"], [5, "あの城は", "ナンコウ", "不落だ。", "難攻"], [5, "", "ソウゴ", "の信頼を深める。", "相互"], [5, "水源が", "コカツ", "する。", "枯渇"], [5, "", "ユウゲン", "の境地を味わう。", "幽玄"], [5, "", "タイキケン", "に突入する。", "大気圏"], [5, "つばめが", "のきさき", "に巣を作る。", "軒先"], [6, "ごうを", "に", "やす。", "煮"], [6, "夕日が", "なな", "めにさしこむ。", "斜"], [6, "指揮を", "と", "る。", "執"], [6, "", "シユウ", "を決する戦いをする。", "雌雄"], [6, "", "うかが", "いをたてる。", "伺"], [6, "", "ヒサン", "な結末の映画。", "悲惨"], [6, "雑誌に投書を", "の", "せる。", "載"], [6, "", "サイゲツ", "人を待たず。", "歳月"], [6, "豊かな", "シキサイ", "の絵画。", "色彩"], [6, "日本は", "サコク", "政策をとった。", "鎖国"], [7, "運命の人に", "めぐ", "りあう。", "巡"], [7, "", "シュン", "の野菜がおいしい。", "旬"], [7, "", "イッシュン", "の出来事。", "一瞬"], [7, "", "けもの", "のような声を出す。", "獣"], [7, "", "ニュウワ", "な笑顔。", "柔和"], [7, "", "ユウシュウ", "な作品を載せる。", "優秀"], [7, "", "ジュヨウ", "と供給の関係。", "需要"], [7, "上品な", "おもむき", "がある。", "趣"], [7, "山へ", "か", "りに行く。", "狩"], [7, "卒業すると", "さび", "しい。", "寂"], [8, "矛と", "たて", "を持って戦う。", "盾"], [8, "国会を", "ショウシュウ", "する。", "召集"], [8, "", "ゆか", "をよくみがく。", "床"], [8, "新入生を", "ショウカイ", "する。", "紹介"], [8, "", "ショウサイ", "に説明する。", "詳細"], [8, "", "せたけ", "が前より伸びる。", "背丈"], [8, "細胞が", "ふ", "える。", "殖"], [8, "", "フクショク", "デザイナー。", "服飾"], [8, "部屋に花を", "かざ", "る。", "飾"], [8, "手で", "ふ", "れてみる。", "触"], [9, "", "おか", "すことのできない権利。", "侵"], [9, "営業が", "フシン", "になる。", "不振"], [9, "水に", "ひた", "す。", "浸"], [9, "", "シュウシン", "時刻は午後十時。", "就寝"], [9, "言動を", "つつし", "む。", "慎"], [9, "", "ジシン", "を予知する。", "地震"], [9, "山へ", "たきぎ", "をとりに行く。", "薪"], [9, "多くの人が", "ジンリョク", "する。", "尽力"], [9, "大坂夏の", "ジン", "で豊臣方は滅びた。", "陣"], [9, "人に道を", "たず", "ねる。", "尋"], [10, "", "スイソウ", "楽団が演奏する。", "吹奏"], [10, "不公平を", "ゼセイ", "する。", "是正"], [10, "江戸時代の", "ヒャクショウ", "一揆。", "百姓"], [10, "アメリカに", "エンセイ", "する。", "遠征"], [10, "雪の上に", "あしあと", "が続く。", "足跡"], [10, "上位を", "ドクセン", "する。", "独占"], [10, "暑いので", "センプウキ", "を使う。", "扇風機"], [10, "", "あざ", "やかな色彩のドレス。", "鮮"], [10, "", "ソショウ", "に発展する。", "訴訟"], [10, "激しい", "ショウソウ", "にかられる。", "焦燥"], [11, "感謝状を", "おく", "る。", "贈"], [11, "", "ニンタイ", "することが大切だ。", "忍耐"], [11, "", "コウタイ", "で勤務する。", "交替"], [11, "", "コウタク", "のある紙。", "光沢"], [11, "川が", "にご", "る。", "濁"], [11, "電車が", "ダッセン", "した。", "脱線"], [11, "", "あわ", "いあこがれの心をもつ。", "淡"], [11, "役所に", "タンガン", "する。", "嘆願"], [11, "", "みちばた", "で休む。", "道端"], [11, "ピアノを", "ひ", "く。", "弾"], [12, "厚顔", "ムチ", "の人間。", "無恥"], [12, "歩くスピードが", "おそ", "い。", "遅"], [12, "老後のために", "チョチク", "する。", "貯蓄"], [12, "", "チョウヤク", "運動をする。", "跳躍"], [12, "耳を", "す", "ます。", "澄"], [12, "", "チンモク", "を守る。", "沈黙"], [12, "", "ボウハテイ", "に波が打ち寄せる。", "防波堤"], [12, "雨水が", "しずく", "となって落ちる。", "滴"], [12, "贈り物に手紙を", "そ", "えて渡す。", "添"], [12, "通学の", "トチュウ", "の出来事。", "途中"], [13, "失礼な態度に", "おこ", "る。", "怒"], [13, "難を", "のが", "れる。", "逃"], [13, "", "ケントウシ", "を廃止する。", "遣唐使"], [13, "", "もも", "栗三年柿八年。", "桃"], [13, "光が", "す", "けるカーテン。", "透"], [13, "", "トウナン", "防止のベル。", "盗難"], [13, "", "いなサク", "農業。", "稲作"], [13, "救命", "ドウイ", "を身につける。", "胴衣"], [13, "", "とうげ", "の茶屋で休む。", "峠"], [13, "動きが", "にぶ", "る。", "鈍"], [14, "", "ドンテン", "を見上げる。", "曇天"], [14, "服装に", "なや", "む。", "悩"], [14, "", "こ", "いコーヒーをいれる。", "濃"], [14, "", "さかずき", "に酒をつぐ。", "杯"], [14, "親切な", "センパイ", "のコーチ。", "先輩"], [14, "旅館に", "と", "まる。", "泊"], [14, "味が", "うす", "くなる。", "薄"], [14, "危機", "イッパツ", "できりぬける。", "一髪"], [14, "", "イッパン", "の人も参加できる。", "一般"], [14, "", "かれ", "に本を借りる。", "彼"], [15, "大きな損害を", "こうむ", "る。", "被"], [15, "人情の", "キビ", "にふれる。", "機微"], [15, "水彩画を", "か", "く。", "描"], [15, "", "カイヒン", "公園に行く。", "海浜"], [15, "", "フツウ", "列車に乗って行く。", "普通"], [15, "草花の根が", "くさ", "る。", "腐"], [15, "", "ゼンプク", "の信頼を置く。", "全幅"], [15, "ひしゃくの", "え", "を握る。", "柄"], [15, "", "かべ", "にペンキをぬる。", "壁"], [15, "犯人を", "と", "らえる。", "捕"], [16, "", "ハンボウ", "期を乗り越える。", "繁忙"], [16, "年末はとても", "いそが", "しい。", "忙"], [16, "会議の", "ボウトウ", "で発言する。", "冒頭"], [16, "", "ヒボン", "な才能を持つ。", "非凡"], [16, "注意が", "サンマン", "になる。", "散漫"], [16, "", "コウミョウ", "な仕掛けに驚く。", "巧妙"], [16, "ぐっすりと", "ねむ", "る。", "眠"], [16, "", "ノウム", "注意報が出る。", "濃霧"], [16, "今年の夏は", "モウショ", "だった。", "猛暑"], [16, "原稿を", "モクドク", "する。", "黙読"], [17, "", "ヒヤクテキ", "に業績が伸びる。", "飛躍的"], [17, "努力賞を", "あた", "える。", "与"], [17, "", "ヨウガン", "が流れ出る。", "溶岩"], [17, "", "ものごし", "の上品な人。", "物腰"], [17, "友を", "シンライ", "する。", "信頼"], [17, "すぐに", "レンラク", "する。", "連絡"], [17, "", "リュウリュウ", "辛苦の結晶。", "粒粒"], [17, "安全面に", "ハイリョ", "する。", "配慮"], [17, "けがの", "チリョウ", "を受ける。", "治療"], [17, "美辞", "レイク", "をならべる。", "麗句"]].map((r,i)=>({id:i,kai:r[0],pre:r[1],mid:r[2],post:r[3],ans:r[4]}));
-const KAIS = [...new Set(DATA.map(d=>d.kai))];
-const store = {
-  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
-  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+const DATA = [
+[1,"","コウイン","矢のごとし。","光陰"],[1,"ことの","ケイイ","を述べる。","経緯"],[1,"化学","センイ","が発達する。","繊維"],[1,"見方を","ちが","える。","違"],[1,"世紀の","イギョウ","をなしとげる。","偉業"],[1,"親切な","コウイ","。","行為"],[1,"どことなく","イゲン","のある人。","威厳"],[1,"石油を海外に","イソン","する。","依存"],[1,"作品を大切に","あつか","う。","扱"],[1,"自分の状況を","ハアク","する。","把握"],
+[2,"","カンサ","の結果を報告する。","監査"],[2,"勝利の","カンセイ","をあげる。","歓声"],[2,"辞任を","カンコク","する。","勧告"],[2,"","いねか","りの季節。","稲刈"],[2,"古い家を","こわ","す。","壊"],[2,"","カイモク","見当がつかない。","皆目"],[2,"","いまし","めを守る。","戒"],[2,"不動産の","チュウカイ","をする。","仲介"],[2,"","スンカ","をおしんで勉強する。","寸暇"],[2,"","するど","い質問をする。","鋭"],
+[3,"市内","ジュンカン","バスに乗る。","循環"],[3,"","インカン","を持参する。","印鑑"],[3,"鉄の","ガンユウリョウ","。","含有量"],[3,"","キスウ","と偶数を区別する。","奇数"],[3,"ダイヤモンドの","かがや","き。","輝"],[3,"箱に果実を","つ","める。","詰"],[3,"本の","ヘンキャク","期限を守る。","返却"],[3,"","おか","の上に遊園地がある。","丘"],[3,"","く","ち果てた屋敷が建っている。","朽"],[3,"京都","ゴショ","を見る。","御所"],
+[4,"一人で二役を","か","ねる。","兼"],[4,"人間の","チエ","。","知恵"],[4,"何回も同じことを","く","り返す。","繰"],[4,"鉱石を","サイクツ","する。","採掘"],[4,"話を聞いて","ギョウテン","する。","仰天"],[4,"","キョウタン","の声をあげる。","驚嘆"],[4,"列車の音が","ひび","く。","響"],[4,"冷害を","おそ","れる。","恐"],[4,"川幅が","せば","まる。","狭"],[4,"予定が","くる","う。","狂"],
+[5,"","ケッコンシキ","を挙げる。","結婚式"],[5,"雑誌に","トウコウ","する。","投稿"],[5,"","コウキュウ","の平和を望む。","恒久"],[5,"契約を","コウカイ","する。","更改"],[5,"あの城は","ナンコウ","不落だ。","難攻"],[5,"","ソウゴ","の信頼を深める。","相互"],[5,"水源が","コカツ","する。","枯渇"],[5,"","ユウゲン","の境地を味わう。","幽玄"],[5,"","タイキケン","に突入する。","大気圏"],[5,"つばめが","のきさき","に巣を作る。","軒先"],
+[6,"ごうを","に","やす。","煮"],[6,"夕日が","なな","めにさしこむ。","斜"],[6,"指揮を","と","る。","執"],[6,"","シユウ","を決する戦いをする。","雌雄"],[6,"","うかが","いをたてる。","伺"],[6,"","ヒサン","な結末の映画。","悲惨"],[6,"雑誌に投書を","の","せる。","載"],[6,"","サイゲツ","人を待たず。","歳月"],[6,"豊かな","シキサイ","の絵画。","色彩"],[6,"日本は","サコク","政策をとった。","鎖国"],
+[7,"運命の人に","めぐ","りあう。","巡"],[7,"","シュン","の野菜がおいしい。","旬"],[7,"","イッシュン","の出来事。","一瞬"],[7,"","けもの","のような声を出す。","獣"],[7,"","ニュウワ","な笑顔。","柔和"],[7,"","ユウシュウ","な作品を載せる。","優秀"],[7,"","ジュヨウ","と供給の関係。","需要"],[7,"上品な","おもむき","がある。","趣"],[7,"山へ","か","りに行く。","狩"],[7,"卒業すると","さび","しい。","寂"],
+[8,"矛と","たて","を持って戦う。","盾"],[8,"国会を","ショウシュウ","する。","召集"],[8,"","ゆか","をよくみがく。","床"],[8,"新入生を","ショウカイ","する。","紹介"],[8,"","ショウサイ","に説明する。","詳細"],[8,"","せたけ","が前より伸びる。","背丈"],[8,"細胞が","ふ","える。","殖"],[8,"","フクショク","デザイナー。","服飾"],[8,"部屋に花を","かざ","る。","飾"],[8,"手で","ふ","れてみる。","触"],
+[9,"","おか","すことのできない権利。","侵"],[9,"営業が","フシン","になる。","不振"],[9,"水に","ひた","す。","浸"],[9,"","シュウシン","時刻は午後十時。","就寝"],[9,"言動を","つつし","む。","慎"],[9,"","ジシン","を予知する。","地震"],[9,"山へ","たきぎ","をとりに行く。","薪"],[9,"多くの人が","ジンリョク","する。","尽力"],[9,"大坂夏の","ジン","で豊臣方は滅びた。","陣"],[9,"人に道を","たず","ねる。","尋"],
+[10,"","スイソウ","楽団が演奏する。","吹奏"],[10,"不公平を","ゼセイ","する。","是正"],[10,"江戸時代の","ヒャクショウ","一揆。","百姓"],[10,"アメリカに","エンセイ","する。","遠征"],[10,"雪の上に","あしあと","が続く。","足跡"],[10,"上位を","ドクセン","する。","独占"],[10,"暑いので","センプウキ","を使う。","扇風機"],[10,"","あざ","やかな色彩のドレス。","鮮"],[10,"","ソショウ","に発展する。","訴訟"],[10,"激しい","ショウソウ","にかられる。","焦燥"],
+[11,"感謝状を","おく","る。","贈"],[11,"","ニンタイ","することが大切だ。","忍耐"],[11,"","コウタイ","で勤務する。","交替"],[11,"","コウタク","のある紙。","光沢"],[11,"川が","にご","る。","濁"],[11,"電車が","ダッセン","した。","脱線"],[11,"","あわ","いあこがれの心をもつ。","淡"],[11,"役所に","タンガン","する。","嘆願"],[11,"","みちばた","で休む。","道端"],[11,"ピアノを","ひ","く。","弾"],
+[12,"厚顔","ムチ","の人間。","無恥"],[12,"歩くスピードが","おそ","い。","遅"],[12,"老後のために","チョチク","する。","貯蓄"],[12,"","チョウヤク","運動をする。","跳躍"],[12,"耳を","す","ます。","澄"],[12,"","チンモク","を守る。","沈黙"],[12,"","ボウハテイ","に波が打ち寄せる。","防波堤"],[12,"雨水が","しずく","となって落ちる。","滴"],[12,"贈り物に手紙を","そ","えて渡す。","添"],[12,"通学の","トチュウ","の出来事。","途中"],
+[13,"失礼な態度に","おこ","る。","怒"],[13,"難を","のが","れる。","逃"],[13,"","ケントウシ","を廃止する。","遣唐使"],[13,"","もも","栗三年柿八年。","桃"],[13,"光が","す","けるカーテン。","透"],[13,"","トウナン","防止のベル。","盗難"],[13,"","いなサク","農業。","稲作"],[13,"救命","ドウイ","を身につける。","胴衣"],[13,"","とうげ","の茶屋で休む。","峠"],[13,"動きが","にぶ","る。","鈍"],
+[14,"","ドンテン","を見上げる。","曇天"],[14,"服装に","なや","む。","悩"],[14,"","こ","いコーヒーをいれる。","濃"],[14,"","さかずき","に酒をつぐ。","杯"],[14,"親切な","センパイ","のコーチ。","先輩"],[14,"旅館に","と","まる。","泊"],[14,"味が","うす","くなる。","薄"],[14,"危機","イッパツ","できりぬける。","一髪"],[14,"","イッパン","の人も参加できる。","一般"],[14,"","かれ","に本を借りる。","彼"],
+[15,"大きな損害を","こうむ","る。","被"],[15,"人情の","キビ","にふれる。","機微"],[15,"水彩画を","か","く。","描"],[15,"","カイヒン","公園に行く。","海浜"],[15,"","フツウ","列車に乗って行く。","普通"],[15,"草花の根が","くさ","る。","腐"],[15,"","ゼンプク","の信頼を置く。","全幅"],[15,"ひしゃくの","え","を握る。","柄"],[15,"","かべ","にペンキをぬる。","壁"],[15,"犯人を","と","らえる。","捕"],
+[16,"","ハンボウ","期を乗り越える。","繁忙"],[16,"年末はとても","いそが","しい。","忙"],[16,"会議の","ボウトウ","で発言する。","冒頭"],[16,"","ヒボン","な才能を持つ。","非凡"],[16,"注意が","サンマン","になる。","散漫"],[16,"","コウミョウ","な仕掛けに驚く。","巧妙"],[16,"ぐっすりと","ねむ","る。","眠"],[16,"","ノウム","注意報が出る。","濃霧"],[16,"今年の夏は","モウショ","だった。","猛暑"],[16,"原稿を","モクドク","する。","黙読"],
+[17,"","ヒヤクテキ","に業績が伸びる。","飛躍的"],[17,"努力賞を","あた","える。","与"],[17,"","ヨウガン","が流れ出る。","溶岩"],[17,"","ものごし","の上品な人。","物腰"],[17,"友を","シンライ","する。","信頼"],[17,"すぐに","レンラク","する。","連絡"],[17,"","リュウリュウ","辛苦の結晶。","粒粒"],[17,"安全面に","ハイリョ","する。","配慮"],[17,"けがの","チリョウ","を受ける。","治療"],[17,"美辞","レイク","をならべる。","麗句"]
+].map((r,i)=>({id:i,kai:r[0],pre:r[1],mid:r[2],post:r[3],ans:r[4]}));
+const KAIS=[...new Set(DATA.map(d=>d.kai))];
+const store={
+ get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+ set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 };
-let wrong = new Set(store.get('kd_wrong',[]));
-let best = store.get('kd_best',{});
-let mode = store.get('kd_mode','self');   // type | self
-let shuffle = store.get('kd_shuffle',false);
-let S = null;   // session
-
-const $ = s=>document.querySelector(s);
-const app = $('#app');
-const esc = s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const norm = s=>s.normalize('NFKC').replace(/\s+/g,'').replace(/々/g,'');
-const okAns = (q,v)=>{ const a=norm(q.ans), b=norm(v); return b===a || (q.ans==='粒粒' && b==='粒'); };
+let wrong=new Set(store.get('kd_wrong',[]));
+let mode=store.get('kd_mode','self');
+let direction=store.get('kd_direction','write');
+let shuffle=store.get('kd_shuffle',false);
+let bestWrite=store.get('kd_best_write',store.get('kd_best',{}));
+let bestRead=store.get('kd_best_read',{});
+let S=null;
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm=s=>String(s).normalize('NFKC').replace(/\s+/g,'').replace(/々/g,'');
+const hira=s=>norm(s).replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+const expected=q=>direction==='read'?q.mid:q.ans;
+const okAns=(q,v)=>{
+ const a=expected(q),b=norm(v);
+ return direction==='read'?hira(a)===hira(b):(b===norm(a)||(q.ans==='粒粒'&&b==='粒'));
+};
 function sentence(q,state){
-  const t = state ? `<span class="tg ${state}">${esc(q.ans)}</span>` : `<span class="tg">${esc(q.mid)}</span>`;
-  return `${esc(q.pre)}${t}${esc(q.post)}`;
+ const target=direction==='read'?q.ans:q.mid;
+ return `${esc(q.pre)}<span class="tg ${state||''}">${esc(target)}</span>${esc(q.post)}`;
 }
 function shuf(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-
 function home(){
-  S=null;
-  const cnt = k=>DATA.filter(d=>d.kai===k).length;
-  app.innerHTML = `
-  <div class="top fade"><h1>漢字ドリル帳</h1><p>全${DATA.length}問・第1〜${KAIS.length}回</p></div>
-  <section class="panel fade">
-    <h2>答え方</h2>
-    <div class="row" style="align-items:center">
-      <div class="seg" role="group" aria-label="答え方">
-        <button id="m-self" aria-pressed="${mode==='self'}">手書きで自己採点</button>
-        <button id="m-type" aria-pressed="${mode==='type'}">キーボード入力</button>
-      </div>
-      <div class="seg" role="group" aria-label="順番">
-        <button id="o-seq" aria-pressed="${!shuffle}">順番どおり</button>
-        <button id="o-rnd" aria-pressed="${shuffle}">ランダム</button>
-      </div>
-    </div>
-    <p class="hint" style="margin-top:10px">${mode==='type'?'かなを見て漢字を入力します。':'画面の枠に指やペンで書き、答えを見て、できたかどうかを自分で選びます。'}</p>
-  </section>
-  <section class="panel fade">
-    <h2>回を選ぶ</h2>
-    <div class="kai">
-      ${KAIS.map(k=>`<button data-kai="${k}" class="${best[k]!=null?'done':''}"><b>第${k}回</b><small>${best[k]!=null?best[k]+' / '+cnt(k):cnt(k)+'問'}</small></button>`).join('')}
-    </div>
-  </section>
-  <section class="panel fade">
-    <h2>まとめて練習</h2>
-    <div class="row">
-      <button class="btn" id="go-full">全${DATA.length}問を通してやる</button>
-      <button class="btn ghost" id="go-all">ランダム20問</button>
-      <button class="btn ghost" id="go-wrong" ${wrong.size?'':'disabled'}>間違えた問題（${wrong.size}問）</button>
-    </div>
-    ${wrong.size?`<p class="hint" style="margin-top:10px"><button class="btn ghost" id="clr" style="padding:5px 10px;font-size:13px">間違いの記録を消す</button></p>`:''}
-  </section>`;
-  $('#m-type').onclick=()=>{mode='type';store.set('kd_mode',mode);home()};
-  $('#m-self').onclick=()=>{mode='self';store.set('kd_mode',mode);home()};
-  $('#o-seq').onclick=()=>{shuffle=false;store.set('kd_shuffle',shuffle);home()};
-  $('#o-rnd').onclick=()=>{shuffle=true;store.set('kd_shuffle',shuffle);home()};
-  document.querySelectorAll('[data-kai]').forEach(b=>b.onclick=()=>{
-    const k=+b.dataset.kai; const ids=DATA.filter(d=>d.kai===k).map(d=>d.id);
-    start(shuffle?shuf(ids):ids,`第${k}回`,k);
-  });
-  $('#go-full').onclick=()=>{const ids=DATA.map(d=>d.id);start(shuffle?shuf(ids):ids,'全'+DATA.length+'問',null)};
-  $('#go-all').onclick=()=>start(shuf(DATA.map(d=>d.id)).slice(0,20),'ランダム20問',null);
-  const gw=$('#go-wrong'); gw.onclick=()=>{const ids=[...wrong];start(shuffle?shuf(ids):ids,'間違い直し',null)};
-  const c=$('#clr'); if(c) c.onclick=()=>{wrong.clear();store.set('kd_wrong',[]);home()};
+ S=null;
+ const cnt=k=>DATA.filter(d=>d.kai===k).length;
+ const best=direction==='read'?bestRead:bestWrite;
+ app.innerHTML=`
+ <div class="top fade"><h1>漢字ドリル帳</h1><p>全${DATA.length}問・第1〜${KAIS.length}回</p></div>
+ <section class="panel fade">
+ <h2>テストの種類</h2>
+ <div class="row">
+ <div class="seg" role="group" aria-label="テストの種類">
+ <button id="d-write" aria-pressed="${direction==='write'}">書き取り</button>
+ <button id="d-read" aria-pressed="${direction==='read'}">読みテスト</button>
+ </div></div>
+ <p class="hint" style="margin-top:10px">${direction==='read'?'漢字の読みを、ひらがなまたはカタカナで入力します。':'例文のかなを見て漢字を答えます。'}</p>
+ <h2 style="margin-top:16px">答え方</h2>
+ <div class="row">
+ <div class="seg" role="group" aria-label="答え方">
+ <button id="m-self" aria-pressed="${mode==='self'}">手書きで自己採点</button>
+ <button id="m-type" aria-pressed="${mode==='type'}">キーボード入力</button>
+ </div>
+ </div>
+ <p class="hint" style="margin-top:10px">${direction==='read'?'読みテストはキーボード入力で回答します。':'手書きでは答えを見てから自己採点できます。'}</p>
+ <h2 style="margin-top:16px">出題順</h2>
+ <div class="seg" role="group" aria-label="出題順">
+ <button id="o-seq" aria-pressed="${!shuffle}">順番どおり</button>
+ <button id="o-rnd" aria-pressed="${shuffle}">ランダム</button>
+ </div></section>
+ <section class="panel fade"><h2>回を選ぶ（${direction==='read'?'読み':'書き取り'}の成績）</h2><div class="kai">
+ ${KAIS.map(k=>`<button data-kai="${k}" class="${best[k]!=null?'done':''}"><b>第${k}回</b><small>${best[k]!=null?best[k]+' / '+cnt(k):cnt(k)+'問'}</small></button>`).join('')}
+ </div></section>
+ <section class="panel fade"><h2>まとめて練習</h2><div class="row">
+ <button class="btn" id="go-full">全${DATA.length}問を通してやる</button>
+ <button class="btn ghost" id="go-all">ランダム20問</button>
+ <button class="btn ghost" id="go-wrong" ${wrong.size?'':'disabled'}>間違えた問題（${wrong.size}問）</button>
+ </div>${wrong.size?'<p style="margin-top:10px"><button class="btn ghost" id="clr" style="padding:5px 10px;font-size:13px">間違いの記録を消す</button></p>':''}</section>`;
+ $('#d-write').onclick=()=>setDirection('write');
+ $('#d-read').onclick=()=>setDirection('read');
+ $('#m-type').onclick=()=>{mode='type';store.set('kd_mode',mode);home()};
+ $('#m-self').onclick=()=>{mode='self';store.set('kd_mode',mode);home()};
+ $('#o-seq').onclick=()=>{shuffle=false;store.set('kd_shuffle',shuffle);home()};
+ $('#o-rnd').onclick=()=>{shuffle=true;store.set('kd_shuffle',shuffle);home()};
+ document.querySelectorAll('[data-kai]').forEach(b=>b.onclick=()=>{
+  const k=+b.dataset.kai,ids=DATA.filter(d=>d.kai===k).map(d=>d.id);
+  start(shuffle?shuf(ids):ids,`第${k}回`,k);
+ });
+ $('#go-full').onclick=()=>{const ids=DATA.map(d=>d.id);start(shuffle?shuf(ids):ids,'全'+DATA.length+'問',null)};
+ $('#go-all').onclick=()=>start(shuf(DATA.map(d=>d.id)).slice(0,20),'ランダム20問',null);
+ $('#go-wrong').onclick=()=>{const ids=[...wrong].filter(id=>DATA[id]);if(ids.length)start(shuffle?shuf(ids):ids,'間違い直し',null)};
+ const c=$('#clr');if(c)c.onclick=()=>{wrong.clear();store.set('kd_wrong',[]);home()};
 }
-
-function start(ids,title,kai){
-  S={ids,title,kai,i:0,score:0,miss:[],answered:false};
-  show();
-}
-
+function setDirection(v){direction=v;store.set('kd_direction',v);home()}
+function start(ids,title,kai){S={ids,title,kai,i:0,score:0,miss:[],answered:false};show()}
 function show(){
-  const q = DATA[S.ids[S.i]], n=S.ids.length;
-  S.answered=false;
-  app.innerHTML = `
-  <div class="top"><h1 style="font-size:17px">${esc(S.title)}</h1><button class="btn ghost" id="quit" style="padding:6px 12px;font-size:13px">やめる</button></div>
-  <div class="bar" aria-hidden="true"><i style="width:${S.i/n*100}%"></i></div>
-  <div class="meta"><span>${S.i+1} / ${n}問</span><span>正解 ${S.score}</span></div>
-  <div class="q fade"><p class="sent" id="sent">${sentence(q)}</p></div>
-  <div id="padwrap"></div>
-  <div class="fb" id="fb" aria-live="polite"></div>
-  <div id="ctl"></div>`;
-  $('#quit').onclick=home;
-  const ctl=$('#ctl');
-  if(mode==='type'){
-    ctl.innerHTML=`<form class="ans" id="f" autocomplete="off"><input id="ans" lang="ja" aria-label="漢字で答える" placeholder="漢字で入力" autocapitalize="off" spellcheck="false"><button class="btn" type="submit">答える</button></form><p class="hint" style="margin-top:8px">変換を確定してから「答える」を押します。</p>`;
-    const inp=$('#ans'); inp.focus();
-    $('#f').onsubmit=e=>{e.preventDefault(); if(S.answered) return next(); const v=inp.value; if(!v.trim()) return; judge(q,okAns(q,v),v)};
-  }else{
-    setupPad(); ctl.innerHTML=`<button class="btn" id="reveal" style="width:100%">答えを見る</button><p class="hint" style="margin-top:8px">枠に書いてから押します。</p>`;
-    $('#reveal').onclick=reveal;
-  }
+ const q=DATA[S.ids[S.i]],n=S.ids.length;
+ S.answered=false;
+ app.innerHTML=`
+ <div class="top"><h1 style="font-size:17px">${esc(S.title)} · ${direction==='read'?'読みテスト':'書き取り'}</h1><button class="btn ghost" id="quit" style="padding:6px 12px;font-size:13px">やめる</button></div>
+ <div class="bar"><i style="width:${S.i/n*100}%"></i></div>
+ <div class="meta"><span>${S.i+1} / ${n}問</span><span>正解 ${S.score}</span></div>
+ <div class="q fade"><p class="sent" id="sent">${sentence(q)}</p></div>
+ <div id="padwrap"></div><div class="fb" id="fb" aria-live="polite"></div><div id="ctl"></div>`;
+ $('#quit').onclick=home;
+ const ctl=$('#ctl');
+ if(direction==='read'||mode==='type'){
+  ctl.innerHTML=`<form class="ans" id="f" autocomplete="off"><input id="ans" lang="ja" aria-label="${direction==='read'?'読みを答える':'漢字で答える'}" placeholder="${direction==='read'?'ひらがなで読みを入力':'漢字で入力'}" autocapitalize="off" spellcheck="false"><button class="btn" type="submit">答える</button></form><p class="hint" style="margin-top:8px">${direction==='read'?'ひらがな・カタカナのどちらでも回答できます。':'変換を確定してから「答える」を押します。'}</p>`;
+  $('#ans').focus();
+  $('#f').onsubmit=e=>{e.preventDefault();if(S.answered)return next();const v=$('#ans').value;if(!v.trim())return;judge(q,okAns(q,v),v)};
+ }else{
+  setupPad();ctl.innerHTML='<button class="btn" id="reveal" style="width:100%">答えを見る</button><p class="hint" style="margin-top:8px">枠に書いてから押します。</p>';
+  $('#reveal').onclick=reveal;
+ }
 }
 function setupPad(){
-  const w=$('#padwrap');
-  w.innerHTML=`<div class="padbox"><canvas id="pad" aria-label="手書きの練習スペース"></canvas><button class="btn ghost" id="clr-pad" type="button">消す</button></div>`;
-  const c=$('#pad'), dpr=window.devicePixelRatio||1, r0=c.getBoundingClientRect();
-  c.width=Math.round(r0.width*dpr); c.height=Math.round(r0.height*dpr);
-  const x=c.getContext('2d'); x.scale(dpr,dpr); x.lineCap='round'; x.lineJoin='round'; x.lineWidth=4.5;
-  let d=false,lx=0,ly=0;
-  const pos=e=>{const r=c.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
-  c.onpointerdown=e=>{d=true;try{getSelection().removeAllRanges()}catch(_){}[lx,ly]=pos(e);try{c.setPointerCapture(e.pointerId)}catch(_){}x.strokeStyle=getComputedStyle(document.body).color;x.beginPath();x.moveTo(lx,ly);x.lineTo(lx+.01,ly);x.stroke();e.preventDefault()};
-  c.onpointermove=e=>{if(!d)return;const evs=(e.getCoalescedEvents&&e.getCoalescedEvents())||[];for(const p of (evs.length?evs:[e])){const [px,py]=pos(p);x.beginPath();x.moveTo(lx,ly);x.lineTo(px,py);x.stroke();lx=px;ly=py}};
-  c.onpointerup=c.onpointercancel=c.onlostpointercapture=()=>{d=false};
-  for(const t of ['touchstart','touchmove'])c.addEventListener(t,e=>e.preventDefault(),{passive:false});
-  for(const t of ['contextmenu','selectstart','dragstart'])c.addEventListener(t,e=>e.preventDefault());
-  $('#clr-pad').onclick=()=>x.clearRect(0,0,c.width/dpr,c.height/dpr);
+ const c=$('#padwrap');c.innerHTML='<div class="padbox"><canvas id="pad" aria-label="手書きの練習スペース"></canvas><button class="btn ghost" id="clr-pad" type="button">消す</button></div>';
+ const p=$('#pad'),dpr=window.devicePixelRatio||1,r=p.getBoundingClientRect();
+ p.width=Math.round(r.width*dpr);p.height=Math.round(r.height*dpr);
+ const x=p.getContext('2d');x.scale(dpr,dpr);x.lineCap='round';x.lineJoin='round';x.lineWidth=4.5;
+ let down=false,lx=0,ly=0;
+ const pos=e=>{const r=p.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+ p.onpointerdown=e=>{down=true;[lx,ly]=pos(e);try{p.setPointerCapture(e.pointerId)}catch(_){}x.strokeStyle=getComputedStyle(document.body).color;x.beginPath();x.moveTo(lx,ly);x.lineTo(lx+.01,ly);x.stroke();e.preventDefault()};
+ p.onpointermove=e=>{if(!down)return;const evs=e.getCoalescedEvents?.()||[];for(const a of evs.length?evs:[e]){const[px,py]=pos(a);x.beginPath();x.moveTo(lx,ly);x.lineTo(px,py);x.stroke();lx=px;ly=py}};
+ p.onpointerup=p.onpointercancel=p.onlostpointercapture=()=>down=false;
+ p.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});p.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+ $('#clr-pad').onclick=()=>x.clearRect(0,0,p.width/dpr,p.height/dpr);
 }
 function reveal(){
-  const q=DATA[S.ids[S.i]];
-  $('#sent').innerHTML=sentence(q,'right');
-  $('#fb').innerHTML=`<p class="ans">${esc(q.ans)}</p><p class="hint">書いた字と見比べましょう。</p>`;
-  $('#ctl').innerHTML=`<div class="row"><button class="btn" id="yes" style="flex:1">できた</button><button class="btn ghost" id="no" style="flex:1">まちがえた</button></div>`;
-  $('#yes').focus();
-  $('#yes').onclick=()=>judge(q,true,null);
-  $('#no').onclick=()=>judge(q,false,null);
+ const q=DATA[S.ids[S.i]];
+ $('#sent').innerHTML=sentence(q,'right');
+ $('#fb').innerHTML=`<p class="ans">${esc(expected(q))}</p><p class="hint">書いた字と見比べましょう。</p>`;
+ $('#ctl').innerHTML='<div class="row"><button class="btn" id="yes" style="flex:1">できた</button><button class="btn ghost" id="no" style="flex:1">まちがえた</button></div>';
+ $('#yes').focus();$('#yes').onclick=()=>judge(q,true,null);$('#no').onclick=()=>judge(q,false,null);
 }
 function judge(q,ok,val){
-  S.answered=true;
-  if(ok){S.score++; wrong.delete(q.id)} else {S.miss.push(q.id); wrong.add(q.id)}
-  store.set('kd_wrong',[...wrong]);
-  $('#sent').innerHTML=sentence(q, ok?'right':'wrong');
-  const last = S.i===S.ids.length-1;
-  $('#fb').innerHTML = ok
-    ? `<div class="mark right">○</div><p class="ans" style="color:var(--ok)">${esc(q.ans)}</p>`
-    : `<div class="mark wrong">×</div><div><p class="hint">${val?esc(val)+' は ちがいます':''}</p><p class="ans">${esc(q.ans)}</p></div>`;
-  $('#ctl').innerHTML=`<button class="btn" id="nx" style="width:100%">${last?'結果を見る':'次の問題'}</button>`;
-  const nx=$('#nx'); nx.focus(); nx.onclick=next;
+ if(S.answered)return;
+ S.answered=true;
+ if(ok){S.score++;wrong.delete(q.id)}else{S.miss.push(q.id);wrong.add(q.id)}
+ store.set('kd_wrong',[...wrong]);
+ $('#sent').innerHTML=sentence(q,ok?'right':'wrong');
+ const a=expected(q);
+ $('#fb').innerHTML=ok?`<div class="mark right">○</div><p class="ans" style="color:var(--ok)">${esc(a)}</p>`:`<div class="mark wrong">×</div><div><p class="hint">${val?esc(val)+' は ちがいます':''}</p><p class="ans">${esc(a)}</p></div>`;
+ $('#ctl').innerHTML=`<button class="btn" id="nx" style="width:100%">${S.i===S.ids.length-1?'結果を見る':'次の問題'}</button>`;
+ $('#nx').focus();$('#nx').onclick=next;
 }
-function next(){
-  if(S.i<S.ids.length-1){S.i++;show()} else finish();
-}
+function next(){if(S.i<S.ids.length-1){S.i++;show()}else finish()}
 function finish(){
-  const n=S.ids.length;
-  if(S.kai!=null){ best[S.kai]=Math.max(best[S.kai]??0,S.score); store.set('kd_best',best) }
-  const miss=S.miss.map(id=>DATA[id]);
-  app.innerHTML=`
-  <div class="top fade"><h1>${esc(S.title)} のけっか</h1></div>
-  <section class="panel fade">
-    <div class="res"><b>${S.score}</b><span>/ ${n}問 正解</span></div>
-    <p class="hint">${miss.length?'まちがえた問題は「間違えた問題」にたまります。':'全問正解です。'}</p>
-  </section>
-  ${miss.length?`<section class="panel fade"><h2>まちがえた問題</h2><ul class="list">${miss.map(q=>`<li><span>${esc(q.pre)}［${esc(q.mid)}］${esc(q.post)}</span><span>${esc(q.ans)}</span></li>`).join('')}</ul></section>`:''}
-  <div class="row fade">
-    ${miss.length?`<button class="btn" id="re">まちがえた${miss.length}問をやり直す</button>`:''}
-    <button class="btn ghost" id="again">もう一度</button>
-    <button class="btn ghost" id="hm">回の一覧へ</button>
-  </div>`;
-  const re=$('#re'); if(re) re.onclick=()=>start(S.miss.slice(),'やり直し',null);
-  const ids=S.ids.slice(), t=S.title, k=S.kai;
-  $('#again').onclick=()=>start(shuffle?shuf(ids):ids,t,k);
-  $('#hm').onclick=home;
+ const n=S.ids.length;
+ if(S.kai!=null){
+  const best=direction==='read'?bestRead:bestWrite;
+  best[S.kai]=Math.max(best[S.kai]??0,S.score);
+  if(direction==='read')store.set('kd_best_read',best);else store.set('kd_best_write',best);
+ }
+ const miss=S.miss.map(id=>DATA[id]);
+ app.innerHTML=`<div class="top fade"><h1>${esc(S.title)} の結果</h1></div>
+ <section class="panel fade"><div class="res"><b>${S.score}</b><span>/ ${n}問 正解</span></div>
+ <p class="hint">${miss.length?'まちがえた問題は「間違えた問題」に保存されます。':'全問正解です。'}</p>
+ <p class="hint">テスト：${direction==='read'?'読みテスト':'書き取り'}</p></section>
+ ${miss.length?`<section class="panel fade"><h2>まちがえた問題</h2><ul class="list">${miss.map(q=>`<li><span>${esc(q.pre)}［${esc(q.ans)}］${esc(q.post)}</span><span>${esc(expected(q))}</span></li>`).join('')}</ul></section>`:''}
+ <div class="row fade">${miss.length?`<button class="btn" id="re">まちがえた${miss.length}問をやり直す</button>`:''}<button class="btn ghost" id="again">もう一度</button><button class="btn ghost" id="hm">回の一覧へ</button></div>`;
+ const re=$('#re');if(re)re.onclick=()=>start(S.miss.slice(),'やり直し',null);
+ const ids=S.ids.slice(),t=S.title,k=S.kai;
+ $('#again').onclick=()=>start(shuffle?shuf(ids):ids,t,k);
+ $('#hm').onclick=home;
 }
 home();
 </script>
-
-</body></html>
+</body>
+</html>
