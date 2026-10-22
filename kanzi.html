@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
@@ -10,6 +11,7 @@
 :root[data-theme=dark]{color-scheme:dark;--paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--paper:#12171f;--card:#1a212c;--ink:#e8edf4;--sub:#99a6b8;--rule:#2e3846;--pen:#ff7a6e;--ok:#5fcf9d;--accent:#8fb2f2;--accent-ink:#0f1722}}
 *{box-sizing:border-box}
+html{overflow-anchor:none;scroll-behavior:auto}
 body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--f-body);padding:20px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
 main{max-width:640px;margin:auto;display:flex;flex-direction:column;gap:20px}
 h1{font-size:22px;margin:0;letter-spacing:.04em}h2{font-size:13px;margin:0 0 8px;color:var(--sub);letter-spacing:.12em;font-weight:500}
@@ -24,7 +26,8 @@ button,input{font:inherit;color:inherit}button{cursor:pointer}button:focus-visib
 .q{padding:28px 20px;min-height:140px;display:flex;align-items:center}.sent{font:clamp(22px,5.5vw,30px)/2 var(--f-text);margin:0;word-break:keep-all;overflow-wrap:anywhere}
 .tg{color:var(--accent);border-bottom:2px dotted var(--accent);padding:0 .1em;white-space:nowrap}.tg.right{color:var(--ok);border-bottom:2px solid var(--ok);font-weight:600}.tg.wrong{color:var(--pen);border-bottom:2px solid var(--pen);font-weight:600}
 .fb{min-height:60px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.fb p{margin:0}.ans{font:26px var(--f-text);color:var(--pen)}.mark{font:44px/1 var(--f-text);width:56px;height:56px;border:3px solid;border-radius:50%;display:grid;place-items:center;flex:none}.mark.right{color:var(--pen);border-color:var(--pen)}.mark.wrong{color:var(--pen);border:0;font-size:52px}
-form.ans{display:flex;gap:10px}form.ans input{flex:1;min-width:0;font:24px var(--f-text);padding:10px 14px;border:2px solid var(--rule);border-radius:8px;background:var(--card);color:var(--ink)}
+form.ans{display:flex;gap:10px;scroll-margin-block:0}
+form.ans input{flex:1;min-width:0;font:24px var(--f-text);padding:10px 14px;border:2px solid var(--rule);border-radius:8px;background:var(--card);color:var(--ink);scroll-margin-block:0; -webkit-appearance:none;appearance:none}
 .res{display:flex;align-items:baseline;gap:10px}.res b{font-size:56px;line-height:1}.list{display:flex;flex-direction:column;margin:0;padding:0;list-style:none}.list li{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--rule);font:17px var(--f-text)}.list li:first-child{border-top:0}.list li span:last-child{color:var(--pen);white-space:nowrap}
 .padbox{position:relative}#pad{display:block;width:100%;height:230px;touch-action:none;border:1px solid var(--rule);border-radius:10px;background-color:var(--card);background-image:linear-gradient(var(--rule),var(--rule)),linear-gradient(var(--rule),var(--rule));background-size:100% 1px,1px 100%;background-position:center;background-repeat:no-repeat}
 #clr-pad{position:absolute;right:8px;top:8px;padding:4px 10px;font-size:13px;background:var(--card)}
@@ -55,6 +58,7 @@ const DATA = [
 [16,"","ハンボウ","期を乗り越える。","繁忙"],[16,"年末はとても","いそが","しい。","忙"],[16,"会議の","ボウトウ","で発言する。","冒頭"],[16,"","ヒボン","な才能を持つ。","非凡"],[16,"注意が","サンマン","になる。","散漫"],[16,"","コウミョウ","な仕掛けに驚く。","巧妙"],[16,"ぐっすりと","ねむ","る。","眠"],[16,"","ノウム","注意報が出る。","濃霧"],[16,"今年の夏は","モウショ","だった。","猛暑"],[16,"原稿を","モクドク","する。","黙読"],
 [17,"","ヒヤクテキ","に業績が伸びる。","飛躍的"],[17,"努力賞を","あた","える。","与"],[17,"","ヨウガン","が流れ出る。","溶岩"],[17,"","ものごし","の上品な人。","物腰"],[17,"友を","シンライ","する。","信頼"],[17,"すぐに","レンラク","する。","連絡"],[17,"","リュウリュウ","辛苦の結晶。","粒粒"],[17,"安全面に","ハイリョ","する。","配慮"],[17,"けがの","チリョウ","を受ける。","治療"],[17,"美辞","レイク","をならべる。","麗句"]
 ].map((r,i)=>({id:i,kai:r[0],pre:r[1],mid:r[2],post:r[3],ans:r[4]}));
+
 const KAIS=[...new Set(DATA.map(d=>d.kai))];
 const store={
  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
@@ -81,6 +85,7 @@ function sentence(q,state){
  return `${esc(q.pre)}<span class="tg ${state||''}">${esc(target)}</span>${esc(q.post)}`;
 }
 function shuf(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
 function home(){
  S=null;
  const cnt=k=>DATA.filter(d=>d.kai===k).length;
@@ -133,6 +138,7 @@ function home(){
 }
 function setDirection(v){direction=v;store.set('kd_direction',v);home()}
 function start(ids,title,kai){S={ids,title,kai,i:0,score:0,miss:[],answered:false};show()}
+
 function show(){
  const q=DATA[S.ids[S.i]],n=S.ids.length;
  S.answered=false;
@@ -146,7 +152,17 @@ function show(){
  const ctl=$('#ctl');
  if(direction==='read'||mode==='type'){
   ctl.innerHTML=`<form class="ans" id="f" autocomplete="off"><input id="ans" lang="ja" aria-label="${direction==='read'?'読みを答える':'漢字で答える'}" placeholder="${direction==='read'?'ひらがなで読みを入力':'漢字で入力'}" autocapitalize="off" spellcheck="false"><button class="btn" type="submit">答える</button></form><p class="hint" style="margin-top:8px">${direction==='read'?'ひらがな・カタカナのどちらでも回答できます。':'変換を確定してから「答える」を押します。'}</p>`;
-  $('#ans').focus();
+
+  // 入力欄を自動フォーカスしない。問題表示時の自動スクロールを防ぐ。
+  const answer=$('#ans');
+  let savedScrollY=window.scrollY;
+  answer.addEventListener('pointerdown',()=>{
+   savedScrollY=window.scrollY;
+  },{passive:true});
+  answer.addEventListener('focus',()=>{
+   savedScrollY=window.scrollY;
+   requestAnimationFrame(()=>window.scrollTo({top:savedScrollY,behavior:'auto'}));
+  });
   $('#f').onsubmit=e=>{e.preventDefault();if(S.answered)return next();const v=$('#ans').value;if(!v.trim())return;judge(q,okAns(q,v),v)};
  }else{
   setupPad();ctl.innerHTML='<button class="btn" id="reveal" style="width:100%">答えを見る</button><p class="hint" style="margin-top:8px">枠に書いてから押します。</p>';
@@ -171,7 +187,7 @@ function reveal(){
  $('#sent').innerHTML=sentence(q,'right');
  $('#fb').innerHTML=`<p class="ans">${esc(expected(q))}</p><p class="hint">書いた字と見比べましょう。</p>`;
  $('#ctl').innerHTML='<div class="row"><button class="btn" id="yes" style="flex:1">できた</button><button class="btn ghost" id="no" style="flex:1">まちがえた</button></div>';
- $('#yes').focus();$('#yes').onclick=()=>judge(q,true,null);$('#no').onclick=()=>judge(q,false,null);
+ $('#yes').onclick=()=>judge(q,true,null);$('#no').onclick=()=>judge(q,false,null);
 }
 function judge(q,ok,val){
  if(S.answered)return;
@@ -182,7 +198,7 @@ function judge(q,ok,val){
  const a=expected(q);
  $('#fb').innerHTML=ok?`<div class="mark right">○</div><p class="ans" style="color:var(--ok)">${esc(a)}</p>`:`<div class="mark wrong">×</div><div><p class="hint">${val?esc(val)+' は ちがいます':''}</p><p class="ans">${esc(a)}</p></div>`;
  $('#ctl').innerHTML=`<button class="btn" id="nx" style="width:100%">${S.i===S.ids.length-1?'結果を見る':'次の問題'}</button>`;
- $('#nx').focus();$('#nx').onclick=next;
+ $('#nx').onclick=next;
 }
 function next(){if(S.i<S.ids.length-1){S.i++;show()}else finish()}
 function finish(){
