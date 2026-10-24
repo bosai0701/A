@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -108,7 +109,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .source-status{color:var(--muted);font-size:11px}
 .source-status.ok{color:var(--green)}
 .source-status.error{color:#ff7888}
-.epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px #080d18,0 0 10px #080d18;text-align:center;width:34px;height:34px}
+.epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px #080d18,0 0 10px #080d18;text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none}
 .wave-note{padding:12px 18px;color:#9eafc5;font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
 @media(max-width:850px){
   .grid{grid-template-columns:minmax(0,1fr)}
@@ -693,11 +694,10 @@ function setMapEvent(data,eventKey) {
   const origin = getEventOrigin(data);
 
   if (!origin) {
-    currentOrigin = null;
-    currentOriginTime = null;
-    lastMapEventKey = null;
-    clearWaveLayers();
-    removeEpicenterMarker();
+    /*
+     * 位置情報のない続報を受信しても、
+     * 既存の震央マーカーを消さない。
+     */
     text("mapStatus","震源の緯度・経度を取得できません");
     return;
   }
@@ -744,10 +744,33 @@ function removeEpicenterMarker() {
 }
 
 function updateEpicenterMarker() {
-  if (!mapReady) return;
+  if (!mapReady || !currentOrigin) return;
 
-  removeEpicenterMarker();
-  if (!currentOrigin) return;
+  const coordinates = [currentOrigin.lon,currentOrigin.lat];
+  const popupHTML =
+    "<strong>震源地</strong><br>"+
+    "緯度: "+currentOrigin.lat.toFixed(3)+"°<br>"+
+    "経度: "+currentOrigin.lon.toFixed(3)+"°<br>"+
+    "深さ: "+currentOrigin.depth+" km";
+
+  /*
+   * 重要な修正：
+   * 既存マーカーを毎回削除して作り直さず、
+   * 位置とポップアップの内容だけを更新する。
+   */
+  if (epicenterMarker) {
+    epicenterMarker.setLngLat(coordinates);
+
+    if (epicenterPopup) {
+      epicenterPopup.setHTML(popupHTML);
+    } else {
+      epicenterPopup = new maplibregl.Popup({offset:18})
+        .setHTML(popupHTML);
+      epicenterMarker.setPopup(epicenterPopup);
+    }
+
+    return;
+  }
 
   const element = document.createElement("div");
   element.className = "epicenter-icon";
@@ -755,15 +778,13 @@ function updateEpicenterMarker() {
   element.setAttribute("aria-label","震源地");
 
   epicenterPopup = new maplibregl.Popup({offset:18})
-    .setHTML(
-      "<strong>震源地</strong><br>"+
-      "緯度: "+currentOrigin.lat.toFixed(3)+"°<br>"+
-      "経度: "+currentOrigin.lon.toFixed(3)+"°<br>"+
-      "深さ: "+currentOrigin.depth+" km"
-    );
+    .setHTML(popupHTML);
 
-  epicenterMarker = new maplibregl.Marker({element,anchor:"center"})
-    .setLngLat([currentOrigin.lon,currentOrigin.lat])
+  epicenterMarker = new maplibregl.Marker({
+    element,
+    anchor:"center"
+  })
+    .setLngLat(coordinates)
     .setPopup(epicenterPopup)
     .addTo(map);
 }
@@ -1332,15 +1353,21 @@ function sweep() {
     } else {
       const remaining = [...events.values()]
         .sort((a,b) => b.updatedAt-a.updatedAt);
-      if (remaining.length) show(remaining[0].key);
-      else {
+
+      if (remaining.length) {
+        show(remaining[0].key);
+      } else {
+        /*
+         * 重要な修正：
+         * イベント履歴が期限切れになっても、最後に取得した震源座標と
+         * 震央マーカーは維持する。イベントキャッシュの削除と
+         * マーカーの削除を連動させない。
+         *
+         * P波・S波の円だけを消し、震央の×印は残す。
+         */
         currentKey = null;
-        currentOrigin = null;
-        currentOriginTime = null;
-        lastMapEventKey = null;
         clearWaveLayers();
-        removeEpicenterMarker();
-        text("mapStatus","地震情報を待機中");
+        text("mapStatus","速報履歴の期限切れ・震央マーカーを保持中");
       }
     }
   }
@@ -1353,7 +1380,10 @@ function sweep() {
 
 function startMapUpdater() {
   if (mapUpdateTimer !== null) clearInterval(mapUpdateTimer);
-  mapUpdateTimer = setInterval(updateWaveMap,1000);
+  mapUpdateTimer = setInterval(() => {
+    updateWaveMap();
+    updateEpicenterMarker();
+  },1000);
 }
 
 /* イベント登録 */
@@ -1367,7 +1397,10 @@ document.addEventListener("visibilitychange",() => {
     sendPing();
   }
 
-  setTimeout(() => map.resize(),100);
+  setTimeout(() => {
+    map.resize();
+    updateEpicenterMarker();
+  },100);
 });
 
 window.addEventListener("online",reconnectNow);
