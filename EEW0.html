@@ -11,9 +11,15 @@
 <style>
 :root {
   color-scheme: dark;
-  --bg:#080d18;--panel:#101827;--border:#263449;
-  --text:#f1f5f9;--muted:#8ea0b8;--red:#ff4058;
-  --orange:#ffad42;--green:#36dfaa;--blue:#63b3ff;
+  --bg:#080d18;
+  --panel:#101827;
+  --border:#263449;
+  --text:#f1f5f9;
+  --muted:#8ea0b8;
+  --red:#ff4058;
+  --orange:#ffad42;
+  --green:#36dfaa;
+  --blue:#63b3ff;
 }
 *{box-sizing:border-box}
 body{
@@ -66,7 +72,6 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .kv-item .k{color:var(--muted);font-size:12px}
 .kv-item .v{text-align:right;font-size:12px;font-weight:700;overflow-wrap:anywhere}
 .section{margin-top:16px}
-.section:first-child{margin-top:0}
 .area-list{display:grid;gap:9px}
 .area{background:#ffffff04;border:1px solid #ffffff10;border-radius:10px;padding:13px;display:flex;justify-content:space-between;align-items:center;gap:12px}
 .area-name{font-weight:700;font-size:13px;overflow-wrap:anywhere}
@@ -82,8 +87,6 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#080e19;color:#b9d7f7;font-size:11px;line-height:1.7}
 .footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#667890;font-size:10px;padding:18px 2px}
 .hidden{display:none!important}
-
-/* 地震波マップ */
 .map-panel{margin-bottom:16px}
 .map-legend{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
 .legend-item{display:flex;align-items:center;gap:7px;color:#cbd5e1;font-size:11px}
@@ -155,9 +158,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   <div id="rotateNote" class="rotate-note hidden"></div>
 
   <h2 id="headline">緊急地震速報を待機中</h2>
-  <p class="hero-desc" id="description">
-    サーバーからデータを受信すると、ここに速報の概要が表示されます。
-  </p>
+  <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
 
   <div class="metrics">
     <div class="metric">
@@ -192,16 +193,13 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
       <span class="legend-item"><span class="legend-x">×</span>震源</span>
     </div>
   </div>
-
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ"></div>
-
   <div class="map-status">
     <span id="mapStatus">地震情報を待機中</span>
     <span id="tableStatus" class="source-status">走時表を読み込み中</span>
   </div>
-
   <div class="wave-note">
-    気象庁の走時表（JMA2001走時表）から計算される、地震波のP波およびS波初動の到達予想地点を表示しています。P波・S波到達予想円の半径が2,000kmに達して以降は、走時表の範囲を超えるため、円の表示を行いません。
+    JMA2001走時表を利用してP波・S波の到達予想円を表示します。走時表の範囲外では円を表示しません。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。
   </div>
 </section>
 
@@ -237,9 +235,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 <section class="panel section">
   <div class="panel-head"><h3>警報対象地域</h3><span id="areaCount">0 地域</span></div>
   <div class="panel-body">
-    <div id="areas" class="area-list">
-      <div class="empty">警報対象地域のデータを待っています</div>
-    </div>
+    <div id="areas" class="area-list"><div class="empty">警報対象地域のデータを待っています</div></div>
   </div>
 </section>
 
@@ -272,12 +268,10 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 
 <section class="panel section">
   <div class="panel-head"><h3>気象庁原文</h3><span>OriginalText</span></div>
-  <div class="panel-body">
-    <pre id="originalText" style="max-height:240px">原文待機中...</pre>
-  </div>
+  <div class="panel-body"><pre id="originalText" style="max-height:240px">原文待機中...</pre></div>
 </section>
 
-<section class="panel section" id="rawPanel">
+<section class="panel section">
   <div class="panel-head"><h3>受信 JSON</h3><span>Raw payload</span></div>
   <pre id="rawJson">受信待機中...</pre>
 </section>
@@ -296,9 +290,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 (() => {
 "use strict";
 
-/* =========================================================
-   設定
-========================================================= */
+/* 設定 */
 const WS_URL = "wss://ws-api.wolfx.jp/jma_eew";
 const COMMAND = "query_jmaeew";
 const TRAVEL_TABLE_URL = "./tjma2001.txt";
@@ -306,8 +298,8 @@ const TRAVEL_TABLE_URL = "./tjma2001.txt";
 const PING_INTERVAL = 5000;
 const PING_TIMEOUT = 10000;
 const SILENCE_LIMIT = 20000;
-const RECONNECT_MIN = 300;
-const RECONNECT_MAX = 3000;
+const RECONNECT_MIN = 500;
+const RECONNECT_MAX = 10000;
 const ROTATE_MS = 4000;
 const EVENT_TTL = 10 * 60000;
 const EVENT_KEEP = 60 * 60000;
@@ -335,9 +327,7 @@ let currentKey = null;
 let rotateTimer = null;
 let shownAt = 0;
 
-/* =========================================================
-   MapLibre GL JS 地図
-========================================================= */
+/* MapLibre */
 const map = new maplibregl.Map({
   container: "earthquakeMap",
   style: {
@@ -345,23 +335,18 @@ const map = new maplibregl.Map({
     sources: {
       osm: {
         type: "raster",
-        tiles: [
-          "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        ],
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
         tileSize: 256,
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }
     },
-    layers: [
-      {
-        id: "osm",
-        type: "raster",
-        source: "osm",
-        minzoom: 0,
-        maxzoom: 19
-      }
-    ]
+    layers: [{
+      id: "osm",
+      type: "raster",
+      source: "osm",
+      minzoom: 0,
+      maxzoom: 19
+    }]
   },
   center: [138, 36.5],
   zoom: 5,
@@ -371,7 +356,7 @@ const map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
-map.addControl(new maplibregl.ScaleControl({ unit: "metric" }));
+map.addControl(new maplibregl.ScaleControl({unit:"metric"}));
 
 let mapReady = false;
 let travelTable = [];
@@ -380,84 +365,46 @@ let currentOrigin = null;
 let currentOriginTime = null;
 let lastMapEventKey = null;
 let mapUpdateTimer = null;
+let epicenterMarker = null;
+let epicenterPopup = null;
 
 map.on("load", () => {
   mapReady = true;
 
-  map.addSource("wave-p", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] }
-  });
-
-  map.addSource("wave-s", {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] }
-  });
+  map.addSource("wave-p", {type:"geojson",data:emptyFeatureCollection()});
+  map.addSource("wave-s", {type:"geojson",data:emptyFeatureCollection()});
 
   map.addLayer({
-    id: "wave-p-fill",
-    type: "fill",
-    source: "wave-p",
-    paint: {
-      "fill-color": "#3b9bff",
-      "fill-opacity": 0.10
-    }
+    id:"wave-p-fill",type:"fill",source:"wave-p",
+    paint:{"fill-color":"#3b9bff","fill-opacity":0.10}
   });
-
   map.addLayer({
-    id: "wave-p-line",
-    type: "line",
-    source: "wave-p",
-    paint: {
-      "line-color": "#3b9bff",
-      "line-width": 3,
-      "line-opacity": 0.95
-    }
+    id:"wave-p-line",type:"line",source:"wave-p",
+    paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":0.95}
   });
-
   map.addLayer({
-    id: "wave-s-fill",
-    type: "fill",
-    source: "wave-s",
-    paint: {
-      "fill-color": "#ff4058",
-      "fill-opacity": 0.08
-    }
+    id:"wave-s-fill",type:"fill",source:"wave-s",
+    paint:{"fill-color":"#ff4058","fill-opacity":0.08}
   });
-
   map.addLayer({
-    id: "wave-s-line",
-    type: "line",
-    source: "wave-s",
-    paint: {
-      "line-color": "#ff4058",
-      "line-width": 3,
-      "line-opacity": 0.95
-    }
+    id:"wave-s-line",type:"line",source:"wave-s",
+    paint:{"line-color":"#ff4058","line-width":3,"line-opacity":0.95}
   });
 
-  loadTravelTable().then(() => {
-    if (currentOrigin && currentOriginTime !== null) {
-      updateWaveMap();
-    }
-  });
-
-  if (currentOrigin && currentOriginTime !== null) {
-    updateWaveMap();
-  }
+  loadTravelTable();
+  updateWaveMap();
+  updateEpicenterMarker();
 });
 
-map.on("error", event => {
-  if (event && event.error) {
-    console.warn("MapLibre 地図エラー:", event.error);
-  }
+map.on("error", e => {
+  if (e && e.error) console.warn("MapLibre:", e.error);
 });
 
-/* =========================================================
-   共通処理
-========================================================= */
+/* 共通処理 */
 function text(id, value) {
-  $(id).textContent =
+  const element = $(id);
+  if (!element) return;
+  element.textContent =
     value === null || value === undefined || value === ""
       ? "--" : String(value);
 }
@@ -474,15 +421,17 @@ function setConnection(label, state) {
   text("wsState", label);
 }
 
-function formatNumber(value, digits = 2) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
-  return value.toFixed(digits);
+function formatNumber(value, digits=2) {
+  const n = Number(value);
+  if (value === null || value === undefined || value === "" ||
+      !Number.isFinite(n)) return "--";
+  return n.toFixed(digits);
 }
 
 function formatMagnitude(value) {
   if (value === null || value === undefined || value === "") return "--";
-  const number = Number(value);
-  return Number.isFinite(number) ? number.toFixed(1) : String(value);
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(1) : String(value);
 }
 
 function intensityClass(value) {
@@ -493,8 +442,8 @@ function intensityClass(value) {
   return "";
 }
 
-function setTag(id, value, visible = true) {
-  $(id).textContent = value;
+function setTag(id, value, visible=true) {
+  text(id, value);
   $(id).classList.toggle("hidden", !visible);
 }
 
@@ -503,19 +452,13 @@ function setRaw(raw) {
 }
 
 function isValidCoordinate(lat, lon) {
-  return Number.isFinite(lat) &&
-    Number.isFinite(lon) &&
-    lat >= -90 && lat <= 90 &&
-    lon >= -180 && lon <= 180;
+  return Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
 }
 
 function parseOriginTime(value) {
   if (!value || typeof value !== "string") return null;
-
-  const normalized = value.trim()
-    .replace(/\//g, "-")
-    .replace(" ", "T");
-
+  const normalized = value.trim().replace(/\//g,"-").replace(" ","T");
   const ms = Date.parse(normalized);
   return Number.isFinite(ms) ? ms : null;
 }
@@ -523,44 +466,61 @@ function parseOriginTime(value) {
 function getEventOrigin(data) {
   const lat = Number(data.Latitude);
   const lon = Number(data.Longitude);
-
   if (!isValidCoordinate(lat, lon)) return null;
 
   const rawDepth = Number(data.Depth);
-  const depth = Number.isFinite(rawDepth)
-    ? Math.max(0, rawDepth)
-    : 0;
-
-  return { lat, lon, depth };
+  const depth = Number.isFinite(rawDepth) ? Math.max(0,rawDepth) : 0;
+  return {lat,lon,depth};
 }
 
-/* =========================================================
-   走時表の読み込み
-========================================================= */
+/* Serialの比較 */
+function serialNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  const match = String(value).match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+function isOlderSerial(incoming, existing) {
+  if (!existing) return false;
+
+  const incomingSerial = serialNumber(incoming.Serial);
+  const existingSerial = serialNumber(existing.data?.Serial);
+
+  if (incomingSerial !== null && existingSerial !== null) {
+    return incomingSerial < existingSerial;
+  }
+
+  const incomingTime = Date.parse(incoming.AnnouncedTime || "");
+  const existingTime = Date.parse(existing.data?.AnnouncedTime || "");
+
+  if (Number.isFinite(incomingTime) && Number.isFinite(existingTime) &&
+      incomingTime !== existingTime) {
+    return incomingTime < existingTime;
+  }
+
+  return false;
+}
+
+/* 走時表の読み込み */
 async function loadTravelTable() {
   const status = $("tableStatus");
 
   try {
-    const response = await fetch(TRAVEL_TABLE_URL, {
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
-    }
+    const response = await fetch(TRAVEL_TABLE_URL,{cache:"no-store"});
+    if (!response.ok) throw new Error("HTTP " + response.status);
 
     const content = await response.text();
-    const lines = content.split(/\r?\n/);
     const parsed = [];
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
+    for (const line of content.split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s) continue;
 
-      const match = trimmed.match(
+      const match = s.match(
         /^P\s*([-+]?\d+(?:\.\d+)?)\s+S\s*([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s*$/
       );
-
       if (!match) continue;
 
       const pTime = Number(match[1]);
@@ -568,51 +528,35 @@ async function loadTravelTable() {
       const depth = Number(match[3]);
       const distance = Number(match[4]);
 
-      if (![pTime, sTime, depth, distance].every(Number.isFinite)) {
-        continue;
-      }
+      if (![pTime,sTime,depth,distance].every(Number.isFinite)) continue;
+      if (pTime < 0 || sTime < 0 || depth < 0 || distance < 0) continue;
 
-      if (pTime < 0 || sTime < 0 || distance < 0 || depth < 0) {
-        continue;
-      }
-
-      parsed.push({ pTime, sTime, depth, distance });
+      parsed.push({pTime,sTime,depth,distance});
     }
 
-    if (!parsed.length) {
-      throw new Error("走時表から有効な行を読み取れません");
-    }
+    if (!parsed.length) throw new Error("有効な走時データがありません");
 
     travelTable = parsed;
     tableLoaded = true;
-
     status.textContent = "走時表読み込み済み · " + parsed.length + " 行";
     status.className = "source-status ok";
-
-    if (currentOrigin && currentOriginTime !== null) {
-      updateWaveMap();
-    }
+    updateWaveMap();
   } catch (error) {
     tableLoaded = false;
-    status.textContent =
-      "走時表を読み込めません。tjma2001.txt と同じフォルダで実行してください。";
+    status.textContent = "走時表を読み込めません。tjma2001.txt の配置を確認してください。";
     status.className = "source-status error";
-    console.error("走時表読み込みエラー:", error);
+    console.error("走時表読み込みエラー:",error);
   }
 }
 
-/* =========================================================
-   深さに最も近い走時表の行を選択
-========================================================= */
 function getRowsForDepth(depthKm) {
   if (!travelTable.length) return [];
 
   let closestDepth = travelTable[0].depth;
-  let minDifference = Math.abs(closestDepth - depthKm);
+  let minDifference = Math.abs(closestDepth-depthKm);
 
   for (const row of travelTable) {
-    const difference = Math.abs(row.depth - depthKm);
-
+    const difference = Math.abs(row.depth-depthKm);
     if (difference < minDifference) {
       minDifference = difference;
       closestDepth = row.depth;
@@ -621,194 +565,131 @@ function getRowsForDepth(depthKm) {
 
   return travelTable
     .filter(row => row.depth === closestDepth)
-    .sort((a, b) => a.distance - b.distance);
+    .sort((a,b) => a.distance-b.distance);
 }
 
-/* =========================================================
-   走時から距離を補間
-========================================================= */
 function interpolateDistance(rows, elapsedSeconds, wave) {
-  if (!rows.length || !Number.isFinite(elapsedSeconds) ||
-      elapsedSeconds < 0) {
+  if (!rows.length || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
     return null;
   }
 
   const timeKey = wave === "P" ? "pTime" : "sTime";
-
   const points = rows
-    .filter(row => Number.isFinite(row[timeKey]) &&
-                   Number.isFinite(row.distance))
-    .sort((a, b) => a[timeKey] - b[timeKey]);
+    .filter(r => Number.isFinite(r[timeKey]) && Number.isFinite(r.distance))
+    .sort((a,b) => a[timeKey]-b[timeKey]);
 
-  if (points.length < 2) return null;
+  if (points.length < 2 || elapsedSeconds < points[0][timeKey]) return null;
 
-  if (elapsedSeconds < points[0][timeKey]) {
-    return null;
-  }
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1];
+    const b = points[i];
 
-  for (let i = 1; i < points.length; i++) {
-    const previous = points[i - 1];
-    const next = points[i];
+    if (elapsedSeconds <= b[timeKey]) {
+      const dt = b[timeKey]-a[timeKey];
+      if (dt <= 0) return b.distance;
 
-    if (elapsedSeconds <= next[timeKey]) {
-      const dt = next[timeKey] - previous[timeKey];
-
-      if (dt <= 0) return next.distance;
-
-      const ratio = (elapsedSeconds - previous[timeKey]) / dt;
-
-      return previous.distance +
-        (next.distance - previous.distance) * ratio;
+      const ratio = (elapsedSeconds-a[timeKey])/dt;
+      return a.distance+(b.distance-a.distance)*ratio;
     }
   }
 
   return null;
 }
 
-/* =========================================================
-   地表上の測地円をGeoJSONに変換
-========================================================= */
-function destinationPoint(lat, lon, distanceKm, bearingDegrees) {
-  const angularDistance = distanceKm / EARTH_RADIUS_KM;
-  const bearing = bearingDegrees * Math.PI / 180;
-  const lat1 = lat * Math.PI / 180;
-  const lon1 = lon * Math.PI / 180;
+/* 地表上の円 */
+function destinationPoint(lat,lon,distanceKm,bearingDegrees) {
+  const angular = distanceKm/EARTH_RADIUS_KM;
+  const bearing = bearingDegrees*Math.PI/180;
+  const lat1 = lat*Math.PI/180;
+  const lon1 = lon*Math.PI/180;
 
   const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(angularDistance) +
-    Math.cos(lat1) * Math.sin(angularDistance) * Math.cos(bearing)
+    Math.sin(lat1)*Math.cos(angular)+
+    Math.cos(lat1)*Math.sin(angular)*Math.cos(bearing)
   );
 
-  const lon2 = lon1 + Math.atan2(
-    Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(lat1),
-    Math.cos(angularDistance) - Math.sin(lat1) * Math.sin(lat2)
+  const lon2 = lon1+Math.atan2(
+    Math.sin(bearing)*Math.sin(angular)*Math.cos(lat1),
+    Math.cos(angular)-Math.sin(lat1)*Math.sin(lat2)
   );
 
-  return [
-    ((lon2 * 180 / Math.PI + 540) % 360) - 180,
-    lat2 * 180 / Math.PI
-  ];
+  return [((lon2*180/Math.PI+540)%360)-180,lat2*180/Math.PI];
 }
 
-function createCircleFeature(lat, lon, radiusKm, count = 180) {
+function createCircleFeature(lat,lon,radiusKm,count=180) {
   const coordinates = [];
-
-  for (let i = 0; i <= count; i++) {
-    const bearing = i / count * 360;
-    coordinates.push(
-      destinationPoint(lat, lon, radiusKm, bearing)
-    );
+  for (let i=0;i<=count;i++) {
+    coordinates.push(destinationPoint(lat,lon,radiusKm,i/count*360));
   }
 
   return {
-    type: "Feature",
-    properties: { radiusKm },
-    geometry: {
-      type: "Polygon",
-      coordinates: [coordinates]
-    }
+    type:"Feature",
+    properties:{radiusKm},
+    geometry:{type:"Polygon",coordinates:[coordinates]}
   };
 }
 
 function emptyFeatureCollection() {
-  return {
-    type: "FeatureCollection",
-    features: []
-  };
+  return {type:"FeatureCollection",features:[]};
 }
 
-function setGeoJSON(sourceId, data) {
+function setGeoJSON(sourceId,data) {
   if (!mapReady) return;
   const source = map.getSource(sourceId);
   if (source) source.setData(data);
 }
 
 function clearWaveLayers() {
-  setGeoJSON("wave-p", emptyFeatureCollection());
-  setGeoJSON("wave-s", emptyFeatureCollection());
+  setGeoJSON("wave-p",emptyFeatureCollection());
+  setGeoJSON("wave-s",emptyFeatureCollection());
 }
 
-/* =========================================================
-   地図の更新
-========================================================= */
 function updateWaveMap() {
-  if (!currentOrigin || currentOriginTime === null) return;
+  if (!currentOrigin || currentOriginTime === null || !mapReady) return;
 
   if (!tableLoaded) {
-    text("mapStatus", "走時表の読み込み待ち");
+    text("mapStatus","走時表の読み込み待ち");
     return;
   }
 
-  if (!mapReady) return;
-
-  const elapsedSeconds = Math.max(
-    0,
-    (Date.now() - currentOriginTime) / 1000
-  );
-
+  const elapsed = Math.max(0,(Date.now()-currentOriginTime)/1000);
   const rows = getRowsForDepth(currentOrigin.depth);
 
   if (!rows.length) {
-    text("mapStatus", "該当する深さの走時データがありません");
+    text("mapStatus","該当する深さの走時データがありません");
     clearWaveLayers();
     return;
   }
 
-  const pRadius = interpolateDistance(rows, elapsedSeconds, "P");
-  const sRadius = interpolateDistance(rows, elapsedSeconds, "S");
-
+  const pRadius = interpolateDistance(rows,elapsed,"P");
+  const sRadius = interpolateDistance(rows,elapsed,"S");
   const pFeatures = [];
   const sFeatures = [];
 
-  if (pRadius !== null &&
-      pRadius > 0 &&
-      pRadius < MAX_RADIUS_KM) {
-    pFeatures.push(
-      createCircleFeature(
-        currentOrigin.lat,
-        currentOrigin.lon,
-        pRadius
-      )
-    );
+  if (pRadius !== null && pRadius > 0 && pRadius < MAX_RADIUS_KM) {
+    pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
   }
 
-  if (sRadius !== null &&
-      sRadius > 0 &&
-      sRadius < MAX_RADIUS_KM) {
-    sFeatures.push(
-      createCircleFeature(
-        currentOrigin.lat,
-        currentOrigin.lon,
-        sRadius
-      )
-    );
+  if (sRadius !== null && sRadius > 0 && sRadius < MAX_RADIUS_KM) {
+    sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
   }
 
-  setGeoJSON("wave-p", {
-    type: "FeatureCollection",
-    features: pFeatures
-  });
+  setGeoJSON("wave-p",{type:"FeatureCollection",features:pFeatures});
+  setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
 
-  setGeoJSON("wave-s", {
-    type: "FeatureCollection",
-    features: sFeatures
-  });
-
-  const pText = pRadius !== null && pRadius < MAX_RADIUS_KM
-    ? "P波 約 " + Math.round(pRadius) + " km"
-    : "P波 表示範囲外";
-
-  const sText = sRadius !== null && sRadius < MAX_RADIUS_KM
-    ? "S波 約 " + Math.round(sRadius) + " km"
-    : "S波 表示範囲外";
-
-  text("mapStatus", pText + " ・ " + sText);
+  text("mapStatus",
+    (pRadius !== null && pRadius < MAX_RADIUS_KM
+      ? "P波 約 "+Math.round(pRadius)+" km"
+      : "P波 表示範囲外")+
+    " ・ "+
+    (sRadius !== null && sRadius < MAX_RADIUS_KM
+      ? "S波 約 "+Math.round(sRadius)+" km"
+      : "S波 表示範囲外")
+  );
 }
 
-/* =========================================================
-   地震イベントを地図に反映
-========================================================= */
-function setMapEvent(data, eventKey) {
+/* 地図イベントの切り替え */
+function setMapEvent(data,eventKey) {
   const origin = getEventOrigin(data);
 
   if (!origin) {
@@ -816,16 +697,19 @@ function setMapEvent(data, eventKey) {
     currentOriginTime = null;
     lastMapEventKey = null;
     clearWaveLayers();
-    text("mapStatus", "震源の緯度・経度を取得できません");
+    removeEpicenterMarker();
+    text("mapStatus","震源の緯度・経度を取得できません");
     return;
   }
 
+  // SerialではなくEventIDを使い、同じ地震の続報で円をリセットしない。
+  const mapEventId = String(data.EventID || eventKey);
+  const isNewEvent = lastMapEventKey !== mapEventId;
   const originTime = parseOriginTime(data.OriginTime);
-  const isNewEvent = lastMapEventKey !== eventKey;
 
   if (isNewEvent) {
+    lastMapEventKey = mapEventId;
     currentOriginTime = originTime;
-    lastMapEventKey = eventKey;
   } else if (currentOriginTime === null && originTime !== null) {
     currentOriginTime = originTime;
   }
@@ -833,71 +717,61 @@ function setMapEvent(data, eventKey) {
   currentOrigin = origin;
 
   if (currentOriginTime === null) {
-    text("mapStatus", "地震発生時刻が取得できません");
+    text("mapStatus","地震発生時刻が取得できません");
     clearWaveLayers();
+    updateEpicenterMarker();
     return;
   }
 
-  if (isNewEvent) {
-    map.jumpTo({
-      center: [origin.lon, origin.lat],
-      zoom: 5
-    });
+  if (isNewEvent && mapReady) {
+    map.jumpTo({center:[origin.lon,origin.lat],zoom:5});
   }
 
   updateWaveMap();
+  updateEpicenterMarker();
 }
 
-/* =========================================================
-   震央マーカー
-========================================================= */
-let epicenterMarker = null;
-let epicenterPopup = null;
-
-function updateEpicenterMarker() {
-  if (!mapReady || !currentOrigin) return;
-
+/* 震央マーカー */
+function removeEpicenterMarker() {
   if (epicenterMarker) {
     epicenterMarker.remove();
     epicenterMarker = null;
   }
-
   if (epicenterPopup) {
     epicenterPopup.remove();
     epicenterPopup = null;
   }
+}
+
+function updateEpicenterMarker() {
+  if (!mapReady) return;
+
+  removeEpicenterMarker();
+  if (!currentOrigin) return;
 
   const element = document.createElement("div");
   element.className = "epicenter-icon";
   element.textContent = "×";
-  element.setAttribute("aria-label", "震源地");
+  element.setAttribute("aria-label","震源地");
 
-  epicenterPopup = new maplibregl.Popup({ offset: 18 })
+  epicenterPopup = new maplibregl.Popup({offset:18})
     .setHTML(
-      "<strong>震源地</strong><br>" +
-      "緯度: " + currentOrigin.lat.toFixed(3) + "°<br>" +
-      "経度: " + currentOrigin.lon.toFixed(3) + "°<br>" +
-      "深さ: " + currentOrigin.depth + " km"
+      "<strong>震源地</strong><br>"+
+      "緯度: "+currentOrigin.lat.toFixed(3)+"°<br>"+
+      "経度: "+currentOrigin.lon.toFixed(3)+"°<br>"+
+      "深さ: "+currentOrigin.depth+" km"
     );
 
-  epicenterMarker = new maplibregl.Marker({
-    element,
-    anchor: "center"
-  })
-    .setLngLat([currentOrigin.lon, currentOrigin.lat])
+  epicenterMarker = new maplibregl.Marker({element,anchor:"center"})
+    .setLngLat([currentOrigin.lon,currentOrigin.lat])
     .setPopup(epicenterPopup)
     .addTo(map);
 }
 
-/* =========================================================
-   WebSocket ping / pong
-========================================================= */
+/* Ping / Pong */
 function stopPing() {
-  if (pingTimer !== null) {
-    clearInterval(pingTimer);
-    pingTimer = null;
-  }
-
+  if (pingTimer !== null) clearInterval(pingTimer);
+  pingTimer = null;
   pingPending = false;
 }
 
@@ -905,12 +779,10 @@ function sendPing() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
   if (pingPending) {
-    if (performance.now() - pingSentAt < PING_TIMEOUT) return;
-
+    if (performance.now()-pingSentAt < PING_TIMEOUT) return;
     pingPending = false;
     pingMissed++;
-
-    if (pingMissed >= 2) text("latency", "応答なし");
+    if (pingMissed >= 2) text("latency","応答なし");
   }
 
   pingSentAt = performance.now();
@@ -920,44 +792,41 @@ function sendPing() {
     socket.send("ping");
   } catch {
     pingPending = false;
-    text("latency", "計測失敗");
+    text("latency","計測失敗");
   }
 }
 
 function startPing() {
   stopPing();
   pingMissed = 0;
-  text("latency", "計測中");
+  text("latency","計測中");
   sendPing();
-  pingTimer = setInterval(sendPing, PING_INTERVAL);
+  pingTimer = setInterval(sendPing,PING_INTERVAL);
 }
 
 function handlePong(data) {
-  const isPong = data === "pong" ||
+  const pong = data === "pong" ||
     (data && typeof data === "object" &&
      String(data.type || "").toLowerCase() === "pong");
 
-  if (!isPong || !pingPending) return false;
+  if (!pong || !pingPending) return false;
 
-  const rtt = performance.now() - pingSentAt;
+  text("latency",Math.round(performance.now()-pingSentAt)+" ms");
   pingMissed = 0;
-  text("latency", Math.round(rtt) + " ms");
   pingPending = false;
   return true;
 }
 
-/* =========================================================
-   地震情報表示
-========================================================= */
-function render(data, raw, eventKey) {
+/* 画面表示 */
+function render(data,raw,eventKey) {
   const issue = data.Issue || {};
   const accuracy = data.Accuracy || {};
   const change = data.MaxIntChange || {};
   const areas = Array.isArray(data.WarnArea) ? data.WarnArea : [];
 
-  text("headline", data.Title || "緊急地震速報");
-  text("description", data.Hypocenter
-    ? "震源: " + data.Hypocenter
+  text("headline",data.Title || "緊急地震速報");
+  text("description",data.Hypocenter
+    ? "震源: "+data.Hypocenter
     : "震源情報は未設定、またはまだ発表されていません。");
 
   const canceled = data.isCancel === true;
@@ -965,69 +834,59 @@ function render(data, raw, eventKey) {
   const training = data.isTraining === true;
   const finalReport = data.isFinal === true;
 
-  setTag("typeTag", canceled ? "CANCEL REPORT" :
-    warned ? "WARNING" : "EEW MONITOR");
+  setTag("typeTag",canceled ? "CANCEL REPORT" : warned ? "WARNING" : "EEW MONITOR");
+  setTag("statusTag",canceled ? "取消報" : warned ? "警報発表" : "速報情報");
+  $("statusTag").className = "tag "+(canceled ? "" : warned ? "red" : "");
 
-  setTag("statusTag", canceled ? "取消報" :
-    warned ? "警報発表" : "速報情報");
+  setTag("trainingTag","訓練報",training);
+  setTag("finalTag","最終報",finalReport);
 
-  $("statusTag").className =
-    "tag " + (canceled ? "" : warned ? "red" : "");
-
-  setTag("trainingTag", "訓練報", training);
-  setTag("finalTag", "最終報", finalReport);
-
-  text("maxIntensity", data.MaxIntensity || "--");
-  $("intensitySub").textContent =
-    data.MaxIntensity ? "発表された最大震度" : "震度情報なし";
+  text("maxIntensity",data.MaxIntensity || "--");
+  text("intensitySub",data.MaxIntensity ? "発表された最大震度" : "震度情報なし");
 
   const magnitude = data.Magnitude ?? data.Magunitude;
   $("magnitude").replaceChildren();
-
   const magValue = document.createElement("span");
   magValue.textContent = formatMagnitude(magnitude);
-
   const magUnit = document.createElement("span");
   magUnit.className = "unit";
   magUnit.textContent = "M";
-  $("magnitude").append(magValue, magUnit);
+  $("magnitude").append(magValue,magUnit);
 
   $("depth").replaceChildren();
-
   const depthValue = document.createElement("span");
   depthValue.textContent =
     data.Depth === null || data.Depth === undefined || data.Depth === ""
       ? "--" : String(data.Depth);
-
   const depthUnit = document.createElement("span");
   depthUnit.className = "unit";
   depthUnit.textContent = "km";
-  $("depth").append(depthValue, depthUnit);
+  $("depth").append(depthValue,depthUnit);
 
-  text("serial", data.Serial);
-  text("eventId", "イベントID: " + (data.EventID || "--"));
-  text("hypocenter", data.Hypocenter);
-  text("source", issue.Source);
-  text("announced", data.AnnouncedTime);
-  text("origin", data.OriginTime);
-  text("latitude", formatNumber(data.Latitude, 3));
-  text("longitude", formatNumber(data.Longitude, 3));
-  text("codeType", data.CodeType);
-  text("issueStatus", issue.Status);
-  text("accEpicenter", accuracy.Epicenter);
-  text("accDepth", accuracy.Depth);
-  text("accMagnitude", accuracy.Magnitude);
-  text("isSea", boolText(data.isSea));
-  text("isFinal", boolText(data.isFinal));
-  text("isCancel", boolText(data.isCancel));
-  text("isWarn", boolText(data.isWarn));
-  text("isAssumption", boolText(data.isAssumption));
-  text("isTraining", boolText(data.isTraining));
-  text("changeString", change.String);
-  text("changeReason", change.Reason);
+  text("serial",data.Serial);
+  text("eventId","イベントID: "+(data.EventID || "--"));
+  text("hypocenter",data.Hypocenter);
+  text("source",issue.Source);
+  text("announced",data.AnnouncedTime);
+  text("origin",data.OriginTime);
+  text("latitude",formatNumber(data.Latitude,3));
+  text("longitude",formatNumber(data.Longitude,3));
+  text("codeType",data.CodeType);
+  text("issueStatus",issue.Status);
+  text("accEpicenter",accuracy.Epicenter);
+  text("accDepth",accuracy.Depth);
+  text("accMagnitude",accuracy.Magnitude);
+  text("isSea",boolText(data.isSea));
+  text("isFinal",boolText(data.isFinal));
+  text("isCancel",boolText(data.isCancel));
+  text("isWarn",boolText(data.isWarn));
+  text("isAssumption",boolText(data.isAssumption));
+  text("isTraining",boolText(data.isTraining));
+  text("changeString",change.String);
+  text("changeReason",change.Reason);
 
   $("areas").replaceChildren();
-  text("areaCount", areas.length + " 地域");
+  text("areaCount",areas.length+" 地域");
 
   if (!areas.length) {
     const empty = document.createElement("div");
@@ -1057,95 +916,65 @@ function render(data, raw, eventKey) {
           area.Arrive === false ? "未到達" : ""
       ].filter(Boolean).join(" ・ ") || "詳細情報なし";
 
-      left.append(name, meta);
+      left.append(name,meta);
 
       const badge = document.createElement("div");
-      badge.className = "intensity " + intensityClass(area.Shindo1);
+      badge.className = "intensity "+intensityClass(area.Shindo1);
       badge.textContent = area.Shindo1 || "--";
 
-      row.append(left, badge);
+      row.append(left,badge);
       fragment.appendChild(row);
     }
 
     $("areas").appendChild(fragment);
   }
 
-  text("originalText", data.OriginalText || "原文はありません。");
-  text("updateTime", "更新 " + new Date().toLocaleTimeString("ja-JP"));
-  text("lastReceive", new Date().toLocaleTimeString("ja-JP"));
-  text("parseState", "成功");
+  text("originalText",data.OriginalText || "原文はありません。");
+  text("updateTime","更新 "+new Date().toLocaleTimeString("ja-JP"));
+  text("lastReceive",new Date().toLocaleTimeString("ja-JP"));
+  text("parseState","成功");
   setRaw(raw);
 
-  setMapEvent(data, eventKey);
-  updateEpicenterMarker();
+  setMapEvent(data,eventKey);
 }
 
-/* =========================================================
-   複数イベント管理
-========================================================= */
-function hideDelay(e) {
-  return e.data && e.data.isCancel === true
-    ? CANCEL_HIDE_MS
-    : FINAL_HIDE_MS;
-}
-
+/* 複数イベント管理 */
 function isDone(data) {
   return data.isFinal === true || data.isCancel === true;
 }
 
-function elapsedSinceReceive(e, now = Date.now()) {
-  if (!Number.isFinite(e.receivedAt)) return null;
-  return now - e.receivedAt;
+function hideDelay(e) {
+  return e.data?.isCancel === true ? CANCEL_HIDE_MS : FINAL_HIDE_MS;
 }
 
-function isExpired(e, now = Date.now()) {
-  if (!e.done) return false;
-
-  const elapsed = elapsedSinceReceive(e, now);
-  return elapsed !== null && elapsed >= hideDelay(e);
+function isExpired(e,now=Date.now()) {
+  if (!e.done || !Number.isFinite(e.receivedAt)) return false;
+  return now-e.receivedAt >= hideDelay(e);
 }
 
 function activeList() {
   const now = Date.now();
-  const multiple = events.size > 1;
 
   return [...events.values()]
     .filter(e => {
-      // 最終報・取消報は、イベントが複数ある場合、
-      // 期限切れになった時点で表示対象から外す。
-      // イベントが1件だけの場合は、画面に残してよい。
-      if (e.done) {
-        return !multiple || !isExpired(e, now);
-      }
-
-      return performance.now() - e.updatedAt < EVENT_TTL;
+      if (e.done) return !isExpired(e,now);
+      return performance.now()-e.updatedAt < EVENT_TTL;
     })
-    .sort((a, b) => a.firstAt - b.firstAt);
+    .sort((a,b) => a.firstAt-b.firstAt);
 }
 
-/*
- * 期限切れイベントの整理。
- *
- * イベントが1件だけなら、期限切れでも内部データを残す。
- * 2件以上ある場合は、期限切れの最終報・取消報を削除する。
- * そのため、Aの期限が来たときにBが残っていればAだけが消える。
- */
 function pruneEvents() {
   const now = Date.now();
 
-  if (events.size <= 1) return;
-
-  for (const [key, e] of events) {
-    if (e.done && isExpired(e, now)) {
+  for (const [key,e] of events) {
+    if (e.done && isExpired(e,now)) {
       events.delete(key);
       continue;
     }
 
-    if (
-      !e.done &&
-      key !== currentKey &&
-      performance.now() - e.updatedAt > EVENT_KEEP
-    ) {
+    if (!e.done &&
+        key !== currentKey &&
+        performance.now()-e.updatedAt > EVENT_KEEP) {
       events.delete(key);
     }
   }
@@ -1158,38 +987,37 @@ function tabLabel(e) {
   return [
     d.Hypocenter || "震源不明",
     mag !== undefined && mag !== null && mag !== ""
-      ? "M" + formatMagnitude(mag) : "",
-    d.MaxIntensity ? "震度" + d.MaxIntensity : "",
-    d.isCancel === true ? "(取消)" :
-      d.isFinal === true ? "(最終)" : ""
+      ? "M"+formatMagnitude(mag) : "",
+    d.MaxIntensity ? "震度"+d.MaxIntensity : "",
+    d.isCancel === true ? "(取消)" : d.isFinal === true ? "(最終)" : ""
   ].filter(Boolean).join(" ");
 }
 
 function renderTabs() {
   const box = $("eventTabs");
   const note = $("rotateNote");
-  const all = [...events.values()].sort((a, b) => a.firstAt - b.firstAt);
+  const all = [...events.values()].sort((a,b) => a.firstAt-b.firstAt);
   const active = activeList();
+
+  box.replaceChildren();
 
   if (all.length < 2) {
     box.classList.add("hidden");
     note.classList.add("hidden");
-    box.replaceChildren();
     return;
   }
 
   box.classList.remove("hidden");
-  box.replaceChildren();
 
-  all.forEach((e, i) => {
+  all.forEach((e,i) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "event-tab" +
-      (e.key === currentKey ? " active" : "") +
+    button.className = "event-tab"+
+      (e.key === currentKey ? " active" : "")+
       (e.done ? " done" : "");
-    button.textContent = (i + 1) + ". " + tabLabel(e);
+    button.textContent = (i+1)+". "+tabLabel(e);
 
-    button.addEventListener("click", () => {
+    button.addEventListener("click",() => {
       show(e.key);
       resetRotate();
     });
@@ -1198,10 +1026,7 @@ function renderTabs() {
   });
 
   if (active.length >= 2) {
-    note.textContent =
-      "同時に " + active.length + " 件を巡回表示中。" +
-      (ROTATE_MS / 1000) +
-      "秒ごとに交互表示。";
+    note.textContent = "同時に "+active.length+" 件を "+(ROTATE_MS/1000)+" 秒ごとに巡回表示中。";
     note.classList.remove("hidden");
   } else {
     note.classList.add("hidden");
@@ -1215,7 +1040,7 @@ function show(key) {
   if (key !== currentKey) shownAt = performance.now();
   currentKey = key;
 
-  render(e.data, e.raw, e.eventKey);
+  render(e.data,e.raw,e.eventKey);
   renderTabs();
 }
 
@@ -1229,47 +1054,47 @@ function rotate() {
   }
 
   if (list.length === 1) {
-    if (list[0].key !== currentKey) {
-      show(list[0].key);
-    } else {
-      renderTabs();
-    }
+    if (list[0].key !== currentKey) show(list[0].key);
+    else renderTabs();
     return;
   }
 
   const index = list.findIndex(e => e.key === currentKey);
-  const nextIndex = index < 0 ? 0 : (index + 1) % list.length;
-  show(list[nextIndex].key);
+  const next = index < 0 ? 0 : (index+1)%list.length;
+  show(list[next].key);
 }
 
 function rotateTick() {
-  // 期限切れイベントを定期処理で整理するため、
-  // 交互表示の切り替え判定前に sweep() を通す。
   sweep();
-
-  if (performance.now() - shownAt < ROTATE_MS) return;
+  if (performance.now()-shownAt < ROTATE_MS) return;
   if (activeList().length < 2) return;
-
   rotate();
 }
 
 function resetRotate() {
   shownAt = performance.now();
-
   if (rotateTimer === null) {
-    rotateTimer = setInterval(rotateTick, 250);
+    rotateTimer = setInterval(rotateTick,250);
   }
 }
 
-function handleEvent(data, raw) {
+/* イベント受信・更新判定 */
+function handleEvent(data,raw) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    text("parseState", "想定外のデータ形式");
+    text("parseState","想定外のデータ形式");
     setRaw(raw);
     return;
   }
 
-  const key = data.EventID ? String(data.EventID) : "unknown";
+  const eventId = data.EventID ? String(data.EventID) : null;
 
+  if (!eventId) {
+    text("parseState","EventIDがありません");
+    setRaw(raw);
+    return;
+  }
+
+  const key = eventId;
   const eventKey = [
     key,
     data.Serial ?? "",
@@ -1280,6 +1105,13 @@ function handleEvent(data, raw) {
 
   const existing = events.get(key);
 
+  // 同一イベントの古いSerialは採用しない。
+  if (existing && isOlderSerial(data,existing)) {
+    text("parseState","古いSerialを無視");
+    return;
+  }
+
+  // 同じ速報の重複受信で期限や地図をリセットしない。
   if (existing && existing.eventKey === eventKey) {
     existing.raw = raw;
     if (currentKey === key) setRaw(raw);
@@ -1300,9 +1132,6 @@ function handleEvent(data, raw) {
     const wasCancel = existing?.data?.isCancel === true;
     const isCancelNow = data.isCancel === true;
 
-    // 新たに最終報・取消報になった場合、
-    // または最終報と取消報の状態が変化した場合に
-    // 期限の起点を設定する。
     if (!existing || !existing.done || wasCancel !== isCancelNow) {
       e.receivedAt = receivedAt;
     }
@@ -1316,16 +1145,12 @@ function handleEvent(data, raw) {
   e.done = done;
   e.updatedAt = nowPerf;
 
-  events.set(key, e);
-
-  // Bを受信した時点でAが期限切れなら、
-  // ここでAを削除する。
+  events.set(key,e);
   pruneEvents();
 
   const current = events.get(currentKey);
-  const currentExists = Boolean(current);
 
-  if (!currentExists) {
+  if (!current) {
     show(key);
     return;
   }
@@ -1348,9 +1173,7 @@ function handleEvent(data, raw) {
   renderTabs();
 }
 
-/* =========================================================
-   受信データ処理
-========================================================= */
+/* 受信データ処理 */
 function processMessage(raw) {
   lastMessageAt = performance.now();
 
@@ -1360,8 +1183,7 @@ function processMessage(raw) {
     data = JSON.parse(raw);
   } catch {
     if (handlePong(raw)) return;
-
-    text("parseState", "JSON以外のデータ");
+    text("parseState","JSON以外のデータ");
     setRaw(raw);
     return;
   }
@@ -1370,37 +1192,28 @@ function processMessage(raw) {
 
   if (data && data.type === "heartbeat") {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      pingSentAt = performance.now();
-      pingPending = true;
-
       try {
         socket.send("ping");
-      } catch {
-        pingPending = false;
-      }
+      } catch {}
     }
     return;
   }
 
   if (data && data.type && data.type !== "jma_eew") {
     setRaw(raw);
-    text("parseState", "別タイプ: " + data.type);
+    text("parseState","別タイプ: "+data.type);
     return;
   }
 
-  handleEvent(data, raw);
+  handleEvent(data,raw);
 }
 
-/* =========================================================
-   接続管理
-========================================================= */
+/* WebSocket接続管理 */
 function closeSocket() {
   if (!socket) return;
-
   const s = socket;
   socket = null;
   s.onopen = s.onmessage = s.onerror = s.onclose = null;
-
   try { s.close(); } catch {}
 }
 
@@ -1414,14 +1227,14 @@ function connect() {
 
   stopPing();
   closeSocket();
-  setConnection("接続中", "");
+  setConnection("接続中","");
 
   let s;
 
   try {
     s = new WebSocket(WS_URL);
   } catch {
-    setConnection("通信エラー", "error");
+    setConnection("通信エラー","error");
     scheduleReconnect();
     return;
   }
@@ -1434,13 +1247,13 @@ function connect() {
 
     reconnectDelay = RECONNECT_MIN;
     lastMessageAt = performance.now();
-    setConnection("接続済み", "online");
+    setConnection("接続済み","online");
 
     try {
       s.send(COMMAND);
       startPing();
     } catch {
-      setConnection("通信エラー", "error");
+      setConnection("通信エラー","error");
       try { s.close(); } catch {}
     }
   };
@@ -1452,7 +1265,7 @@ function connect() {
       processMessage(event.data);
     } else if (event.data instanceof Blob) {
       event.data.text().then(processMessage).catch(() => {
-        text("parseState", "読み取り失敗");
+        text("parseState","読み取り失敗");
       });
     } else if (event.data instanceof ArrayBuffer) {
       processMessage(new TextDecoder("utf-8").decode(event.data));
@@ -1460,15 +1273,14 @@ function connect() {
   };
 
   s.onerror = () => {
-    if (socket === s) setConnection("通信エラー", "error");
+    if (socket === s) setConnection("通信エラー","error");
   };
 
   s.onclose = () => {
     if (socket !== s) return;
-
     stopPing();
-    text("latency", "--");
-    setConnection("切断・再接続待ち", "error");
+    text("latency","--");
+    setConnection("切断・再接続待ち","error");
     scheduleReconnect();
   };
 }
@@ -1477,15 +1289,12 @@ function scheduleReconnect() {
   if (stopped || reconnectTimer !== null) return;
 
   const delay = reconnectDelay;
-  reconnectDelay = Math.min(
-    Math.ceil(reconnectDelay * 1.6),
-    RECONNECT_MAX
-  );
+  reconnectDelay = Math.min(Math.ceil(reconnectDelay*1.6),RECONNECT_MAX);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
-  }, delay);
+  },delay);
 }
 
 function reconnectNow() {
@@ -1500,99 +1309,86 @@ function startWatchdog() {
     if (stopped) return;
 
     if (socket && socket.readyState === WebSocket.OPEN) {
-      if (performance.now() - lastMessageAt > SILENCE_LIMIT) {
-        setConnection("無通信・再接続", "error");
+      if (performance.now()-lastMessageAt > SILENCE_LIMIT) {
+        setConnection("無通信・再接続","error");
         reconnectNow();
       }
     } else if (!socket && reconnectTimer === null) {
       reconnectNow();
     }
-  }, 3000);
+  },3000);
 }
 
-/* =========================================================
-   定期処理
-========================================================= */
+/* イベント整理 */
 function sweep() {
-  const beforeKeys = new Set(events.keys());
-
-  // 期限切れイベントを整理する。
-  // 複数イベントがある場合、期限を迎えたイベントだけ削除する。
+  const before = new Set(events.keys());
   pruneEvents();
 
-  // 現在表示中のイベントが削除された場合、
-  // 残っているイベントに切り替える。
-  if (!events.has(currentKey)) {
+  if (currentKey && !events.has(currentKey)) {
     const active = activeList();
 
     if (active.length) {
       show(active[0].key);
     } else {
       const remaining = [...events.values()]
-        .sort((a, b) => b.updatedAt - a.updatedAt);
-
-      if (remaining.length) {
-        show(remaining[0].key);
+        .sort((a,b) => b.updatedAt-a.updatedAt);
+      if (remaining.length) show(remaining[0].key);
+      else {
+        currentKey = null;
+        currentOrigin = null;
+        currentOriginTime = null;
+        lastMapEventKey = null;
+        clearWaveLayers();
+        removeEpicenterMarker();
+        text("mapStatus","地震情報を待機中");
       }
     }
-
-    renderTabs();
-    return;
   }
 
-  const changed =
-    beforeKeys.size !== events.size ||
-    [...beforeKeys].some(key => !events.has(key));
+  const changed = before.size !== events.size ||
+    [...before].some(key => !events.has(key));
 
-  if (changed) {
-    renderTabs();
-  }
+  if (changed) renderTabs();
 }
 
 function startMapUpdater() {
   if (mapUpdateTimer !== null) clearInterval(mapUpdateTimer);
-  mapUpdateTimer = setInterval(updateWaveMap, 1000);
+  mapUpdateTimer = setInterval(updateWaveMap,1000);
 }
 
-/* =========================================================
-   イベント登録
-========================================================= */
-document.addEventListener("visibilitychange", () => {
+/* イベント登録 */
+document.addEventListener("visibilitychange",() => {
   if (document.visibilityState !== "visible") return;
 
   if (!socket || socket.readyState !== WebSocket.OPEN ||
-      performance.now() - lastMessageAt > PING_INTERVAL * 2) {
+      performance.now()-lastMessageAt > PING_INTERVAL*2) {
     reconnectNow();
   } else {
     sendPing();
   }
 
-  setTimeout(() => map.resize(), 100);
+  setTimeout(() => map.resize(),100);
 });
 
-window.addEventListener("online", reconnectNow);
-$("reconnectBtn").addEventListener("click", reconnectNow);
+window.addEventListener("online",reconnectNow);
+$("reconnectBtn").addEventListener("click",reconnectNow);
 
-window.addEventListener("beforeunload", () => {
+window.addEventListener("beforeunload",() => {
   stopped = true;
-
   if (reconnectTimer !== null) clearTimeout(reconnectTimer);
   if (watchdogTimer !== null) clearInterval(watchdogTimer);
   if (rotateTimer !== null) clearInterval(rotateTimer);
   if (mapUpdateTimer !== null) clearInterval(mapUpdateTimer);
-
   stopPing();
   closeSocket();
 });
 
-/* =========================================================
-   起動
-========================================================= */
+/* 起動 */
 resetRotate();
 connect();
 startWatchdog();
 startMapUpdater();
-setInterval(sweep, 1000);
+setInterval(sweep,1000);
 
 })();
 </script>
