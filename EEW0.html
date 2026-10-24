@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -328,27 +327,10 @@ let currentKey = null;
 let rotateTimer = null;
 let shownAt = 0;
 
-/* MapLibre */
+/* MapLibre: OpenFreeMap ダークスタイル */
 const map = new maplibregl.Map({
   container: "earthquakeMap",
-  style: {
-    version: 8,
-    sources: {
-      osm: {
-        type: "raster",
-        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-        tileSize: 256,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-      }
-    },
-    layers: [{
-      id: "osm",
-      type: "raster",
-      source: "osm",
-      minzoom: 0,
-      maxzoom: 19
-    }]
-  },
+  style: "https://tiles.openfreemap.org/styles/dark",
   center: [138, 36.5],
   zoom: 5,
   minZoom: 1,
@@ -357,7 +339,8 @@ const map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
-map.addControl(new maplibregl.ScaleControl({unit:"metric"}));
+
+/* 縮尺バーは追加しない */
 
 let mapReady = false;
 let travelTable = [];
@@ -694,15 +677,10 @@ function setMapEvent(data,eventKey) {
   const origin = getEventOrigin(data);
 
   if (!origin) {
-    /*
-     * 位置情報のない続報を受信しても、
-     * 既存の震央マーカーを消さない。
-     */
     text("mapStatus","震源の緯度・経度を取得できません");
     return;
   }
 
-  // SerialではなくEventIDを使い、同じ地震の続報で円をリセットしない。
   const mapEventId = String(data.EventID || eventKey);
   const isNewEvent = lastMapEventKey !== mapEventId;
   const originTime = parseOriginTime(data.OriginTime);
@@ -753,11 +731,6 @@ function updateEpicenterMarker() {
     "経度: "+currentOrigin.lon.toFixed(3)+"°<br>"+
     "深さ: "+currentOrigin.depth+" km";
 
-  /*
-   * 重要な修正：
-   * 既存マーカーを毎回削除して作り直さず、
-   * 位置とポップアップの内容だけを更新する。
-   */
   if (epicenterMarker) {
     epicenterMarker.setLngLat(coordinates);
 
@@ -1126,13 +1099,11 @@ function handleEvent(data,raw) {
 
   const existing = events.get(key);
 
-  // 同一イベントの古いSerialは採用しない。
   if (existing && isOlderSerial(data,existing)) {
     text("parseState","古いSerialを無視");
     return;
   }
 
-  // 同じ速報の重複受信で期限や地図をリセットしない。
   if (existing && existing.eventKey === eventKey) {
     existing.raw = raw;
     if (currentKey === key) setRaw(raw);
@@ -1357,14 +1328,6 @@ function sweep() {
       if (remaining.length) {
         show(remaining[0].key);
       } else {
-        /*
-         * 重要な修正：
-         * イベント履歴が期限切れになっても、最後に取得した震源座標と
-         * 震央マーカーは維持する。イベントキャッシュの削除と
-         * マーカーの削除を連動させない。
-         *
-         * P波・S波の円だけを消し、震央の×印は残す。
-         */
         currentKey = null;
         clearWaveLayers();
         text("mapStatus","速報履歴の期限切れ・震央マーカーを保持中");
