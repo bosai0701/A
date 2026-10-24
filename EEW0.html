@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -5,28 +6,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#080d18">
 <title>JMA EEW | Earthquake Monitor</title>
-
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
 
 <style>
-:root {
-  color-scheme: dark;
-  --bg:#080d18;
-  --panel:#101827;
-  --border:#263449;
-  --text:#f1f5f9;
-  --muted:#8ea0b8;
-  --red:#ff4058;
-  --orange:#ffad42;
-  --green:#36dfaa;
-  --blue:#63b3ff;
+:root{
+  color-scheme:dark;
+  --bg:#080d18;--panel:#101827;--border:#263449;
+  --text:#f1f5f9;--muted:#8ea0b8;
+  --red:#ff4058;--orange:#ffad42;--green:#36dfaa;--blue:#63b3ff
 }
 *{box-sizing:border-box}
 body{
-  margin:0;
-  background:radial-gradient(ellipse at 50% -15%,#1b3150 0,transparent 55%),var(--bg);
-  color:var(--text);
-  font:14px Inter,"Noto Sans JP",system-ui,sans-serif
+  margin:0;background:radial-gradient(ellipse at 50% -15%,#1b3150 0,transparent 55%),var(--bg);
+  color:var(--text);font:14px Inter,"Noto Sans JP",system-ui,sans-serif
 }
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
@@ -116,21 +108,16 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   #earthquakeMap{height:400px}
 }
 @media(max-width:460px){
-  .wrap{padding:12px}
-  .hero{padding:16px}
-  .metric{padding:12px}
+  .wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}
   .kv{grid-template-columns:minmax(0,1fr)}
-  .panel-body{padding:13px}
-  .brand h1{font-size:16px}
-  #earthquakeMap{height:340px}
-  .map-status{padding:12px}
+  .panel-body{padding:13px}.brand h1{font-size:16px}
+  #earthquakeMap{height:340px}.map-status{padding:12px}
 }
 </style>
 </head>
 
 <body>
 <div class="wrap">
-
 <header class="topbar">
   <div class="brand">
     <div class="brand-icon">⚡</div>
@@ -153,34 +140,15 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
     <span id="trainingTag" class="tag orange hidden">訓練報</span>
     <span id="finalTag" class="tag green hidden">最終報</span>
   </div>
-
   <div id="eventTabs" class="event-tabs hidden"></div>
   <div id="rotateNote" class="rotate-note hidden"></div>
-
   <h2 id="headline">緊急地震速報を待機中</h2>
   <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
-
   <div class="metrics">
-    <div class="metric">
-      <div class="label">最大震度 / MAX INTENSITY</div>
-      <div class="value" id="maxIntensity">--</div>
-      <div class="sub" id="intensitySub">観測情報待ち</div>
-    </div>
-    <div class="metric">
-      <div class="label">マグニチュード / MAGNITUDE</div>
-      <div class="value" id="magnitude">--<span class="unit">M</span></div>
-      <div class="sub">地震の規模</div>
-    </div>
-    <div class="metric">
-      <div class="label">震源の深さ / DEPTH</div>
-      <div class="value" id="depth">--<span class="unit">km</span></div>
-      <div class="sub">震源情報に基づく値</div>
-    </div>
-    <div class="metric">
-      <div class="label">速報回数 / SERIAL</div>
-      <div class="value" id="serial">--</div>
-      <div class="sub" id="eventId">イベントID: --</div>
-    </div>
+    <div class="metric"><div class="label">最大震度 / MAX INTENSITY</div><div class="value" id="maxIntensity">--</div><div class="sub" id="intensitySub">観測情報待ち</div></div>
+    <div class="metric"><div class="label">マグニチュード / MAGNITUDE</div><div class="value" id="magnitude">--<span class="unit">M</span></div><div class="sub">地震の規模</div></div>
+    <div class="metric"><div class="label">震源の深さ / DEPTH</div><div class="value" id="depth">--<span class="unit">km</span></div><div class="sub">震源情報に基づく値</div></div>
+    <div class="metric"><div class="label">速報回数 / SERIAL</div><div class="value" id="serial">--</div><div class="sub" id="eventId">イベントID: --</div></div>
   </div>
 </section>
 
@@ -194,59 +162,45 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
     </div>
   </div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ"></div>
-  <div class="map-status">
-    <span id="mapStatus">地震情報を待機中</span>
-    <span id="tableStatus" class="source-status">走時表を読み込み中</span>
-  </div>
-  <div class="wave-note">
-    JMA2001走時表を利用してP波・S波の到達予想円を表示します。走時表の範囲外では円を表示しません。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。
-  </div>
+  <div class="map-status"><span id="mapStatus">地震情報を待機中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
+  <div class="wave-note">JMA2001走時表を利用してP波・S波の到達予想円を表示します。走時表の範囲外では円を表示しません。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
 </section>
 
 <div class="grid">
 <div>
 <section class="panel">
-  <div class="panel-head">
-    <h3>地震情報</h3>
-    <span id="updateTime">受信待機中</span>
-  </div>
-  <div class="panel-body">
-    <div class="kv">
-      <div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div>
-      <div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
-      <div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div>
-      <div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
-      <div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div>
-      <div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
-      <div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div>
-      <div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
-      <div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div>
-      <div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
-      <div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div>
-      <div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
-      <div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div>
-      <div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
-      <div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div>
-      <div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
-    </div>
-  </div>
+  <div class="panel-head"><h3>地震情報</h3><span id="updateTime">受信待機中</span></div>
+  <div class="panel-body"><div class="kv">
+    <div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div>
+    <div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
+    <div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div>
+    <div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
+    <div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div>
+    <div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
+    <div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div>
+    <div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
+    <div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div>
+    <div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
+    <div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div>
+    <div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
+    <div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div>
+    <div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
+    <div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div>
+    <div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
+  </div></div>
 </section>
 
 <section class="panel section">
   <div class="panel-head"><h3>警報対象地域</h3><span id="areaCount">0 地域</span></div>
-  <div class="panel-body">
-    <div id="areas" class="area-list"><div class="empty">警報対象地域のデータを待っています</div></div>
-  </div>
+  <div class="panel-body"><div id="areas" class="area-list"><div class="empty">警報対象地域のデータを待っています</div></div></div>
 </section>
 
 <section class="panel section">
   <div class="panel-head"><h3>震度変更情報</h3><span>MaxIntChange</span></div>
-  <div class="panel-body">
-    <div class="kv">
-      <div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div>
-      <div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div>
-    </div>
-  </div>
+  <div class="panel-body"><div class="kv">
+    <div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div>
+    <div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div>
+  </div></div>
 </section>
 </div>
 
@@ -260,9 +214,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
       <div class="kv-item"><span class="k">JSON解析</span><span class="v" id="parseState">待機中</span></div>
       <div class="kv-item"><span class="k">訓練報</span><span class="v" id="isTraining">--</span></div>
     </div>
-    <div class="toolbar" style="margin-top:16px">
-      <button class="btn" id="reconnectBtn">再接続</button>
-    </div>
+    <div class="toolbar" style="margin-top:16px"><button class="btn" id="reconnectBtn">再接続</button></div>
   </div>
 </section>
 
@@ -285,12 +237,10 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
-
 <script>
 (() => {
 "use strict";
 
-/* 設定 */
 const WS_URL = "wss://ws-api.wolfx.jp/jma_eew";
 const COMMAND = "query_jmaeew";
 const TRAVEL_TABLE_URL = "./tjma2001.txt";
@@ -305,7 +255,6 @@ const EVENT_TTL = 10 * 60000;
 const EVENT_KEEP = 60 * 60000;
 const FINAL_HIDE_MS = 3 * 60000;
 const CANCEL_HIDE_MS = 20000;
-
 const MAX_RADIUS_KM = 2000;
 const EARTH_RADIUS_KM = 6371.0088;
 
@@ -327,7 +276,6 @@ let currentKey = null;
 let rotateTimer = null;
 let shownAt = 0;
 
-/* MapLibre: OpenFreeMap ダークスタイル */
 const map = new maplibregl.Map({
   container: "earthquakeMap",
   style: "https://tiles.openfreemap.org/styles/dark",
@@ -340,8 +288,6 @@ const map = new maplibregl.Map({
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-/* 縮尺バーは追加しない */
-
 let mapReady = false;
 let travelTable = [];
 let tableLoaded = false;
@@ -351,6 +297,10 @@ let lastMapEventKey = null;
 let mapUpdateTimer = null;
 let epicenterMarker = null;
 let epicenterPopup = null;
+
+function emptyFeatureCollection() {
+  return {type:"FeatureCollection",features:[]};
+}
 
 map.on("load", () => {
   mapReady = true;
@@ -376,15 +326,19 @@ map.on("load", () => {
   });
 
   loadTravelTable();
-  updateWaveMap();
-  updateEpicenterMarker();
+
+  // ★修正：地図ロード前に受信した速報も、ロード後に震源へ移動
+  if (currentOrigin) {
+    moveToEpicenter(currentOrigin, true, true);
+    updateEpicenterMarker();
+    updateWaveMap();
+  }
 });
 
 map.on("error", e => {
   if (e && e.error) console.warn("MapLibre:", e.error);
 });
 
-/* 共通処理 */
 function text(id, value) {
   const element = $(id);
   if (!element) return;
@@ -406,10 +360,9 @@ function setConnection(label, state) {
 }
 
 function formatNumber(value, digits=2) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
-  if (value === null || value === undefined || value === "" ||
-      !Number.isFinite(n)) return "--";
-  return n.toFixed(digits);
+  return Number.isFinite(n) ? n.toFixed(digits) : "--";
 }
 
 function formatMagnitude(value) {
@@ -448,6 +401,12 @@ function parseOriginTime(value) {
 }
 
 function getEventOrigin(data) {
+  // 空文字を Number("") = 0 と誤認しない
+  if (data.Latitude === null || data.Latitude === undefined ||
+      data.Latitude === "" ||
+      data.Longitude === null || data.Longitude === undefined ||
+      data.Longitude === "") return null;
+
   const lat = Number(data.Latitude);
   const lon = Number(data.Longitude);
   if (!isValidCoordinate(lat, lon)) return null;
@@ -457,37 +416,63 @@ function getEventOrigin(data) {
   return {lat,lon,depth};
 }
 
-/* Serialの比較 */
+/*
+ * ★震源移動処理
+ * newEvent=true なら新しいイベントとしてズームを5に設定。
+ * 地図がロードされていない間は何もせず、loadイベントで再実行する。
+ */
+function moveToEpicenter(origin, immediate=false, newEvent=false) {
+  if (!mapReady || !origin) return;
+
+  const center = [origin.lon, origin.lat];
+  const currentCenter = map.getCenter();
+
+  const distance = Math.hypot(
+    currentCenter.lng - origin.lon,
+    currentCenter.lat - origin.lat
+  );
+
+  const targetZoom = newEvent ? 5 : Math.max(map.getZoom(), 5);
+
+  // 新しいイベントで同じ場所でも、不要なアニメーションは避ける
+  if (distance < 0.01 && Math.abs(map.getZoom()-targetZoom) < 0.1) {
+    return;
+  }
+
+  // 進行中の移動を停止して、最新の震源への移動を優先
+  map.stop();
+
+  if (immediate) {
+    map.jumpTo({center, zoom:targetZoom});
+  } else {
+    map.flyTo({
+      center,
+      zoom:targetZoom,
+      duration:1200,
+      essential:true
+    });
+  }
+}
+
 function serialNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number" && Number.isFinite(value)) return value;
-
   const match = String(value).match(/\d+/);
   return match ? Number(match[0]) : null;
 }
 
 function isOlderSerial(incoming, existing) {
   if (!existing) return false;
+  const a = serialNumber(incoming.Serial);
+  const b = serialNumber(existing.data?.Serial);
 
-  const incomingSerial = serialNumber(incoming.Serial);
-  const existingSerial = serialNumber(existing.data?.Serial);
+  if (a !== null && b !== null) return a < b;
 
-  if (incomingSerial !== null && existingSerial !== null) {
-    return incomingSerial < existingSerial;
-  }
-
-  const incomingTime = Date.parse(incoming.AnnouncedTime || "");
-  const existingTime = Date.parse(existing.data?.AnnouncedTime || "");
-
-  if (Number.isFinite(incomingTime) && Number.isFinite(existingTime) &&
-      incomingTime !== existingTime) {
-    return incomingTime < existingTime;
-  }
-
-  return false;
+  const at = Date.parse(incoming.AnnouncedTime || "");
+  const bt = Date.parse(existing.data?.AnnouncedTime || "");
+  return Number.isFinite(at) && Number.isFinite(bt) && at < bt;
 }
 
-/* 走時表の読み込み */
 async function loadTravelTable() {
   const status = $("tableStatus");
 
@@ -507,14 +492,9 @@ async function loadTravelTable() {
       );
       if (!match) continue;
 
-      const pTime = Number(match[1]);
-      const sTime = Number(match[2]);
-      const depth = Number(match[3]);
-      const distance = Number(match[4]);
-
+      const [pTime,sTime,depth,distance] = match.slice(1).map(Number);
       if (![pTime,sTime,depth,distance].every(Number.isFinite)) continue;
       if (pTime < 0 || sTime < 0 || depth < 0 || distance < 0) continue;
-
       parsed.push({pTime,sTime,depth,distance});
     }
 
@@ -553,9 +533,7 @@ function getRowsForDepth(depthKm) {
 }
 
 function interpolateDistance(rows, elapsedSeconds, wave) {
-  if (!rows.length || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
-    return null;
-  }
+  if (!rows.length || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return null;
 
   const timeKey = wave === "P" ? "pTime" : "sTime";
   const points = rows
@@ -565,22 +543,16 @@ function interpolateDistance(rows, elapsedSeconds, wave) {
   if (points.length < 2 || elapsedSeconds < points[0][timeKey]) return null;
 
   for (let i=1;i<points.length;i++) {
-    const a = points[i-1];
-    const b = points[i];
-
+    const a = points[i-1], b = points[i];
     if (elapsedSeconds <= b[timeKey]) {
       const dt = b[timeKey]-a[timeKey];
       if (dt <= 0) return b.distance;
-
-      const ratio = (elapsedSeconds-a[timeKey])/dt;
-      return a.distance+(b.distance-a.distance)*ratio;
+      return a.distance+(b.distance-a.distance)*(elapsedSeconds-a[timeKey])/dt;
     }
   }
-
   return null;
 }
 
-/* 地表上の円 */
 function destinationPoint(lat,lon,distanceKm,bearingDegrees) {
   const angular = distanceKm/EARTH_RADIUS_KM;
   const bearing = bearingDegrees*Math.PI/180;
@@ -605,16 +577,11 @@ function createCircleFeature(lat,lon,radiusKm,count=180) {
   for (let i=0;i<=count;i++) {
     coordinates.push(destinationPoint(lat,lon,radiusKm,i/count*360));
   }
-
   return {
     type:"Feature",
     properties:{radiusKm},
     geometry:{type:"Polygon",coordinates:[coordinates]}
   };
-}
-
-function emptyFeatureCollection() {
-  return {type:"FeatureCollection",features:[]};
 }
 
 function setGeoJSON(sourceId,data) {
@@ -647,13 +614,11 @@ function updateWaveMap() {
 
   const pRadius = interpolateDistance(rows,elapsed,"P");
   const sRadius = interpolateDistance(rows,elapsed,"S");
-  const pFeatures = [];
-  const sFeatures = [];
+  const pFeatures = [], sFeatures = [];
 
   if (pRadius !== null && pRadius > 0 && pRadius < MAX_RADIUS_KM) {
     pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
   }
-
   if (sRadius !== null && sRadius > 0 && sRadius < MAX_RADIUS_KM) {
     sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
   }
@@ -662,21 +627,17 @@ function updateWaveMap() {
   setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
 
   text("mapStatus",
-    (pRadius !== null && pRadius < MAX_RADIUS_KM
-      ? "P波 約 "+Math.round(pRadius)+" km"
-      : "P波 表示範囲外")+
+    (pRadius !== null && pRadius < MAX_RADIUS_KM ? "P波 約 "+Math.round(pRadius)+" km" : "P波 表示範囲外")+
     " ・ "+
-    (sRadius !== null && sRadius < MAX_RADIUS_KM
-      ? "S波 約 "+Math.round(sRadius)+" km"
-      : "S波 表示範囲外")
+    (sRadius !== null && sRadius < MAX_RADIUS_KM ? "S波 約 "+Math.round(sRadius)+" km" : "S波 表示範囲外")
   );
 }
 
-/* 地図イベントの切り替え */
 function setMapEvent(data,eventKey) {
   const origin = getEventOrigin(data);
 
   if (!origin) {
+    // 不正な座標で既存の有効な震源情報を上書きしない
     text("mapStatus","震源の緯度・経度を取得できません");
     return;
   }
@@ -684,6 +645,7 @@ function setMapEvent(data,eventKey) {
   const mapEventId = String(data.EventID || eventKey);
   const isNewEvent = lastMapEventKey !== mapEventId;
   const originTime = parseOriginTime(data.OriginTime);
+  const previousOrigin = currentOrigin;
 
   if (isNewEvent) {
     lastMapEventKey = mapEventId;
@@ -692,7 +654,19 @@ function setMapEvent(data,eventKey) {
     currentOriginTime = originTime;
   }
 
+  const coordinatesChanged =
+    !previousOrigin ||
+    Math.abs(previousOrigin.lat-origin.lat) > 0.0001 ||
+    Math.abs(previousOrigin.lon-origin.lon) > 0.0001;
+
   currentOrigin = origin;
+
+  // ★修正：新しい地震、または震源座標が変化したら移動
+  if (isNewEvent) {
+    moveToEpicenter(origin,false,true);
+  } else if (coordinatesChanged) {
+    moveToEpicenter(origin,false,false);
+  }
 
   if (currentOriginTime === null) {
     text("mapStatus","地震発生時刻が取得できません");
@@ -701,15 +675,10 @@ function setMapEvent(data,eventKey) {
     return;
   }
 
-  if (isNewEvent && mapReady) {
-    map.jumpTo({center:[origin.lon,origin.lat],zoom:5});
-  }
-
   updateWaveMap();
   updateEpicenterMarker();
 }
 
-/* 震央マーカー */
 function removeEpicenterMarker() {
   if (epicenterMarker) {
     epicenterMarker.remove();
@@ -733,15 +702,12 @@ function updateEpicenterMarker() {
 
   if (epicenterMarker) {
     epicenterMarker.setLngLat(coordinates);
-
     if (epicenterPopup) {
       epicenterPopup.setHTML(popupHTML);
     } else {
-      epicenterPopup = new maplibregl.Popup({offset:18})
-        .setHTML(popupHTML);
+      epicenterPopup = new maplibregl.Popup({offset:18}).setHTML(popupHTML);
       epicenterMarker.setPopup(epicenterPopup);
     }
-
     return;
   }
 
@@ -750,19 +716,13 @@ function updateEpicenterMarker() {
   element.textContent = "×";
   element.setAttribute("aria-label","震源地");
 
-  epicenterPopup = new maplibregl.Popup({offset:18})
-    .setHTML(popupHTML);
-
-  epicenterMarker = new maplibregl.Marker({
-    element,
-    anchor:"center"
-  })
+  epicenterPopup = new maplibregl.Popup({offset:18}).setHTML(popupHTML);
+  epicenterMarker = new maplibregl.Marker({element,anchor:"center"})
     .setLngLat(coordinates)
     .setPopup(epicenterPopup)
     .addTo(map);
 }
 
-/* Ping / Pong */
 function stopPing() {
   if (pingTimer !== null) clearInterval(pingTimer);
   pingTimer = null;
@@ -801,7 +761,7 @@ function startPing() {
 function handlePong(data) {
   const pong = data === "pong" ||
     (data && typeof data === "object" &&
-     String(data.type || "").toLowerCase() === "pong");
+    String(data.type || "").toLowerCase() === "pong");
 
   if (!pong || !pingPending) return false;
 
@@ -811,7 +771,6 @@ function handlePong(data) {
   return true;
 }
 
-/* 画面表示 */
 function render(data,raw,eventKey) {
   const issue = data.Issue || {};
   const accuracy = data.Accuracy || {};
@@ -819,9 +778,7 @@ function render(data,raw,eventKey) {
   const areas = Array.isArray(data.WarnArea) ? data.WarnArea : [];
 
   text("headline",data.Title || "緊急地震速報");
-  text("description",data.Hypocenter
-    ? "震源: "+data.Hypocenter
-    : "震源情報は未設定、またはまだ発表されていません。");
+  text("description",data.Hypocenter ? "震源: "+data.Hypocenter : "震源情報は未設定、またはまだ発表されていません。");
 
   const canceled = data.isCancel === true;
   const warned = data.isWarn === true;
@@ -831,7 +788,6 @@ function render(data,raw,eventKey) {
   setTag("typeTag",canceled ? "CANCEL REPORT" : warned ? "WARNING" : "EEW MONITOR");
   setTag("statusTag",canceled ? "取消報" : warned ? "警報発表" : "速報情報");
   $("statusTag").className = "tag "+(canceled ? "" : warned ? "red" : "");
-
   setTag("trainingTag","訓練報",training);
   setTag("finalTag","最終報",finalReport);
 
@@ -849,9 +805,7 @@ function render(data,raw,eventKey) {
 
   $("depth").replaceChildren();
   const depthValue = document.createElement("span");
-  depthValue.textContent =
-    data.Depth === null || data.Depth === undefined || data.Depth === ""
-      ? "--" : String(data.Depth);
+  depthValue.textContent = data.Depth === null || data.Depth === undefined || data.Depth === "" ? "--" : String(data.Depth);
   const depthUnit = document.createElement("span");
   depthUnit.className = "unit";
   depthUnit.textContent = "km";
@@ -885,9 +839,7 @@ function render(data,raw,eventKey) {
   if (!areas.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = canceled
-      ? "取消報です。警報対象地域はありません。"
-      : "警報対象地域のデータはありません。";
+    empty.textContent = canceled ? "取消報です。警報対象地域はありません。" : "警報対象地域のデータはありません。";
     $("areas").appendChild(empty);
   } else {
     const fragment = document.createDocumentFragment();
@@ -895,7 +847,6 @@ function render(data,raw,eventKey) {
     for (const area of areas) {
       const row = document.createElement("div");
       row.className = "area";
-
       const left = document.createElement("div");
       const name = document.createElement("div");
       name.className = "area-name";
@@ -904,22 +855,17 @@ function render(data,raw,eventKey) {
       const meta = document.createElement("div");
       meta.className = "area-meta";
       meta.textContent = [
-        area.Type || "",
-        area.Time || "",
-        area.Arrive === true ? "到達" :
-          area.Arrive === false ? "未到達" : ""
+        area.Type || "",area.Time || "",
+        area.Arrive === true ? "到達" : area.Arrive === false ? "未到達" : ""
       ].filter(Boolean).join(" ・ ") || "詳細情報なし";
 
       left.append(name,meta);
-
       const badge = document.createElement("div");
       badge.className = "intensity "+intensityClass(area.Shindo1);
       badge.textContent = area.Shindo1 || "--";
-
       row.append(left,badge);
       fragment.appendChild(row);
     }
-
     $("areas").appendChild(fragment);
   }
 
@@ -932,7 +878,6 @@ function render(data,raw,eventKey) {
   setMapEvent(data,eventKey);
 }
 
-/* 複数イベント管理 */
 function isDone(data) {
   return data.isFinal === true || data.isCancel === true;
 }
@@ -942,33 +887,24 @@ function hideDelay(e) {
 }
 
 function isExpired(e,now=Date.now()) {
-  if (!e.done || !Number.isFinite(e.receivedAt)) return false;
-  return now-e.receivedAt >= hideDelay(e);
+  return !!e.done && Number.isFinite(e.receivedAt) && now-e.receivedAt >= hideDelay(e);
 }
 
 function activeList() {
   const now = Date.now();
-
   return [...events.values()]
-    .filter(e => {
-      if (e.done) return !isExpired(e,now);
-      return performance.now()-e.updatedAt < EVENT_TTL;
-    })
+    .filter(e => e.done ? !isExpired(e,now) : performance.now()-e.updatedAt < EVENT_TTL)
     .sort((a,b) => a.firstAt-b.firstAt);
 }
 
 function pruneEvents() {
   const now = Date.now();
-
   for (const [key,e] of events) {
     if (e.done && isExpired(e,now)) {
       events.delete(key);
       continue;
     }
-
-    if (!e.done &&
-        key !== currentKey &&
-        performance.now()-e.updatedAt > EVENT_KEEP) {
+    if (!e.done && key !== currentKey && performance.now()-e.updatedAt > EVENT_KEEP) {
       events.delete(key);
     }
   }
@@ -977,11 +913,9 @@ function pruneEvents() {
 function tabLabel(e) {
   const d = e.data;
   const mag = d.Magnitude ?? d.Magunitude;
-
   return [
     d.Hypocenter || "震源不明",
-    mag !== undefined && mag !== null && mag !== ""
-      ? "M"+formatMagnitude(mag) : "",
+    mag !== undefined && mag !== null && mag !== "" ? "M"+formatMagnitude(mag) : "",
     d.MaxIntensity ? "震度"+d.MaxIntensity : "",
     d.isCancel === true ? "(取消)" : d.isFinal === true ? "(最終)" : ""
   ].filter(Boolean).join(" ");
@@ -1006,16 +940,12 @@ function renderTabs() {
   all.forEach((e,i) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "event-tab"+
-      (e.key === currentKey ? " active" : "")+
-      (e.done ? " done" : "");
+    button.className = "event-tab"+(e.key === currentKey ? " active" : "")+(e.done ? " done" : "");
     button.textContent = (i+1)+". "+tabLabel(e);
-
     button.addEventListener("click",() => {
       show(e.key);
       resetRotate();
     });
-
     box.appendChild(button);
   });
 
@@ -1030,10 +960,8 @@ function renderTabs() {
 function show(key) {
   const e = events.get(key);
   if (!e) return;
-
   if (key !== currentKey) shownAt = performance.now();
   currentKey = key;
-
   render(e.data,e.raw,e.eventKey);
   renderTabs();
 }
@@ -1046,7 +974,6 @@ function rotate() {
     renderTabs();
     return;
   }
-
   if (list.length === 1) {
     if (list[0].key !== currentKey) show(list[0].key);
     else renderTabs();
@@ -1054,8 +981,7 @@ function rotate() {
   }
 
   const index = list.findIndex(e => e.key === currentKey);
-  const next = index < 0 ? 0 : (index+1)%list.length;
-  show(list[next].key);
+  show(list[index < 0 ? 0 : (index+1)%list.length].key);
 }
 
 function rotateTick() {
@@ -1067,12 +993,9 @@ function rotateTick() {
 
 function resetRotate() {
   shownAt = performance.now();
-  if (rotateTimer === null) {
-    rotateTimer = setInterval(rotateTick,250);
-  }
+  if (rotateTimer === null) rotateTimer = setInterval(rotateTick,250);
 }
 
-/* イベント受信・更新判定 */
 function handleEvent(data,raw) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     text("parseState","想定外のデータ形式");
@@ -1081,7 +1004,6 @@ function handleEvent(data,raw) {
   }
 
   const eventId = data.EventID ? String(data.EventID) : null;
-
   if (!eventId) {
     text("parseState","EventIDがありません");
     setRaw(raw);
@@ -1090,15 +1012,12 @@ function handleEvent(data,raw) {
 
   const key = eventId;
   const eventKey = [
-    key,
-    data.Serial ?? "",
-    data.AnnouncedTime || "",
+    key,data.Serial ?? "",data.AnnouncedTime || "",
     data.isCancel === true ? "cancel" : "",
     data.isFinal === true ? "final" : ""
   ].join("|");
 
   const existing = events.get(key);
-
   if (existing && isOlderSerial(data,existing)) {
     text("parseState","古いSerialを無視");
     return;
@@ -1113,20 +1032,12 @@ function handleEvent(data,raw) {
   const done = isDone(data);
   const nowPerf = performance.now();
   const receivedAt = Date.now();
-
-  const e = existing || {
-    key,
-    firstAt: nowPerf,
-    receivedAt: null
-  };
+  const e = existing || {key,firstAt:nowPerf,receivedAt:null};
 
   if (done) {
     const wasCancel = existing?.data?.isCancel === true;
     const isCancelNow = data.isCancel === true;
-
-    if (!existing || !existing.done || wasCancel !== isCancelNow) {
-      e.receivedAt = receivedAt;
-    }
+    if (!existing || !existing.done || wasCancel !== isCancelNow) e.receivedAt = receivedAt;
   } else {
     e.receivedAt = null;
   }
@@ -1136,39 +1047,31 @@ function handleEvent(data,raw) {
   e.eventKey = eventKey;
   e.done = done;
   e.updatedAt = nowPerf;
-
   events.set(key,e);
   pruneEvents();
 
   const current = events.get(currentKey);
-
   if (!current) {
     show(key);
     return;
   }
-
   if (currentKey === key) {
     show(key);
     return;
   }
-
   if (current.done && !done) {
     show(key);
     return;
   }
-
   if (!existing && !done) {
     show(key);
     return;
   }
-
   renderTabs();
 }
 
-/* 受信データ処理 */
 function processMessage(raw) {
   lastMessageAt = performance.now();
-
   let data;
 
   try {
@@ -1184,9 +1087,7 @@ function processMessage(raw) {
 
   if (data && data.type === "heartbeat") {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      try {
-        socket.send("ping");
-      } catch {}
+      try { socket.send("ping"); } catch {}
     }
     return;
   }
@@ -1200,7 +1101,6 @@ function processMessage(raw) {
   handleEvent(data,raw);
 }
 
-/* WebSocket接続管理 */
 function closeSocket() {
   if (!socket) return;
   const s = socket;
@@ -1222,7 +1122,6 @@ function connect() {
   setConnection("接続中","");
 
   let s;
-
   try {
     s = new WebSocket(WS_URL);
   } catch {
@@ -1236,11 +1135,9 @@ function connect() {
 
   s.onopen = () => {
     if (socket !== s) return;
-
     reconnectDelay = RECONNECT_MIN;
     lastMessageAt = performance.now();
     setConnection("接続済み","online");
-
     try {
       s.send(COMMAND);
       startPing();
@@ -1252,13 +1149,10 @@ function connect() {
 
   s.onmessage = event => {
     if (socket !== s) return;
-
     if (typeof event.data === "string") {
       processMessage(event.data);
     } else if (event.data instanceof Blob) {
-      event.data.text().then(processMessage).catch(() => {
-        text("parseState","読み取り失敗");
-      });
+      event.data.text().then(processMessage).catch(() => text("parseState","読み取り失敗"));
     } else if (event.data instanceof ArrayBuffer) {
       processMessage(new TextDecoder("utf-8").decode(event.data));
     }
@@ -1279,10 +1173,8 @@ function connect() {
 
 function scheduleReconnect() {
   if (stopped || reconnectTimer !== null) return;
-
   const delay = reconnectDelay;
   reconnectDelay = Math.min(Math.ceil(reconnectDelay*1.6),RECONNECT_MAX);
-
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     connect();
@@ -1296,10 +1188,8 @@ function reconnectNow() {
 
 function startWatchdog() {
   if (watchdogTimer !== null) return;
-
   watchdogTimer = setInterval(() => {
     if (stopped) return;
-
     if (socket && socket.readyState === WebSocket.OPEN) {
       if (performance.now()-lastMessageAt > SILENCE_LIMIT) {
         setConnection("無通信・再接続","error");
@@ -1311,20 +1201,16 @@ function startWatchdog() {
   },3000);
 }
 
-/* イベント整理 */
 function sweep() {
   const before = new Set(events.keys());
   pruneEvents();
 
   if (currentKey && !events.has(currentKey)) {
     const active = activeList();
-
     if (active.length) {
       show(active[0].key);
     } else {
-      const remaining = [...events.values()]
-        .sort((a,b) => b.updatedAt-a.updatedAt);
-
+      const remaining = [...events.values()].sort((a,b) => b.updatedAt-a.updatedAt);
       if (remaining.length) {
         show(remaining[0].key);
       } else {
@@ -1335,9 +1221,7 @@ function sweep() {
     }
   }
 
-  const changed = before.size !== events.size ||
-    [...before].some(key => !events.has(key));
-
+  const changed = before.size !== events.size || [...before].some(key => !events.has(key));
   if (changed) renderTabs();
 }
 
@@ -1349,7 +1233,6 @@ function startMapUpdater() {
   },1000);
 }
 
-/* イベント登録 */
 document.addEventListener("visibilitychange",() => {
   if (document.visibilityState !== "visible") return;
 
@@ -1363,6 +1246,8 @@ document.addEventListener("visibilitychange",() => {
   setTimeout(() => {
     map.resize();
     updateEpicenterMarker();
+    // ★復帰時にも表示中の震源を確認
+    if (currentOrigin) moveToEpicenter(currentOrigin,false,false);
   },100);
 });
 
@@ -1379,7 +1264,6 @@ window.addEventListener("beforeunload",() => {
   closeSocket();
 });
 
-/* 起動 */
 resetRotate();
 connect();
 startWatchdog();
