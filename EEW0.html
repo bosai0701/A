@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -147,7 +146,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   <div class="metrics">
     <div class="metric"><div class="label">最大震度 / MAX INTENSITY</div><div class="value" id="maxIntensity">--</div><div class="sub" id="intensitySub">観測情報待ち</div></div>
     <div class="metric"><div class="label">マグニチュード / MAGNITUDE</div><div class="value" id="magnitude">--<span class="unit">M</span></div><div class="sub">地震の規模</div></div>
-    <div class="metric"><div class="label">震源の深さ / DEPTH</div><div class="value" id="depth">--<span class="unit">km</span></div><div class="sub">震源情報に基づく値</div></div>
+    <div class="metric"><div class="label">震源の深さ</div><div class="value" id="depth">--<span class="unit">km</span></div><div class="sub">震源情報に基づく値</div></div>
     <div class="metric"><div class="label">速報回数 / SERIAL</div><div class="value" id="serial">--</div><div class="sub" id="eventId">イベントID: --</div></div>
   </div>
 </section>
@@ -163,7 +162,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   </div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ"></div>
   <div class="map-status"><span id="mapStatus">地震情報を待機中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
-  <div class="wave-note">JMA2001走時表を利用してP波・S波の到達予想円を表示します。走時表の範囲外では円を表示しません。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
+  <div class="wave-note">JMA2001走時表による到達予想円です。日本の陸地をP波が通過するとP波を非表示にし、S波が通過すると日本全体が見える位置にカメラを固定します。最終報の発表時刻から3分後に波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
 </section>
 
 <div class="grid">
@@ -255,8 +254,32 @@ const EVENT_TTL = 10 * 60000;
 const EVENT_KEEP = 60 * 60000;
 const FINAL_HIDE_MS = 3 * 60000;
 const CANCEL_HIDE_MS = 20000;
-const MAX_RADIUS_KM = 2000;
 const EARTH_RADIUS_KM = 6371.0088;
+
+/*
+ * 日本列島の表示範囲。
+ * 北海道・本州・四国・九州・南西諸島を含む概略範囲。
+ * 南鳥島など遠隔の小島はこのカメラ範囲に含めていません。
+ */
+const JAPAN_BOUNDS = [
+  [122.8, 23.8],
+  [146.0, 45.8]
+];
+
+/*
+ * 日本列島の主要な端にあたる地点。
+ * 波の円がこれらすべてを覆ったら「日本全体を通過」と判断します。
+ * 実際の海岸線を完全に判定するものではなく、通過判定の近似です。
+ */
+const JAPAN_EDGE_POINTS = [
+  [45.5228, 141.9367], // 北海道・宗谷岬付近
+  [24.0456, 123.7767], // 波照間島付近
+  [24.4494, 122.9333], // 与那国島付近
+  [41.5575, 140.9078], // 北海道南西部付近
+  [34.7054, 135.4900], // 本州中央部の補助点
+  [31.0000, 130.0000], // 九州南部の補助点
+  [26.2125, 127.6811]  // 沖縄本島付近
+];
 
 const $ = id => document.getElementById(id);
 
@@ -279,8 +302,8 @@ let shownAt = 0;
 const map = new maplibregl.Map({
   container: "earthquakeMap",
   style: "https://tiles.openfreemap.org/styles/dark",
-  center: [138, 36.5],
-  zoom: 5,
+  center: [135, 35.5],
+  zoom: 4.2,
   minZoom: 1,
   maxZoom: 18,
   attributionControl: true
@@ -297,6 +320,16 @@ let lastMapEventKey = null;
 let mapUpdateTimer = null;
 let epicenterMarker = null;
 let epicenterPopup = null;
+
+/* 波表示のイベント別状態 */
+let finalAnnouncedTime = null;
+let finalAnnouncedEventId = null;
+let pWavePassedJapan = false;
+let sWavePassedJapan = false;
+let initialViewFitted = false;
+let japanViewLocked = false;
+let lastPRadius = null;
+let lastSRadius = null;
 
 function emptyFeatureCollection() {
   return {type:"FeatureCollection",features:[]};
@@ -327,11 +360,11 @@ map.on("load", () => {
 
   loadTravelTable();
 
-  // ★修正：地図ロード前に受信した速報も、ロード後に震源へ移動
   if (currentOrigin) {
-    moveToEpicenter(currentOrigin, true, true);
     updateEpicenterMarker();
     updateWaveMap();
+  } else {
+    fitJapanView(true);
   }
 });
 
@@ -401,7 +434,6 @@ function parseOriginTime(value) {
 }
 
 function getEventOrigin(data) {
-  // 空文字を Number("") = 0 と誤認しない
   if (data.Latitude === null || data.Latitude === undefined ||
       data.Latitude === "" ||
       data.Longitude === null || data.Longitude === undefined ||
@@ -416,42 +448,88 @@ function getEventOrigin(data) {
   return {lat,lon,depth};
 }
 
+/* 2地点間の大円距離（km） */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRad = v => v * Math.PI / 180;
+  const dLat = toRad(lat2-lat1);
+  const dLon = toRad(lon2-lon1);
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*EARTH_RADIUS_KM*Math.asin(Math.sqrt(Math.min(1,a)));
+}
+
+/* 震源から日本の代表地点すべてまでの距離の最大値 */
+function distanceToCoverJapan(origin) {
+  return Math.max(...JAPAN_EDGE_POINTS.map(([lat,lon]) =>
+    haversineKm(origin.lat,origin.lon,lat,lon)
+  ));
+}
+
+/* 日本列島全体を表示するカメラ */
+function fitJapanView(immediate=false) {
+  if (!mapReady) return;
+
+  map.stop();
+  map.fitBounds(JAPAN_BOUNDS,{
+    padding:{top:35,bottom:35,left:35,right:35},
+    duration:immediate ? 0 : 1000,
+    maxZoom:5.2,
+    essential:true
+  });
+}
+
 /*
- * ★震源移動処理
- * newEvent=true なら新しいイベントとしてズームを5に設定。
- * 地図がロードされていない間は何もせず、loadイベントで再実行する。
+ * 最初のカメラ調整では、日本の範囲とP/S波円の範囲をまとめて表示。
+ * 大きな波の円がある場合は、その円も含めて表示範囲を広げます。
+ */
+function fitJapanAndWaves(pRadius,sRadius) {
+  if (!mapReady) return;
+
+  let west = JAPAN_BOUNDS[0][0];
+  let south = JAPAN_BOUNDS[0][1];
+  let east = JAPAN_BOUNDS[1][0];
+  let north = JAPAN_BOUNDS[1][1];
+
+  const radii = [pRadius,sRadius].filter(v =>
+    Number.isFinite(v) && v > 0
+  );
+
+  if (currentOrigin && radii.length) {
+    const maxRadius = Math.max(...radii);
+    const latDelta = maxRadius / 110.574;
+    const cosLat = Math.max(0.15,Math.cos(currentOrigin.lat*Math.PI/180));
+    const lonDelta = Math.min(180,maxRadius/(111.320*cosLat));
+
+    west = Math.min(west,currentOrigin.lon-lonDelta);
+    east = Math.max(east,currentOrigin.lon+lonDelta);
+    south = Math.min(south,currentOrigin.lat-latDelta);
+    north = Math.max(north,currentOrigin.lat+latDelta);
+  }
+
+  map.stop();
+  map.fitBounds([[west,south],[east,north]],{
+    padding:{top:35,bottom:35,left:35,right:35},
+    duration:700,
+    maxZoom:5.2,
+    essential:true
+  });
+}
+
+/*
+ * 新イベント時のカメラ位置。
+ * 震源へ過剰にズームせず、日本と波を確認できる表示範囲を優先します。
  */
 function moveToEpicenter(origin, immediate=false, newEvent=false) {
   if (!mapReady || !origin) return;
 
-  const center = [origin.lon, origin.lat];
-  const currentCenter = map.getCenter();
-
-  const distance = Math.hypot(
-    currentCenter.lng - origin.lon,
-    currentCenter.lat - origin.lat
-  );
-
-  const targetZoom = newEvent ? 5 : Math.max(map.getZoom(), 5);
-
-  // 新しいイベントで同じ場所でも、不要なアニメーションは避ける
-  if (distance < 0.01 && Math.abs(map.getZoom()-targetZoom) < 0.1) {
+  if (newEvent) {
+    fitJapanView(immediate);
     return;
   }
 
-  // 進行中の移動を停止して、最新の震源への移動を優先
-  map.stop();
-
-  if (immediate) {
-    map.jumpTo({center, zoom:targetZoom});
-  } else {
-    map.flyTo({
-      center,
-      zoom:targetZoom,
-      duration:1200,
-      essential:true
-    });
-  }
+  // S波が日本全体を通過した後は、カメラを動かさない
+  if (japanViewLocked) return;
 }
 
 function serialNumber(value) {
@@ -532,6 +610,11 @@ function getRowsForDepth(depthKm) {
     .sort((a,b) => a.distance-b.distance);
 }
 
+/*
+ * 経過時間から走時表の距離を補間。
+ * 走時表の最後の時刻を超えた場合は最後の距離を返します。
+ * そのため、走時表の範囲外に出た瞬間に円が消えることはありません。
+ */
 function interpolateDistance(rows, elapsedSeconds, wave) {
   if (!rows.length || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) return null;
 
@@ -540,17 +623,23 @@ function interpolateDistance(rows, elapsedSeconds, wave) {
     .filter(r => Number.isFinite(r[timeKey]) && Number.isFinite(r.distance))
     .sort((a,b) => a[timeKey]-b[timeKey]);
 
-  if (points.length < 2 || elapsedSeconds < points[0][timeKey]) return null;
+  if (!points.length || elapsedSeconds < points[0][timeKey]) return null;
+  if (points.length === 1) return points[0].distance;
 
   for (let i=1;i<points.length;i++) {
     const a = points[i-1], b = points[i];
+
     if (elapsedSeconds <= b[timeKey]) {
       const dt = b[timeKey]-a[timeKey];
       if (dt <= 0) return b.distance;
-      return a.distance+(b.distance-a.distance)*(elapsedSeconds-a[timeKey])/dt;
+
+      return a.distance+
+        (b.distance-a.distance)*(elapsedSeconds-a[timeKey])/dt;
     }
   }
-  return null;
+
+  // 表の最終行を超えたら、最後の計算可能な半径を維持する
+  return points[points.length-1].distance;
 }
 
 function destinationPoint(lat,lon,distanceKm,bearingDegrees) {
@@ -595,8 +684,20 @@ function clearWaveLayers() {
   setGeoJSON("wave-s",emptyFeatureCollection());
 }
 
+/* 最終報の発表時刻から3分を過ぎたか確認 */
+function finalWaveDisplayExpired() {
+  return finalAnnouncedTime !== null &&
+    Date.now()-finalAnnouncedTime >= FINAL_HIDE_MS;
+}
+
 function updateWaveMap() {
   if (!currentOrigin || currentOriginTime === null || !mapReady) return;
+
+  if (finalWaveDisplayExpired()) {
+    clearWaveLayers();
+    text("mapStatus","最終報の発表から3分経過・P波とS波の表示終了");
+    return;
+  }
 
   if (!tableLoaded) {
     text("mapStatus","走時表の読み込み待ち");
@@ -614,30 +715,78 @@ function updateWaveMap() {
 
   const pRadius = interpolateDistance(rows,elapsed,"P");
   const sRadius = interpolateDistance(rows,elapsed,"S");
-  const pFeatures = [], sFeatures = [];
 
-  if (pRadius !== null && pRadius > 0 && pRadius < MAX_RADIUS_KM) {
-    pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
+  lastPRadius = pRadius;
+  lastSRadius = sRadius;
+
+  const japanDistance = distanceToCoverJapan(currentOrigin);
+
+  /*
+   * P波が日本の端まで到達したらP波だけ非表示。
+   * 判定後はフラグを保持し、P波を再表示しません。
+   */
+  if (!pWavePassedJapan && pRadius !== null &&
+      pRadius >= japanDistance) {
+    pWavePassedJapan = true;
   }
-  if (sRadius !== null && sRadius > 0 && sRadius < MAX_RADIUS_KM) {
-    sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
+
+  /*
+   * S波も日本全体を通過したら日本全体が見える位置にカメラを固定。
+   * 以後は波の進行に合わせてカメラを動かしません。
+   */
+  if (!sWavePassedJapan && sRadius !== null &&
+      sRadius >= japanDistance) {
+    sWavePassedJapan = true;
+    japanViewLocked = true;
+    fitJapanView(false);
+  }
+
+  const pFeatures = [];
+  const sFeatures = [];
+
+  if (!pWavePassedJapan && pRadius !== null && pRadius > 0) {
+    pFeatures.push(
+      createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius)
+    );
+  }
+
+  if (sRadius !== null && sRadius > 0) {
+    sFeatures.push(
+      createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius)
+    );
   }
 
   setGeoJSON("wave-p",{type:"FeatureCollection",features:pFeatures});
   setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
 
-  text("mapStatus",
-    (pRadius !== null && pRadius < MAX_RADIUS_KM ? "P波 約 "+Math.round(pRadius)+" km" : "P波 表示範囲外")+
-    " ・ "+
-    (sRadius !== null && sRadius < MAX_RADIUS_KM ? "S波 約 "+Math.round(sRadius)+" km" : "S波 表示範囲外")
-  );
+  /*
+   * 新イベントの初期カメラは、最初に波の半径を計算できた時点で調整。
+   * 以後はS波が日本全体を通過するまで追従移動しません。
+   */
+  if (!initialViewFitted && !japanViewLocked &&
+      (pRadius !== null || sRadius !== null)) {
+    initialViewFitted = true;
+    fitJapanAndWaves(pWavePassedJapan ? null : pRadius,sRadius);
+  }
+
+  const pStatus = pWavePassedJapan
+    ? "P波 日本通過済み"
+    : pRadius !== null
+      ? "P波 約 "+Math.round(pRadius)+" km"
+      : "P波 到達前";
+
+  const sStatus = sRadius !== null
+    ? "S波 約 "+Math.round(sRadius)+" km"
+    : "S波 到達前";
+
+  text("mapStatus",pStatus+" ・ "+sStatus+
+    (sWavePassedJapan ? " ・ 日本全体通過済み" : ""));
 }
 
 function setMapEvent(data,eventKey) {
   const origin = getEventOrigin(data);
 
   if (!origin) {
-    // 不正な座標で既存の有効な震源情報を上書きしない
     text("mapStatus","震源の緯度・経度を取得できません");
     return;
   }
@@ -650,8 +799,31 @@ function setMapEvent(data,eventKey) {
   if (isNewEvent) {
     lastMapEventKey = mapEventId;
     currentOriginTime = originTime;
+
+    // イベントが変わったら波の表示状態も初期化
+    finalAnnouncedTime = null;
+    finalAnnouncedEventId = null;
+    pWavePassedJapan = false;
+    sWavePassedJapan = false;
+    initialViewFitted = false;
+    japanViewLocked = false;
+    lastPRadius = null;
+    lastSRadius = null;
+
+    clearWaveLayers();
   } else if (currentOriginTime === null && originTime !== null) {
     currentOriginTime = originTime;
+  }
+
+  /*
+   * 最終報のAnnouncedTimeを波の消去時刻の基準にする。
+   * 時刻を解析できない場合は、最終報データを受信した時刻を使用。
+   * 同じイベントの最終報時刻は一度だけ確定させます。
+   */
+  if (data.isFinal === true && finalAnnouncedEventId !== mapEventId) {
+    const announcedAt = parseOriginTime(data.AnnouncedTime);
+    finalAnnouncedTime = announcedAt !== null ? announcedAt : Date.now();
+    finalAnnouncedEventId = mapEventId;
   }
 
   const coordinatesChanged =
@@ -661,11 +833,10 @@ function setMapEvent(data,eventKey) {
 
   currentOrigin = origin;
 
-  // ★修正：新しい地震、または震源座標が変化したら移動
   if (isNewEvent) {
-    moveToEpicenter(origin,false,true);
-  } else if (coordinatesChanged) {
-    moveToEpicenter(origin,false,false);
+    moveToEpicenter(origin,true,true);
+  } else if (coordinatesChanged && !japanViewLocked) {
+    // 同一イベントの震源更新時も、日本全体表示を優先してカメラを維持
   }
 
   if (currentOriginTime === null) {
@@ -805,7 +976,9 @@ function render(data,raw,eventKey) {
 
   $("depth").replaceChildren();
   const depthValue = document.createElement("span");
-  depthValue.textContent = data.Depth === null || data.Depth === undefined || data.Depth === "" ? "--" : String(data.Depth);
+  depthValue.textContent =
+    data.Depth === null || data.Depth === undefined || data.Depth === ""
+      ? "--" : String(data.Depth);
   const depthUnit = document.createElement("span");
   depthUnit.className = "unit";
   depthUnit.textContent = "km";
@@ -839,7 +1012,9 @@ function render(data,raw,eventKey) {
   if (!areas.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = canceled ? "取消報です。警報対象地域はありません。" : "警報対象地域のデータはありません。";
+    empty.textContent = canceled
+      ? "取消報です。警報対象地域はありません。"
+      : "警報対象地域のデータはありません。";
     $("areas").appendChild(empty);
   } else {
     const fragment = document.createDocumentFragment();
@@ -866,6 +1041,7 @@ function render(data,raw,eventKey) {
       row.append(left,badge);
       fragment.appendChild(row);
     }
+
     $("areas").appendChild(fragment);
   }
 
@@ -887,13 +1063,16 @@ function hideDelay(e) {
 }
 
 function isExpired(e,now=Date.now()) {
-  return !!e.done && Number.isFinite(e.receivedAt) && now-e.receivedAt >= hideDelay(e);
+  return !!e.done && Number.isFinite(e.receivedAt) &&
+    now-e.receivedAt >= hideDelay(e);
 }
 
 function activeList() {
   const now = Date.now();
   return [...events.values()]
-    .filter(e => e.done ? !isExpired(e,now) : performance.now()-e.updatedAt < EVENT_TTL)
+    .filter(e => e.done
+      ? !isExpired(e,now)
+      : performance.now()-e.updatedAt < EVENT_TTL)
     .sort((a,b) => a.firstAt-b.firstAt);
 }
 
@@ -904,7 +1083,8 @@ function pruneEvents() {
       events.delete(key);
       continue;
     }
-    if (!e.done && key !== currentKey && performance.now()-e.updatedAt > EVENT_KEEP) {
+    if (!e.done && key !== currentKey &&
+        performance.now()-e.updatedAt > EVENT_KEEP) {
       events.delete(key);
     }
   }
@@ -915,7 +1095,8 @@ function tabLabel(e) {
   const mag = d.Magnitude ?? d.Magunitude;
   return [
     d.Hypocenter || "震源不明",
-    mag !== undefined && mag !== null && mag !== "" ? "M"+formatMagnitude(mag) : "",
+    mag !== undefined && mag !== null && mag !== ""
+      ? "M"+formatMagnitude(mag) : "",
     d.MaxIntensity ? "震度"+d.MaxIntensity : "",
     d.isCancel === true ? "(取消)" : d.isFinal === true ? "(最終)" : ""
   ].filter(Boolean).join(" ");
@@ -940,7 +1121,9 @@ function renderTabs() {
   all.forEach((e,i) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "event-tab"+(e.key === currentKey ? " active" : "")+(e.done ? " done" : "");
+    button.className = "event-tab"+
+      (e.key === currentKey ? " active" : "")+
+      (e.done ? " done" : "");
     button.textContent = (i+1)+". "+tabLabel(e);
     button.addEventListener("click",() => {
       show(e.key);
@@ -950,7 +1133,8 @@ function renderTabs() {
   });
 
   if (active.length >= 2) {
-    note.textContent = "同時に "+active.length+" 件を "+(ROTATE_MS/1000)+" 秒ごとに巡回表示中。";
+    note.textContent =
+      "同時に "+active.length+" 件を "+(ROTATE_MS/1000)+" 秒ごとに巡回表示中。";
     note.classList.remove("hidden");
   } else {
     note.classList.add("hidden");
@@ -1037,7 +1221,9 @@ function handleEvent(data,raw) {
   if (done) {
     const wasCancel = existing?.data?.isCancel === true;
     const isCancelNow = data.isCancel === true;
-    if (!existing || !existing.done || wasCancel !== isCancelNow) e.receivedAt = receivedAt;
+    if (!existing || !existing.done || wasCancel !== isCancelNow) {
+      e.receivedAt = receivedAt;
+    }
   } else {
     e.receivedAt = null;
   }
@@ -1152,7 +1338,8 @@ function connect() {
     if (typeof event.data === "string") {
       processMessage(event.data);
     } else if (event.data instanceof Blob) {
-      event.data.text().then(processMessage).catch(() => text("parseState","読み取り失敗"));
+      event.data.text().then(processMessage)
+        .catch(() => text("parseState","読み取り失敗"));
     } else if (event.data instanceof ArrayBuffer) {
       processMessage(new TextDecoder("utf-8").decode(event.data));
     }
@@ -1210,7 +1397,9 @@ function sweep() {
     if (active.length) {
       show(active[0].key);
     } else {
-      const remaining = [...events.values()].sort((a,b) => b.updatedAt-a.updatedAt);
+      const remaining = [...events.values()]
+        .sort((a,b) => b.updatedAt-a.updatedAt);
+
       if (remaining.length) {
         show(remaining[0].key);
       } else {
@@ -1221,7 +1410,8 @@ function sweep() {
     }
   }
 
-  const changed = before.size !== events.size || [...before].some(key => !events.has(key));
+  const changed = before.size !== events.size ||
+    [...before].some(key => !events.has(key));
   if (changed) renderTabs();
 }
 
@@ -1246,8 +1436,13 @@ document.addEventListener("visibilitychange",() => {
   setTimeout(() => {
     map.resize();
     updateEpicenterMarker();
-    // ★復帰時にも表示中の震源を確認
-    if (currentOrigin) moveToEpicenter(currentOrigin,false,false);
+
+    // S波が日本全体を通過済みなら日本全体の表示位置を維持
+    if (japanViewLocked) {
+      fitJapanView(true);
+    } else if (!currentOrigin) {
+      fitJapanView(true);
+    }
   },100);
 });
 
