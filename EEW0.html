@@ -175,7 +175,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
     <span id="tableStatus" class="source-status">走時表を読み込み中</span>
   </div>
   <div class="wave-note">
-    JMA2001走時表による到達予想円です。P波・S波のどちらかが2000 kmを超えた時点で両方の波の表示を終了します。初回の自動ズームは少し待ってから行い、予想円全体が画面内に収まる範囲でできるだけ拡大します。円が大きくなると、それに合わせてズームアウトします。S波が日本列島の代表地点を通過したらP波・S波を両方消し、震源地と最寄りの日本陸地が画面内に入るように自動ズームします。遠い震源地では縮小し、近い震源地では拡大します。波の表示終了後は震源地を画面の縦方向の中央に配置し、日本の陸地が画面外に出る場合はさらに縮小します。地図を手動で動かした場合は、操作開始直前の位置・ズーム・回転・傾きに、最後の操作から5秒後に戻ります。最終報の発表時刻から3分後にも波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。
+    JMA2001走時表による到達予想円です。初回の自動ズームは少し待ってから行い、予想円全体が画面内に収まる範囲でできるだけ拡大します。円が大きくなると、それに合わせてズームアウトします。S波が日本列島の代表地点を通過したらP波・S波を両方消し、震源地と最寄りの日本陸地が画面内に入るように自動ズームします。遠い震源地では縮小し、近い震源地では拡大します。波の表示終了後は震源地を画面の縦方向の中央に配置し、日本の陸地が画面外に出る場合はさらに縮小します。地図を手動で動かした場合は、操作開始直前の位置・ズーム・回転・傾きに、最後の操作から5秒後に戻ります。最終報の発表時刻から3分後にも波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。
   </div>
 </section>
 
@@ -270,7 +270,6 @@ const RECONNECT_MIN=500,RECONNECT_MAX=10000,ROTATE_MS=4000;
 const EVENT_TTL=10*60000,EVENT_KEEP=60*60000,FINAL_HIDE_MS=3*60000,CANCEL_HIDE_MS=20000;
 const EARTH_RADIUS_KM=6371.0088,MAP_RETURN_DELAY=5000;
 const JAPAN_BOUNDS=[[122.8,23.8],[146.0,45.8]];
-const MAX_WAVE_RADIUS_KM=2000;
 
 // [緯度, 経度]
 const JAPAN_EDGE_POINTS=[
@@ -531,6 +530,10 @@ function fitJapanAndEpicenter(immediate=false){
   });
 }
 
+/*
+ * 震源地を縦中央に置きます。
+ * 日本の陸地が画面外に出ないよう、必要な場合はズームアウトします。
+ */
 function centerEpicenterVertically(immediate=false){
   if(!mapReady||!currentOrigin||isUserMapControlActive())return;
 
@@ -545,9 +548,11 @@ function centerEpicenterVertically(immediate=false){
 
   if(!Number.isFinite(originPixel.y)||!Number.isFinite(centerPixel.y))return;
 
+  // 縦中央への移動量
   const offsetY=originPixel.y-height/2;
   if(Math.abs(offsetY)<1)return;
 
+  // 日本の代表地点が移動後も画面内に収まるかを確認
   const nearest=getNearestJapanPoint();
   if(!nearest)return;
 
@@ -556,6 +561,7 @@ function centerEpicenterVertically(immediate=false){
   const margin=Math.max(20,Math.min(45,Math.round(Math.min(width,height)*0.07)));
 
   if(predictedJapanY<margin||predictedJapanY>height-margin){
+    // 陸地が画面外に出る可能性があるため、縮小して余白を作る
     const oldZoom=map.getZoom();
     const newZoom=Math.max(map.getMinZoom(),oldZoom-1.0);
 
@@ -564,6 +570,7 @@ function centerEpicenterVertically(immediate=false){
     }
   }
 
+  // ズーム変更後の座標で縦中央への移動を再計算
   const updatedOriginPixel=map.project(origin);
   const updatedCenterPixel=map.project(map.getCenter());
   const updatedOffsetY=updatedOriginPixel.y-height/2;
@@ -584,6 +591,9 @@ function centerEpicenterVertically(immediate=false){
   }
 }
 
+/*
+ * 日本の代表地点から、震源地に最も近い地点を返します。
+ */
 function getNearestJapanPoint(){
   if(!currentOrigin)return null;
 
@@ -607,6 +617,11 @@ function getNearestJapanPoint(){
   return nearest;
 }
 
+/*
+ * 波の表示終了後の表示範囲。
+ * 震源地と最寄りの日本陸地を含むboundsからズームを計算します。
+ * 遠い震源地ほどズームアウトし、近い場合は拡大します。
+ */
 function focusEpicenterAndNearbyJapan(immediate=false){
   if(!mapReady||!currentOrigin||isUserMapControlActive())return;
 
@@ -624,6 +639,7 @@ function focusEpicenterAndNearbyJapan(immediate=false){
     Math.min(70,Math.round(Math.min(width,height)*0.11))
   );
 
+  // 震源地と日本の陸地を必ず同時に含める
   const bounds=new maplibregl.LngLatBounds(origin,origin);
   bounds.extend(nearest);
 
@@ -641,6 +657,8 @@ function focusEpicenterAndNearbyJapan(immediate=false){
     essential:true
   });
 
+  // fitBoundsの完了後に、震源地を縦中央へ合わせる。
+  // 移動時に陸地が見切れる場合はズームアウトします。
   const align=()=>{
     if(!mapReady||!currentOrigin||isUserMapControlActive())return;
     centerEpicenterVertically(immediate);
@@ -900,7 +918,7 @@ function performWaveCircleFit(radiusKm,immediate=false){
   const height=container.clientHeight;
   if(width<1||height<1)return;
 
-  const pad=Math.max(30,Math.min(64,Math.round(Math.min(width,height)*.11));
+  const pad=Math.max(30,Math.min(64,Math.round(Math.min(width,height)*.11)));
 
   lastAutoFitRadius=radiusKm;
   lastAutoFitAt=Date.now();
@@ -1141,15 +1159,6 @@ function updateWaveMap(){
 
   lastPRadius=pRadius;
   lastSRadius=sRadius;
-
-  // ★変更点：P波またはS波のどちらかが2000 kmを超えたら両方を終了
-  if(
-    (pRadius!==null&&pRadius>MAX_WAVE_RADIUS_KM)||
-    (sRadius!==null&&sRadius>MAX_WAVE_RADIUS_KM)
-  ){
-    finishWaveDisplay("P波・S波の予想円が2000 km超過・波表示終了");
-    return;
-  }
 
   const japanDistance=distanceToCoverJapan(currentOrigin);
 
