@@ -170,7 +170,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   </div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ"></div>
   <div class="map-status"><span id="mapStatus">地震情報を待機中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
-  <div class="wave-note">JMA2001走時表による到達予想円です。日本の陸地をP波が通過するとP波を非表示にし、S波が通過すると日本全体が見える位置にカメラを固定します。最終報の発表時刻から3分後に波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
+  <div class="wave-note">JMA2001走時表による到達予想円です。日本の陸地をP波が通過するとP波を非表示にし、S波が通過すると日本列島と震源地の両方が見える位置にカメラを調整します。地図を手動で動かした場合は、操作開始直前の位置・ズーム・回転・傾きに、最後の操作から5秒後に戻ります。最終報の発表時刻から3分後に波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
 </section>
 
 <div class="grid">
@@ -263,6 +263,7 @@ const EVENT_KEEP = 60 * 60000;
 const FINAL_HIDE_MS = 3 * 60000;
 const CANCEL_HIDE_MS = 20000;
 const EARTH_RADIUS_KM = 6371.0088;
+const MAP_RETURN_DELAY = 5000;
 
 const JAPAN_BOUNDS = [
   [122.8, 23.8],
@@ -322,6 +323,17 @@ let epicenterPopup = null;
 let mapResizeObserver = null;
 let markerAdjustFrame = null;
 
+/*
+ * 手動操作前のカメラ状態と、5秒後の復元タイマー。
+ * 保存するのは中心・ズーム・回転・傾き。
+ */
+let mapReturnTimer = null;
+let mapReturnAnimationTimer = null;
+let mapReturnInProgress = false;
+let savedMapView = null;
+let manualGestureActive = false;
+let userMapOverrideUntil = 0;
+
 let finalAnnouncedTime = null;
 let finalAnnouncedEventId = null;
 let pWavePassedJapan = false;
@@ -333,6 +345,201 @@ let lastSRadius = null;
 
 function emptyFeatureCollection() {
   return {type:"FeatureCollection",features:[]};
+}
+
+/*
+ * 手動操作中、または手動操作後5秒間、自動カメラ移動を止める。
+ * 5秒後の復元アニメーション中も自動移動を抑止する。
+ */
+function isUserMapControlActive() {
+  return manualGestureActive ||
+    Date.now() < userMapOverrideUntil ||
+    mapReturnInProgress;
+}
+
+/*
+ * 手動操作の直前のカメラ状態を保存する。
+ * 連続操作中に保存状態を上書きしない。
+ */
+function saveMapViewBeforeManualMove() {
+  if (!mapReady) return;
+
+  if (mapReturnInProgress) {
+    map.stop();
+    mapReturnInProgress = false;
+
+    if (mapReturnAnimationTimer !== null) {
+      clearTimeout(mapReturnAnimationTimer);
+      mapReturnAnimationTimer = null;
+    }
+  }
+
+  if (savedMapView !== null) return;
+
+  savedMapView = {
+    center: map.getCenter().toArray(),
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+    pitch: map.getPitch()
+  };
+}
+
+/*
+ * 操作が終わるたびに5秒タイマーをリセットする。
+ * 復元先は日本の範囲や震源地ではなく、保存した状態そのもの。
+ */
+function scheduleMapReturn() {
+  if (!mapReady) return;
+
+  if (savedMapView === null) {
+    saveMapViewBeforeManualMove();
+  }
+
+  userMapOverrideUntil = Date.now() + MAP_RETURN_DELAY;
+
+  if (mapReturnTimer !== null) {
+    clearTimeout(mapReturnTimer);
+  }
+
+  mapReturnTimer = setTimeout(() => {
+    mapReturnTimer = null;
+    restoreSavedMapView();
+  }, MAP_RETURN_DELAY);
+}
+
+/*
+ * 保存したカメラ状態に戻す。
+ * 自動の fitBounds は使わないため、元のズーム倍率も復元される。
+ */
+function restoreSavedMapView() {
+  if (!mapReady || savedMapView === null) {
+    userMapOverrideUntil = 0;
+    manualGestureActive = false;
+    return;
+  }
+
+  const target = savedMapView;
+  savedMapView = null;
+
+  manualGestureActive = false;
+  mapReturnInProgress = true;
+  userMapOverrideUntil = Date.now() + 1000;
+
+  if (mapReturnAnimationTimer !== null) {
+    clearTimeout(mapReturnAnimationTimer);
+    mapReturnAnimationTimer = null;
+  }
+
+  map.stop();
+
+  map.easeTo({
+    center: target.center,
+    zoom: target.zoom,
+    bearing: target.bearing,
+    pitch: target.pitch,
+    duration: 800,
+    essential: true
+  });
+
+  mapReturnAnimationTimer = setTimeout(() => {
+    mapReturnAnimationTimer = null;
+    mapReturnInProgress = false;
+    userMapOverrideUntil = 0;
+  }, 900);
+}
+
+/*
+ * ユーザー操作の開始・終了を検出する。
+ * pointerdown の時点で保存するため、ドラッグ後の位置を誤保存しない。
+ */
+function setupMapInteractionListeners() {
+  const container = $("earthquakeMap");
+  if (!container) return;
+
+  container.addEventListener("pointerdown", () => {
+    if (!mapReady) return;
+
+    saveMapViewBeforeManualMove();
+    manualGestureActive = true;
+    userMapOverrideUntil = Date.now() + MAP_RETURN_DELAY;
+  }, {capture:true,passive:true});
+
+  container.addEventListener("pointerup", () => {
+    if (!manualGestureActive) return;
+
+    manualGestureActive = false;
+    scheduleMapReturn();
+  }, {capture:true,passive:true});
+
+  container.addEventListener("pointercancel", () => {
+    if (!manualGestureActive) return;
+
+    manualGestureActive = false;
+    scheduleMapReturn();
+  }, {capture:true,passive:true});
+
+  /*
+   * wheel は capture で先に保存する。
+   * マウスホイールのズームが反映された後の状態を保存してしまうのを防ぐ。
+   */
+  container.addEventListener("wheel", () => {
+    saveMapViewBeforeManualMove();
+    scheduleMapReturn();
+  }, {capture:true,passive:true});
+
+  /*
+   * タッチ端末でのスワイプ・ピンチ操作。
+   * pointer イベントと重複しても保存状態は上書きしない。
+   */
+  container.addEventListener("touchstart", () => {
+    saveMapViewBeforeManualMove();
+    manualGestureActive = true;
+    userMapOverrideUntil = Date.now() + MAP_RETURN_DELAY;
+  }, {capture:true,passive:true});
+
+  container.addEventListener("touchend", () => {
+    manualGestureActive = false;
+    scheduleMapReturn();
+  }, {capture:true,passive:true});
+
+  container.addEventListener("touchcancel", () => {
+    manualGestureActive = false;
+    scheduleMapReturn();
+  }, {capture:true,passive:true});
+
+  /*
+   * ズームボタンなどの操作も、操作前の位置を保存して復元対象にする。
+   */
+  container.addEventListener("click", event => {
+    if (!event.target.closest(".maplibregl-ctrl")) return;
+
+    if (savedMapView === null) {
+      saveMapViewBeforeManualMove();
+    }
+    scheduleMapReturn();
+  }, true);
+
+  /*
+   * キーボードによる地図の移動・ズーム。
+   */
+  container.addEventListener("keydown", event => {
+    if (![
+      "ArrowUp","ArrowDown","ArrowLeft","ArrowRight",
+      "+","-","=","_"
+    ].includes(event.key)) return;
+
+    saveMapViewBeforeManualMove();
+    scheduleMapReturn();
+  }, true);
+
+  /*
+   * MapLibre のドラッグ終了も検出する。
+   * pointerup と重複しても、保存位置は上書きされない。
+   */
+  map.on("dragend", () => {
+    manualGestureActive = false;
+    scheduleMapReturn();
+  });
 }
 
 map.on("load", () => {
@@ -358,20 +565,29 @@ map.on("load", () => {
     paint:{"line-color":"#ff4058","line-width":3,"line-opacity":0.95}
   });
 
+  setupMapInteractionListeners();
   loadTravelTable();
 
   if (currentOrigin) {
     updateEpicenterMarker();
     updateWaveMap();
+    fitJapanAndEpicenter(true);
   } else {
     fitJapanView(true);
   }
 
-  // 地図コンテナのサイズ変化を監視。スマホの回転・画面変更に対応する。
   setupMapResizeObserver();
+
   requestAnimationFrame(() => {
     map.resize();
-    ensureEpicenterVisible();
+
+    if (!isUserMapControlActive()) {
+      if (japanViewLocked) {
+        fitJapanAndEpicenter(true);
+      } else {
+        ensureEpicenterVisible();
+      }
+    }
   });
 });
 
@@ -380,12 +596,40 @@ map.on("error", e => {
 });
 
 /*
- * 震源が地図の表示領域外、または端に隠れそうな場合にカメラを調整する。
- * 震源がすでに表示範囲内なら、カメラは動かさない。
+ * 日本列島と震源地の両方を表示する範囲へカメラを合わせる。
+ * ただし、手動操作中や復元待機中はカメラを上書きしない。
+ */
+function fitJapanAndEpicenter(immediate=false) {
+  if (!mapReady || isUserMapControlActive()) return;
+
+  const bounds = new maplibregl.LngLatBounds(
+    [JAPAN_BOUNDS[0][0],JAPAN_BOUNDS[0][1]],
+    [JAPAN_BOUNDS[1][0],JAPAN_BOUNDS[1][1]]
+  );
+
+  if (currentOrigin) {
+    bounds.extend([currentOrigin.lon,currentOrigin.lat]);
+  }
+
+  map.stop();
+  map.fitBounds(bounds,{
+    padding:{top:35,bottom:35,left:35,right:35},
+    duration:immediate ? 0 : 800,
+    maxZoom:5.2,
+    essential:true
+  });
+}
+
+/*
+ * 震源が画面外に出た場合の調整。
+ * 手動操作中はユーザーが選んだ表示範囲を優先する。
  */
 function ensureEpicenterVisible() {
   if (!mapReady || !currentOrigin) return;
   if (document.visibilityState === "hidden") return;
+  if (isUserMapControlActive()) return;
+
+  if (japanViewLocked) return;
 
   const container = map.getContainer();
   const width = container.clientWidth;
@@ -394,12 +638,9 @@ function ensureEpicenterVisible() {
   if (width < 1 || height < 1) return;
 
   const point = map.project([currentOrigin.lon,currentOrigin.lat]);
-
   if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
 
-  // マーカー半径と画面端の余白を考慮
   const margin = Math.min(48,Math.max(24,Math.min(width,height)*0.09));
-
   const outside =
     point.x < margin ||
     point.x > width-margin ||
@@ -409,22 +650,14 @@ function ensureEpicenterVisible() {
   if (!outside) return;
 
   map.stop();
-
-  // 日本全体表示を基本に、必要な場合だけ震源を中心に寄せる
-  const targetZoom = Math.min(map.getZoom(),5.2);
-
   map.easeTo({
     center:[currentOrigin.lon,currentOrigin.lat],
-    zoom:targetZoom,
+    zoom:Math.min(map.getZoom(),5.2),
     duration:350,
     essential:true
   });
 }
 
-/*
- * マーカーの更新やカメラ移動が終わった後に、震源の表示位置を再確認する。
- * requestAnimationFrameをまとめ、連続した更新で処理が増えすぎないようにする。
- */
 function scheduleEpicenterAdjustment() {
   if (markerAdjustFrame !== null) {
     cancelAnimationFrame(markerAdjustFrame);
@@ -432,14 +665,16 @@ function scheduleEpicenterAdjustment() {
 
   markerAdjustFrame = requestAnimationFrame(() => {
     markerAdjustFrame = null;
-    if (!mapReady) return;
+    if (!mapReady || isUserMapControlActive()) return;
 
     map.resize();
-    ensureEpicenterVisible();
+
+    if (!japanViewLocked) {
+      ensureEpicenterVisible();
+    }
   });
 }
 
-/* 地図コンテナのサイズ変更を監視 */
 function setupMapResizeObserver() {
   if (mapResizeObserver || typeof ResizeObserver === "undefined") return;
 
@@ -451,9 +686,18 @@ function setupMapResizeObserver() {
 
     map.resize();
 
+    if (isUserMapControlActive()) return;
+
     requestAnimationFrame(() => {
       updateEpicenterMarker();
-      ensureEpicenterVisible();
+
+      if (isUserMapControlActive()) return;
+
+      if (japanViewLocked) {
+        fitJapanAndEpicenter(true);
+      } else {
+        ensureEpicenterVisible();
+      }
     });
   });
 
@@ -553,7 +797,12 @@ function distanceToCoverJapan(origin) {
 }
 
 function fitJapanView(immediate=false) {
-  if (!mapReady) return;
+  if (!mapReady || isUserMapControlActive()) return;
+
+  if (japanViewLocked && currentOrigin) {
+    fitJapanAndEpicenter(immediate);
+    return;
+  }
 
   map.stop();
   map.fitBounds(JAPAN_BOUNDS,{
@@ -562,15 +811,15 @@ function fitJapanView(immediate=false) {
     maxZoom:5.2,
     essential:true
   });
-
-  // fitBoundsによるカメラ移動が終わった後に震源の表示を確認
-  map.once("moveend",() => {
-    ensureEpicenterVisible();
-  });
 }
 
 function fitJapanAndWaves(pRadius,sRadius) {
-  if (!mapReady) return;
+  if (!mapReady || isUserMapControlActive()) return;
+
+  if (japanViewLocked && currentOrigin) {
+    fitJapanAndEpicenter(false);
+    return;
+  }
 
   let west = JAPAN_BOUNDS[0][0];
   let south = JAPAN_BOUNDS[0][1];
@@ -602,7 +851,9 @@ function fitJapanAndWaves(pRadius,sRadius) {
   });
 
   map.once("moveend",() => {
-    ensureEpicenterVisible();
+    if (!japanViewLocked && !isUserMapControlActive()) {
+      ensureEpicenterVisible();
+    }
   });
 }
 
@@ -808,7 +1059,12 @@ function updateWaveMap() {
       sRadius >= japanDistance) {
     sWavePassedJapan = true;
     japanViewLocked = true;
-    fitJapanView(false);
+
+    /*
+     * 通常時は日本列島と震源地を同時表示。
+     * 手動操作中ならカメラを上書きせず、ユーザー操作を優先する。
+     */
+    fitJapanAndEpicenter(false);
   }
 
   const pFeatures = [];
@@ -846,9 +1102,8 @@ function updateWaveMap() {
     : "S波 到達前";
 
   text("mapStatus",pStatus+" ・ "+sStatus+
-    (sWavePassedJapan ? " ・ 日本全体通過済み" : ""));
+    (sWavePassedJapan ? " ・ 日本列島通過済み" : ""));
 
-  // 波の表示更新後も、震源が画面外なら位置を補正する
   scheduleEpicenterAdjustment();
 }
 
@@ -879,6 +1134,21 @@ function setMapEvent(data,eventKey) {
     lastSRadius = null;
 
     clearWaveLayers();
+
+    if (mapReturnTimer !== null) {
+      clearTimeout(mapReturnTimer);
+      mapReturnTimer = null;
+    }
+
+    if (mapReturnAnimationTimer !== null) {
+      clearTimeout(mapReturnAnimationTimer);
+      mapReturnAnimationTimer = null;
+    }
+
+    savedMapView = null;
+    manualGestureActive = false;
+    mapReturnInProgress = false;
+    userMapOverrideUntil = 0;
   } else if (currentOriginTime === null && originTime !== null) {
     currentOriginTime = originTime;
   }
@@ -899,7 +1169,7 @@ function setMapEvent(data,eventKey) {
   if (isNewEvent) {
     moveToEpicenter(origin,true,true);
   } else if (coordinatesChanged && !japanViewLocked) {
-    // 日本全体表示を優先し、震源更新だけではカメラを大きく動かさない
+    // 震源更新時は日本全体の表示を優先
   }
 
   if (currentOriginTime === null) {
@@ -1511,35 +1781,55 @@ document.addEventListener("visibilitychange",() => {
 
   setTimeout(() => {
     map.resize();
-
-    // 画面復帰後に地図を再描画し、震源マーカーを再確認
     updateEpicenterMarker();
 
+    if (isUserMapControlActive()) return;
+
     if (japanViewLocked) {
-      fitJapanView(true);
+      fitJapanAndEpicenter(true);
     } else if (!currentOrigin) {
       fitJapanView(true);
     }
 
     requestAnimationFrame(() => {
       map.resize();
-      ensureEpicenterVisible();
+
+      if (isUserMapControlActive()) return;
+
+      if (japanViewLocked) {
+        fitJapanAndEpicenter(true);
+      } else {
+        ensureEpicenterVisible();
+      }
     });
   },150);
 });
 
-// 画面回転やウィンドウサイズ変更後にも再調整
 window.addEventListener("resize",() => {
   if (!mapReady) return;
   map.resize();
-  scheduleEpicenterAdjustment();
+
+  if (isUserMapControlActive()) return;
+
+  if (japanViewLocked) {
+    fitJapanAndEpicenter(true);
+  } else {
+    scheduleEpicenterAdjustment();
+  }
 });
 
 window.addEventListener("orientationchange",() => {
   setTimeout(() => {
     if (!mapReady) return;
     map.resize();
-    scheduleEpicenterAdjustment();
+
+    if (isUserMapControlActive()) return;
+
+    if (japanViewLocked) {
+      fitJapanAndEpicenter(true);
+    } else {
+      scheduleEpicenterAdjustment();
+    }
   },250);
 });
 
@@ -1554,6 +1844,8 @@ window.addEventListener("beforeunload",() => {
   if (mapUpdateTimer !== null) clearInterval(mapUpdateTimer);
   if (markerAdjustFrame !== null) cancelAnimationFrame(markerAdjustFrame);
   if (mapResizeObserver) mapResizeObserver.disconnect();
+  if (mapReturnTimer !== null) clearTimeout(mapReturnTimer);
+  if (mapReturnAnimationTimer !== null) clearTimeout(mapReturnAnimationTimer);
   stopPing();
   closeSocket();
 });
