@@ -10,109 +10,252 @@
 :root{color-scheme:dark;--bg:#080d18;--panel:#101827;--border:#263449;--text:#f1f5f9;--muted:#8ea0b8;--red:#ff4058;--orange:#ffad42;--green:#36dfaa;--blue:#63b3ff}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(ellipse at 50% -15%,#1b3150 0,transparent 55%),var(--bg);color:var(--text);font:14px Inter,"Noto Sans JP",system-ui,sans-serif}
-button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+button{font:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .wrap{max-width:1440px;margin:auto;padding:20px}
 .topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px}
-.brand{display:flex;align-items:center;gap:12px}.brand-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#ff4058,#d51f47);font-size:24px}
-.brand h1{font-size:19px;margin:0;letter-spacing:.04em}.brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#ff4058,#d51f47);font-size:24px}
+.brand h1{font-size:19px;margin:0;letter-spacing:.04em}
+.brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
 .connection{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:99px;padding:9px 13px;background:#101827;color:var(--muted);font-size:12px}
-.dot{width:8px;height:8px;border-radius:50%;background:#64748b}.dot.online{background:var(--green);box-shadow:0 0 12px #36dfaa80}.dot.error{background:var(--red)}
+.dot{width:8px;height:8px;border-radius:50%;background:#64748b}
+.dot.online{background:var(--green);box-shadow:0 0 12px #36dfaa80}
+.dot.error{background:var(--red)}
 .hero{border:1px solid #ff40583b;border-radius:18px;background:linear-gradient(125deg,#281421,#171624 52%,#111b2d);padding:22px;margin-bottom:16px;position:relative;overflow:hidden}
 .hero:after{content:"EEW";position:absolute;right:14px;top:2px;font-size:clamp(65px,12vw,145px);font-weight:900;color:#ffffff08;pointer-events:none}
 .hero-top{position:relative;z-index:1;display:flex;align-items:center;flex-wrap:wrap;gap:9px}
 .tag{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 9px;font-size:11px;font-weight:800;background:#ffffff0b;border:1px solid #ffffff14}
-.tag.red{background:#ff40581b;color:#ff7888;border-color:#ff40583b}.tag.green{color:var(--green)}.tag.orange{color:var(--orange)}
+.tag.red{background:#ff40581b;color:#ff7888;border-color:#ff40583b}
+.tag.green{color:var(--green)}
+.tag.orange{color:var(--orange)}
 .event-tabs{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .event-tab{border:1px solid #ffffff1c;border-radius:8px;padding:7px 11px;background:#0a101c99;color:#c6d3e4;font-size:11px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.event-tab.active{border-color:#ff405899;color:#ff8a98;background:#ff40581a}.event-tab.done{color:var(--muted)}
+.event-tab.active{border-color:#ff405899;color:#ff8a98;background:#ff40581a}
+.event-tab.done{color:var(--muted)}
 .rotate-note{position:relative;z-index:1;margin-top:8px;color:var(--muted);font-size:10px}
-.hero h2{margin:17px 0 5px;font-size:clamp(23px,4vw,36px);letter-spacing:.02em}.hero-desc{color:#b7c2d3;margin:0;font-size:13px}
+.hero h2{margin:17px 0 5px;font-size:clamp(23px,4vw,36px);letter-spacing:.02em}
+.hero-desc{color:#b7c2d3;margin:0;font-size:13px}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:23px;position:relative;z-index:1}
 .metric{min-width:0;border:1px solid #ffffff14;background:#090f1b75;border-radius:12px;padding:16px}
-.metric .label{color:var(--muted);font-size:11px;margin-bottom:12px}.metric .value{font-size:clamp(22px,3.4vw,38px);font-weight:850;letter-spacing:-.04em;overflow-wrap:anywhere}
-.metric .unit{font-size:12px;font-weight:500;color:#b0bfd2;margin-left:5px}.metric .sub{margin-top:8px;color:#8ea0b8;font-size:11px;overflow-wrap:anywhere}
+.metric .label{color:var(--muted);font-size:11px;margin-bottom:12px}
+.metric .value{font-size:clamp(22px,3.4vw,38px);font-weight:850;letter-spacing:-.04em;overflow-wrap:anywhere}
+.metric .unit{font-size:12px;font-weight:500;color:#b0bfd2;margin-left:5px}
+.metric .sub{margin-top:8px;color:#8ea0b8;font-size:11px;overflow-wrap:anywhere}
 .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:16px;align-items:start}
 .panel{min-width:0;background:linear-gradient(145deg,#111b2b,#0e1624);border:1px solid var(--border);border-radius:15px;overflow:hidden}
 .panel-head{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-.panel-head h3{margin:0;font-size:14px}.panel-head span{color:var(--muted);font-size:11px}.panel-body{padding:17px 18px}
+.panel-head h3{margin:0;font-size:14px}
+.panel-head span{color:var(--muted);font-size:11px}
+.panel-body{padding:17px 18px}
 .kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}
 .kv-item{display:flex;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid #ffffff0c}
-.kv-item .k{color:var(--muted);font-size:12px}.kv-item .v{text-align:right;font-size:12px;font-weight:700;overflow-wrap:anywhere}
-.section{margin-top:16px}.area-list{display:grid;gap:9px}
+.kv-item .k{color:var(--muted);font-size:12px}
+.kv-item .v{text-align:right;font-size:12px;font-weight:700;overflow-wrap:anywhere}
+.section{margin-top:16px}
+.area-list{display:grid;gap:9px}
 .area{background:#ffffff04;border:1px solid #ffffff10;border-radius:10px;padding:13px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.area-name{font-weight:700;font-size:13px;overflow-wrap:anywhere}.area-meta{color:var(--muted);font-size:11px;margin-top:6px}
+.area-name{font-weight:700;font-size:13px;overflow-wrap:anywhere}
+.area-meta{color:var(--muted);font-size:11px;margin-top:6px}
 .intensity{flex-shrink:0;min-width:49px;text-align:center;border-radius:8px;padding:9px 7px;color:#fff;font-weight:900;background:#334155}
-.intensity.high{background:#c92743}.intensity.mid{background:#a85b21}.intensity.low{background:#245b91}
+.intensity.high{background:#c92743}
+.intensity.mid{background:#a85b21}
+.intensity.low{background:#245b91}
 .empty{color:var(--muted);text-align:center;padding:28px 10px;font-size:12px}
-.toolbar{display:flex;flex-wrap:wrap;gap:8px}.btn{border:1px solid var(--border);border-radius:7px;padding:8px 11px;background:#172337;color:#dce7f5;font-size:11px}.btn:hover{background:#22334b}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1px solid var(--border);border-radius:7px;padding:8px 11px;background:#172337;color:#dce7f5;font-size:11px}
+.btn:hover{background:#22334b}
 pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#080e19;color:#b9d7f7;font-size:11px;line-height:1.7}
-.footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#667890;font-size:10px;padding:18px 2px}.hidden{display:none!important}
-.map-panel{margin-bottom:16px}.map-legend{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
+.footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#667890;font-size:10px;padding:18px 2px}
+.hidden{display:none!important}
+.map-panel{margin-bottom:16px}
+.map-legend{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
 .legend-item{display:flex;align-items:center;gap:7px;color:#cbd5e1;font-size:11px}
-.legend-line{width:22px;height:4px;border-radius:4px}.legend-line.p{background:#3b9bff}.legend-line.s{background:#ff4058}
+.legend-line{width:22px;height:4px;border-radius:4px}
+.legend-line.p{background:#3b9bff}
+.legend-line.s{background:#ff4058}
 .legend-x{font-size:21px;line-height:15px;color:#ff304b;font-weight:900}
 #earthquakeMap{width:100%;height:480px;background:#0b1220;position:relative}
 .map-status{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 18px;border-top:1px solid var(--border);color:var(--muted);font-size:11px}
-.map-status strong{color:#e2e8f0}.maplibregl-map{font-family:inherit}.maplibregl-ctrl-attrib{font-size:9px!important}
+.map-status strong{color:#e2e8f0}
+.maplibregl-map{font-family:inherit}
+.maplibregl-ctrl-attrib{font-size:9px!important}
 .maplibregl-popup-content{background:#101827;color:#f1f5f9;font-size:12px;border:1px solid var(--border)}
 .maplibregl-popup-tip{border-top-color:#101827!important;border-bottom-color:#101827!important}
-.maplibregl-ctrl-group{background:#101827!important}.maplibregl-ctrl-group button{filter:invert(.85)}
-.maplibregl-ctrl-attrib{color:#d1d5db!important;background:#101827cc!important}.maplibregl-ctrl-attrib a{color:#93c5fd!important}
-.source-status{color:var(--muted);font-size:11px}.source-status.ok{color:var(--green)}.source-status.error{color:#ff7888}
+.maplibregl-ctrl-group{background:#101827!important}
+.maplibregl-ctrl-group button{filter:invert(.85)}
+.maplibregl-ctrl-attrib{color:#d1d5db!important;background:#101827cc!important}
+.maplibregl-ctrl-attrib a{color:#93c5fd!important}
+.source-status{color:var(--muted);font-size:11px}
+.source-status.ok{color:var(--green)}
+.source-status.error{color:#ff7888}
 .epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px #080d18,0 0 10px #080d18;text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .wave-note{padding:12px 18px;color:#9eafc5;font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
-@media(max-width:850px){.grid{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#earthquakeMap{height:400px}}
-@media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}.map-status{padding:12px}}
+@media(max-width:850px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #earthquakeMap{height:400px}
+}
+@media(max-width:460px){
+  .wrap{padding:12px}
+  .hero{padding:16px}
+  .metric{padding:12px}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .panel-body{padding:13px}
+  .brand h1{font-size:16px}
+  #earthquakeMap{height:340px}
+  .map-status{padding:12px}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="topbar">
-  <div class="brand"><div class="brand-icon">⚡</div><div><h1>JMA EARTHQUAKE MONITOR</h1><p>緊急地震速報 リアルタイムモニター</p></div></div>
-  <div class="connection"><span id="dot" class="dot"></span><span id="connectionText">接続準備中</span><span id="latency">未測定</span></div>
+  <div class="brand">
+    <div class="brand-icon">⚡</div>
+    <div>
+      <h1>JMA EARTHQUAKE MONITOR</h1>
+      <p>緊急地震速報 リアルタイムモニター</p>
+    </div>
+  </div>
+  <div class="connection">
+    <span id="dot" class="dot"></span>
+    <span id="connectionText">接続準備中</span>
+    <span id="latency">未測定</span>
+  </div>
 </header>
 
 <section class="hero">
-  <div class="hero-top"><span id="typeTag" class="tag red">EEW MONITOR</span><span id="statusTag" class="tag">速報待機中</span><span id="trainingTag" class="tag orange hidden">訓練報</span><span id="finalTag" class="tag green hidden">最終報</span></div>
-  <div id="eventTabs" class="event-tabs hidden"></div><div id="rotateNote" class="rotate-note hidden"></div>
-  <h2 id="headline">緊急地震速報を待機中</h2><p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
+  <div class="hero-top">
+    <span id="typeTag" class="tag red">EEW MONITOR</span>
+    <span id="statusTag" class="tag">速報待機中</span>
+    <span id="trainingTag" class="tag orange hidden">訓練報</span>
+    <span id="finalTag" class="tag green hidden">最終報</span>
+  </div>
+  <div id="eventTabs" class="event-tabs hidden"></div>
+  <div id="rotateNote" class="rotate-note hidden"></div>
+  <h2 id="headline">緊急地震速報を待機中</h2>
+  <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
   <div class="metrics">
-    <div class="metric"><div class="label">最大震度 / MAX INTENSITY</div><div class="value" id="maxIntensity">--</div><div class="sub" id="intensitySub">観測情報待ち</div></div>
-    <div class="metric"><div class="label">マグニチュード / MAGNITUDE</div><div class="value" id="magnitude">--<span class="unit">M</span></div><div class="sub">地震の規模</div></div>
-    <div class="metric"><div class="label">震源の深さ</div><div class="value" id="depth">--<span class="unit">km</span></div><div class="sub">震源情報に基づく値</div></div>
-    <div class="metric"><div class="label">速報回数 / SERIAL</div><div class="value" id="serial">--</div><div class="sub" id="eventId">イベントID: --</div></div>
+    <div class="metric">
+      <div class="label">最大震度 / MAX INTENSITY</div>
+      <div class="value" id="maxIntensity">--</div>
+      <div class="sub" id="intensitySub">観測情報待ち</div>
+    </div>
+    <div class="metric">
+      <div class="label">マグニチュード / MAGNITUDE</div>
+      <div class="value" id="magnitude">--<span class="unit">M</span></div>
+      <div class="sub">地震の規模</div>
+    </div>
+    <div class="metric">
+      <div class="label">震源の深さ</div>
+      <div class="value" id="depth">--<span class="unit">km</span></div>
+      <div class="sub">震源情報に基づく値</div>
+    </div>
+    <div class="metric">
+      <div class="label">速報回数 / SERIAL</div>
+      <div class="value" id="serial">--</div>
+      <div class="sub" id="eventId">イベントID: --</div>
+    </div>
   </div>
 </section>
 
 <section class="panel map-panel">
-  <div class="panel-head"><h3>地震波到達予想マップ</h3><div class="map-legend"><span class="legend-item"><span class="legend-line p"></span>P波</span><span class="legend-item"><span class="legend-line s"></span>S波</span><span class="legend-item"><span class="legend-x">×</span>震源</span></div></div>
+  <div class="panel-head">
+    <h3>地震波到達予想マップ</h3>
+    <div class="map-legend">
+      <span class="legend-item"><span class="legend-line p"></span>P波</span>
+      <span class="legend-item"><span class="legend-line s"></span>S波</span>
+      <span class="legend-item"><span class="legend-x">×</span>震源</span>
+    </div>
+  </div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ"></div>
-  <div class="map-status"><span id="mapStatus">地震情報を待機中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
-  <div class="wave-note">JMA2001走時表による到達予想円です。初回の自動ズームは少し待ってから行い、予想円全体が画面内に収まる範囲でできるだけ拡大します。円が大きくなると、それに合わせてズームアウトします。S波が日本列島の代表地点を通過したらP波・S波を両方消し、震源地と最寄りの日本陸地が見える範囲へ拡大します。地図を手動で動かした場合は、操作開始直前の位置・ズーム・回転・傾きに、最後の操作から5秒後に戻ります。最終報の発表時刻から3分後にも波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。</div>
+  <div class="map-status">
+    <span id="mapStatus">地震情報を待機中</span>
+    <span id="tableStatus" class="source-status">走時表を読み込み中</span>
+  </div>
+  <div class="wave-note">
+    JMA2001走時表による到達予想円です。P波・S波のどちらかが2000 kmを超えた時点で両方の波の表示を終了します。初回の自動ズームは少し待ってから行い、予想円全体が画面内に収まる範囲でできるだけ拡大します。円が大きくなると、それに合わせてズームアウトします。S波が日本列島の代表地点を通過したらP波・S波を両方消し、震源地と最寄りの日本陸地が画面内に入るように自動ズームします。遠い震源地では縮小し、近い震源地では拡大します。波の表示終了後は震源地を画面の縦方向の中央に配置し、日本の陸地が画面外に出る場合はさらに縮小します。地図を手動で動かした場合は、操作開始直前の位置・ズーム・回転・傾きに、最後の操作から5秒後に戻ります。最終報の発表時刻から3分後にも波の表示を終了します。到達予想は概算であり、実際の揺れや到達時刻を保証するものではありません。
+  </div>
 </section>
 
-<div class="grid"><div>
-<section class="panel"><div class="panel-head"><h3>地震情報</h3><span id="updateTime">受信待機中</span></div><div class="panel-body"><div class="kv">
-<div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div><div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
-<div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div><div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
-<div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div><div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
-<div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div><div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
-<div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div><div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
-<div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div><div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
-<div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div><div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
-<div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div><div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
-</div></div></section>
-<section class="panel section"><div class="panel-head"><h3>警報対象地域</h3><span id="areaCount">0 地域</span></div><div class="panel-body"><div id="areas" class="area-list"><div class="empty">警報対象地域のデータを待っています</div></div></div></section>
-<section class="panel section"><div class="panel-head"><h3>震度変更情報</h3><span>MaxIntChange</span></div><div class="panel-body"><div class="kv"><div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div><div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div></div></div></section>
-</div><div>
-<section class="panel"><div class="panel-head"><h3>受信モニター</h3></div><div class="panel-body"><div class="kv">
-<div class="kv-item"><span class="k">WebSocket</span><span class="v" id="wsState">未接続</span></div><div class="kv-item"><span class="k">メッセージ受信</span><span class="v" id="lastReceive">--</span></div>
-<div class="kv-item"><span class="k">JSON解析</span><span class="v" id="parseState">待機中</span></div><div class="kv-item"><span class="k">訓練報</span><span class="v" id="isTraining">--</span></div>
-</div><div class="toolbar" style="margin-top:16px"><button class="btn" id="reconnectBtn">再接続</button></div></div></section>
-<section class="panel section"><div class="panel-head"><h3>気象庁原文</h3><span>OriginalText</span></div><div class="panel-body"><pre id="originalText" style="max-height:240px">原文待機中...</pre></div></section>
-<section class="panel section"><div class="panel-head"><h3>受信 JSON</h3><span>Raw payload</span></div><pre id="rawJson">受信待機中...</pre></section>
-</div></div>
-<footer class="footer"><span>DATA SOURCE: Wolfx JMA EEW WebSocket</span><span>受信データを基に表示。到達予想は走時表に基づく概算です。</span></footer>
+<div class="grid">
+<div>
+<section class="panel">
+  <div class="panel-head">
+    <h3>地震情報</h3>
+    <span id="updateTime">受信待機中</span>
+  </div>
+  <div class="panel-body">
+    <div class="kv">
+      <div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div>
+      <div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
+      <div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div>
+      <div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
+      <div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div>
+      <div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
+      <div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div>
+      <div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
+      <div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div>
+      <div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
+      <div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div>
+      <div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
+      <div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div>
+      <div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
+      <div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div>
+      <div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel section">
+  <div class="panel-head"><h3>警報対象地域</h3><span id="areaCount">0 地域</span></div>
+  <div class="panel-body">
+    <div id="areas" class="area-list"><div class="empty">警報対象地域のデータを待っています</div></div>
+  </div>
+</section>
+
+<section class="panel section">
+  <div class="panel-head"><h3>震度変更情報</h3><span>MaxIntChange</span></div>
+  <div class="panel-body">
+    <div class="kv">
+      <div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div>
+      <div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div>
+    </div>
+  </div>
+</section>
+</div>
+
+<div>
+<section class="panel">
+  <div class="panel-head"><h3>受信モニター</h3></div>
+  <div class="panel-body">
+    <div class="kv">
+      <div class="kv-item"><span class="k">WebSocket</span><span class="v" id="wsState">未接続</span></div>
+      <div class="kv-item"><span class="k">メッセージ受信</span><span class="v" id="lastReceive">--</span></div>
+      <div class="kv-item"><span class="k">JSON解析</span><span class="v" id="parseState">待機中</span></div>
+      <div class="kv-item"><span class="k">訓練報</span><span class="v" id="isTraining">--</span></div>
+    </div>
+    <div class="toolbar" style="margin-top:16px"><button class="btn" id="reconnectBtn">再接続</button></div>
+  </div>
+</section>
+
+<section class="panel section">
+  <div class="panel-head"><h3>気象庁原文</h3><span>OriginalText</span></div>
+  <div class="panel-body"><pre id="originalText" style="max-height:240px">原文待機中...</pre></div>
+</section>
+
+<section class="panel section">
+  <div class="panel-head"><h3>受信 JSON</h3><span>Raw payload</span></div>
+  <pre id="rawJson">受信待機中...</pre>
+</section>
+</div>
+</div>
+
+<footer class="footer">
+  <span>DATA SOURCE: Wolfx JMA EEW WebSocket</span>
+  <span>受信データを基に表示。到達予想は走時表に基づく概算です。</span>
+</footer>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
@@ -127,7 +270,19 @@ const RECONNECT_MIN=500,RECONNECT_MAX=10000,ROTATE_MS=4000;
 const EVENT_TTL=10*60000,EVENT_KEEP=60*60000,FINAL_HIDE_MS=3*60000,CANCEL_HIDE_MS=20000;
 const EARTH_RADIUS_KM=6371.0088,MAP_RETURN_DELAY=5000;
 const JAPAN_BOUNDS=[[122.8,23.8],[146.0,45.8]];
-const JAPAN_EDGE_POINTS=[[45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],[41.5575,140.9078],[34.7054,135.49],[31,130],[26.2125,127.6811]];
+const MAX_WAVE_RADIUS_KM=2000;
+
+// [緯度, 経度]
+const JAPAN_EDGE_POINTS=[
+  [45.5228,141.9367],
+  [24.0456,123.7767],
+  [24.4494,122.9333],
+  [41.5575,140.9078],
+  [34.7054,135.49],
+  [31,130],
+  [26.2125,127.6811]
+];
+
 const $=id=>document.getElementById(id);
 
 let socket=null,reconnectTimer=null,reconnectDelay=RECONNECT_MIN,stopped=false,lastMessageAt=0,pingTimer=null,pingSentAt=0,pingPending=false,watchdogTimer=null,pingMissed=0;
@@ -137,8 +292,12 @@ let currentKey=null,rotateTimer=null,shownAt=0;
 const map=new maplibregl.Map({
   container:"earthquakeMap",
   style:"https://tiles.openfreemap.org/styles/dark",
-  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
-  attributionControl:true,trackResize:true
+  center:[135,35.5],
+  zoom:4.2,
+  minZoom:1,
+  maxZoom:18,
+  attributionControl:true,
+  trackResize:true
 });
 map.addControl(new maplibregl.NavigationControl(),"top-right");
 
@@ -150,156 +309,395 @@ let lastPRadius=null,lastSRadius=null,lastAutoFitAt=0,lastAutoFitRadius=null;
 let waveFitTimer=null,pendingWaveFitRadius=null,firstWaveFitDone=false;
 let waveDisplayFinished=false;
 
-function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
-function isUserMapControlActive(){return manualGestureActive||Date.now()<userMapOverrideUntil||mapReturnInProgress;}
+function emptyFeatureCollection(){
+  return {type:"FeatureCollection",features:[]};
+}
+
+function isUserMapControlActive(){
+  return manualGestureActive||Date.now()<userMapOverrideUntil||mapReturnInProgress;
+}
 
 function saveMapViewBeforeManualMove(){
   if(!mapReady)return;
+
   if(mapReturnInProgress){
-    map.stop();mapReturnInProgress=false;
-    if(mapReturnAnimationTimer!==null){clearTimeout(mapReturnAnimationTimer);mapReturnAnimationTimer=null;}
+    map.stop();
+    mapReturnInProgress=false;
+    if(mapReturnAnimationTimer!==null){
+      clearTimeout(mapReturnAnimationTimer);
+      mapReturnAnimationTimer=null;
+    }
   }
+
   if(savedMapView!==null)return;
-  savedMapView={center:map.getCenter().toArray(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch()};
+
+  savedMapView={
+    center:map.getCenter().toArray(),
+    zoom:map.getZoom(),
+    bearing:map.getBearing(),
+    pitch:map.getPitch()
+  };
 }
 
 function scheduleMapReturn(){
   if(!mapReady)return;
   if(savedMapView===null)saveMapViewBeforeManualMove();
+
   manualGestureActive=false;
   userMapOverrideUntil=Date.now()+MAP_RETURN_DELAY;
+
   if(mapReturnTimer!==null)clearTimeout(mapReturnTimer);
-  mapReturnTimer=setTimeout(()=>{mapReturnTimer=null;restoreSavedMapView();},MAP_RETURN_DELAY);
+
+  mapReturnTimer=setTimeout(()=>{
+    mapReturnTimer=null;
+    restoreSavedMapView();
+  },MAP_RETURN_DELAY);
 }
 
 function restoreSavedMapView(){
   if(!mapReady||savedMapView===null){
-    userMapOverrideUntil=0;manualGestureActive=false;return;
+    userMapOverrideUntil=0;
+    manualGestureActive=false;
+    return;
   }
+
   const target=savedMapView;
-  manualGestureActive=false;mapReturnInProgress=true;userMapOverrideUntil=Date.now()+1000;
+  manualGestureActive=false;
+  mapReturnInProgress=true;
+  userMapOverrideUntil=Date.now()+1000;
+
   if(mapReturnAnimationTimer!==null)clearTimeout(mapReturnAnimationTimer);
+
   map.stop();
-  map.easeTo({center:target.center,zoom:target.zoom,bearing:target.bearing,pitch:target.pitch,duration:800,essential:true});
+  map.easeTo({
+    center:target.center,
+    zoom:target.zoom,
+    bearing:target.bearing,
+    pitch:target.pitch,
+    duration:800,
+    essential:true
+  });
+
   mapReturnAnimationTimer=setTimeout(()=>{
-    mapReturnAnimationTimer=null;mapReturnInProgress=false;userMapOverrideUntil=0;
+    mapReturnAnimationTimer=null;
+    mapReturnInProgress=false;
+    userMapOverrideUntil=0;
     if(savedMapView===target)savedMapView=null;
   },900);
 }
 
 function setupMapInteractionListeners(){
   const container=$("earthquakeMap");
+
   container.addEventListener("pointerdown",()=>{
     if(!mapReady)return;
-    saveMapViewBeforeManualMove();manualGestureActive=true;userMapOverrideUntil=Date.now()+MAP_RETURN_DELAY;
+    saveMapViewBeforeManualMove();
+    manualGestureActive=true;
+    userMapOverrideUntil=Date.now()+MAP_RETURN_DELAY;
   },{capture:true,passive:true});
-  const endPointer=()=>{if(!manualGestureActive)return;manualGestureActive=false;scheduleMapReturn();};
+
+  const endPointer=()=>{
+    if(!manualGestureActive)return;
+    manualGestureActive=false;
+    scheduleMapReturn();
+  };
+
   container.addEventListener("pointerup",endPointer,{capture:true,passive:true});
   container.addEventListener("pointercancel",endPointer,{capture:true,passive:true});
-  container.addEventListener("wheel",()=>{saveMapViewBeforeManualMove();scheduleMapReturn();},{capture:true,passive:true});
+
+  container.addEventListener("wheel",()=>{
+    saveMapViewBeforeManualMove();
+    scheduleMapReturn();
+  },{capture:true,passive:true});
+
   container.addEventListener("touchstart",()=>{
     if(!mapReady)return;
-    saveMapViewBeforeManualMove();manualGestureActive=true;userMapOverrideUntil=Date.now()+MAP_RETURN_DELAY;
+    saveMapViewBeforeManualMove();
+    manualGestureActive=true;
+    userMapOverrideUntil=Date.now()+MAP_RETURN_DELAY;
   },{capture:true,passive:true});
-  const endTouch=()=>{if(!manualGestureActive)return;manualGestureActive=false;scheduleMapReturn();};
+
+  const endTouch=()=>{
+    if(!manualGestureActive)return;
+    manualGestureActive=false;
+    scheduleMapReturn();
+  };
+
   container.addEventListener("touchend",endTouch,{capture:true,passive:true});
   container.addEventListener("touchcancel",endTouch,{capture:true,passive:true});
+
   container.addEventListener("keydown",event=>{
     if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","+","-","=","_"].includes(event.key))return;
-    saveMapViewBeforeManualMove();scheduleMapReturn();
+    saveMapViewBeforeManualMove();
+    scheduleMapReturn();
   },true);
-  map.on("dragend",()=>{if(manualGestureActive)manualGestureActive=false;scheduleMapReturn();});
-  map.on("zoomend",()=>{if(savedMapView!==null&&userMapOverrideUntil>Date.now())scheduleMapReturn();});
-  map.on("rotatestart",()=>{if(!isUserMapControlActive())saveMapViewBeforeManualMove();});
-  map.on("pitchstart",()=>{if(!isUserMapControlActive())saveMapViewBeforeManualMove();});
+
+  map.on("dragend",()=>{
+    if(manualGestureActive)manualGestureActive=false;
+    scheduleMapReturn();
+  });
+
+  map.on("zoomend",()=>{
+    if(savedMapView!==null&&userMapOverrideUntil>Date.now())scheduleMapReturn();
+  });
+
+  map.on("rotatestart",()=>{
+    if(!isUserMapControlActive())saveMapViewBeforeManualMove();
+  });
+
+  map.on("pitchstart",()=>{
+    if(!isUserMapControlActive())saveMapViewBeforeManualMove();
+  });
 }
 
 map.on("load",()=>{
   mapReady=true;
+
   map.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
   map.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
-  map.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
-  map.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
-  map.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
-  map.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
+
+  map.addLayer({
+    id:"wave-p-fill",
+    type:"fill",
+    source:"wave-p",
+    paint:{"fill-color":"#3b9bff","fill-opacity":.10}
+  });
+
+  map.addLayer({
+    id:"wave-p-line",
+    type:"line",
+    source:"wave-p",
+    paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}
+  });
+
+  map.addLayer({
+    id:"wave-s-fill",
+    type:"fill",
+    source:"wave-s",
+    paint:{"fill-color":"#ff4058","fill-opacity":.08}
+  });
+
+  map.addLayer({
+    id:"wave-s-line",
+    type:"line",
+    source:"wave-s",
+    paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}
+  });
+
   setupMapInteractionListeners();
   loadTravelTable();
 
   if(currentOrigin){
-    updateEpicenterMarker();updateWaveMap();
+    updateEpicenterMarker();
+    updateWaveMap();
+
     if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
     else if(!initialViewFitted&&!japanViewLocked)fitJapanAndEpicenter(true);
-  }else fitJapanView(true);
+  }else{
+    fitJapanView(true);
+  }
 
   setupMapResizeObserver();
+
   requestAnimationFrame(()=>{
     map.resize();
     if(isUserMapControlActive())return;
+
     if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
     else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
     else if(!initialViewFitted)ensureEpicenterVisible();
   });
 });
 
-map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
+map.on("error",e=>{
+  if(e&&e.error)console.warn("MapLibre:",e.error);
+});
 
 function fitJapanAndEpicenter(immediate=false){
   if(!mapReady||isUserMapControlActive())return;
+
   const bounds=new maplibregl.LngLatBounds(JAPAN_BOUNDS[0],JAPAN_BOUNDS[1]);
-  if(currentOrigin)bounds.extend([currentOrigin.lon,currentOrigin.lat]);
-  map.stop();
-  map.fitBounds(bounds,{padding:{top:35,bottom:35,left:35,right:35},duration:immediate?0:800,maxZoom:5.2,essential:true});
-}
 
-/*
- * 震源地と最寄りの日本周辺地点を一緒に表示する。
- * fitBoundsにより両方が画面に収まる範囲で拡大する。
- */
-function focusEpicenterAndNearbyJapan(immediate=false){
-  if(!mapReady||!currentOrigin||isUserMapControlActive())return;
-
-  const origin=[currentOrigin.lon,currentOrigin.lat];
-  let nearest=null,nearestDistance=Infinity;
-  for(const [lat,lon] of JAPAN_EDGE_POINTS){
-    const distance=haversineKm(currentOrigin.lat,currentOrigin.lon,lat,lon);
-    if(distance<nearestDistance){nearestDistance=distance;nearest=[lon,lat];}
+  if(currentOrigin){
+    bounds.extend([currentOrigin.lon,currentOrigin.lat]);
   }
-  if(!nearest)return;
-
-  const bounds=new maplibregl.LngLatBounds(origin,origin);
-  bounds.extend(nearest);
-
-  const container=map.getContainer(),width=container.clientWidth,height=container.clientHeight;
-  if(width<1||height<1)return;
-  const padding=Math.max(38,Math.min(64,Math.round(Math.min(width,height)*.10)));
 
   map.stop();
   map.fitBounds(bounds,{
-    padding:{top:padding,bottom:padding,left:padding,right:padding},
-    duration:immediate?0:1200,
-    maxZoom:7,
+    padding:{top:35,bottom:35,left:35,right:35},
+    duration:immediate?0:800,
+    maxZoom:5.2,
     essential:true
   });
 }
 
-function ensureEpicenterVisible(){
-  if(!mapReady||!currentOrigin||document.visibilityState==="hidden"||isUserMapControlActive()||japanViewLocked||waveDisplayFinished)return;
-  const container=map.getContainer(),width=container.clientWidth,height=container.clientHeight;
+function centerEpicenterVertically(immediate=false){
+  if(!mapReady||!currentOrigin||isUserMapControlActive())return;
+
+  const container=map.getContainer();
+  const width=container.clientWidth;
+  const height=container.clientHeight;
   if(width<1||height<1)return;
+
+  const origin=[currentOrigin.lon,currentOrigin.lat];
+  const originPixel=map.project(origin);
+  const centerPixel=map.project(map.getCenter());
+
+  if(!Number.isFinite(originPixel.y)||!Number.isFinite(centerPixel.y))return;
+
+  const offsetY=originPixel.y-height/2;
+  if(Math.abs(offsetY)<1)return;
+
+  const nearest=getNearestJapanPoint();
+  if(!nearest)return;
+
+  const nearestPixel=map.project(nearest);
+  const predictedJapanY=nearestPixel.y-offsetY;
+  const margin=Math.max(20,Math.min(45,Math.round(Math.min(width,height)*0.07)));
+
+  if(predictedJapanY<margin||predictedJapanY>height-margin){
+    const oldZoom=map.getZoom();
+    const newZoom=Math.max(map.getMinZoom(),oldZoom-1.0);
+
+    if(newZoom<oldZoom){
+      map.setZoom(newZoom);
+    }
+  }
+
+  const updatedOriginPixel=map.project(origin);
+  const updatedCenterPixel=map.project(map.getCenter());
+  const updatedOffsetY=updatedOriginPixel.y-height/2;
+
+  const targetCenter=map.unproject([
+    updatedCenterPixel.x,
+    updatedCenterPixel.y+updatedOffsetY
+  ]);
+
+  if(immediate){
+    map.jumpTo({center:targetCenter});
+  }else{
+    map.easeTo({
+      center:targetCenter,
+      duration:250,
+      essential:true
+    });
+  }
+}
+
+function getNearestJapanPoint(){
+  if(!currentOrigin)return null;
+
+  let nearest=null;
+  let nearestDistance=Infinity;
+
+  for(const [lat,lon] of JAPAN_EDGE_POINTS){
+    const distance=haversineKm(
+      currentOrigin.lat,
+      currentOrigin.lon,
+      lat,
+      lon
+    );
+
+    if(distance<nearestDistance){
+      nearestDistance=distance;
+      nearest=[lon,lat];
+    }
+  }
+
+  return nearest;
+}
+
+function focusEpicenterAndNearbyJapan(immediate=false){
+  if(!mapReady||!currentOrigin||isUserMapControlActive())return;
+
+  const origin=[currentOrigin.lon,currentOrigin.lat];
+  const nearest=getNearestJapanPoint();
+  if(!nearest)return;
+
+  const container=map.getContainer();
+  const width=container.clientWidth;
+  const height=container.clientHeight;
+  if(width<1||height<1)return;
+
+  const padding=Math.max(
+    42,
+    Math.min(70,Math.round(Math.min(width,height)*0.11))
+  );
+
+  const bounds=new maplibregl.LngLatBounds(origin,origin);
+  bounds.extend(nearest);
+
+  map.stop();
+  map.fitBounds(bounds,{
+    padding:{
+      top:padding,
+      bottom:padding,
+      left:padding,
+      right:padding
+    },
+    duration:immediate?0:700,
+    maxZoom:8.5,
+    minZoom:map.getMinZoom(),
+    essential:true
+  });
+
+  const align=()=>{
+    if(!mapReady||!currentOrigin||isUserMapControlActive())return;
+    centerEpicenterVertically(immediate);
+  };
+
+  if(immediate){
+    requestAnimationFrame(align);
+  }else{
+    map.once("moveend",align);
+  }
+}
+
+function ensureEpicenterVisible(){
+  if(
+    !mapReady||
+    !currentOrigin||
+    document.visibilityState==="hidden"||
+    isUserMapControlActive()||
+    japanViewLocked||
+    waveDisplayFinished
+  )return;
+
+  const container=$("earthquakeMap");
+  const width=container.clientWidth;
+  const height=container.clientHeight;
+  if(width<1||height<1)return;
+
   const point=map.project([currentOrigin.lon,currentOrigin.lat]);
   if(!Number.isFinite(point.x)||!Number.isFinite(point.y))return;
+
   const margin=Math.min(48,Math.max(24,Math.min(width,height)*.09));
-  if(point.x<margin||point.x>width-margin||point.y<margin||point.y>height-margin){
-    map.easeTo({center:[currentOrigin.lon,currentOrigin.lat],zoom:Math.min(map.getZoom(),5.2),duration:350,essential:true});
+
+  if(
+    point.x<margin||
+    point.x>width-margin||
+    point.y<margin||
+    point.y>height-margin
+  ){
+    map.easeTo({
+      center:[currentOrigin.lon,currentOrigin.lat],
+      zoom:Math.min(map.getZoom(),5.2),
+      duration:350,
+      essential:true
+    });
   }
 }
 
 function scheduleEpicenterAdjustment(){
   if(markerAdjustFrame!==null)cancelAnimationFrame(markerAdjustFrame);
+
   markerAdjustFrame=requestAnimationFrame(()=>{
     markerAdjustFrame=null;
+
     if(!mapReady||isUserMapControlActive())return;
+
     map.resize();
+
     if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
     else if(!japanViewLocked&&!initialViewFitted)ensureEpicenterVisible();
   });
@@ -307,37 +705,60 @@ function scheduleEpicenterAdjustment(){
 
 function setupMapResizeObserver(){
   if(mapResizeObserver||typeof ResizeObserver==="undefined")return;
+
   const container=$("earthquakeMap");
+
   mapResizeObserver=new ResizeObserver(()=>{
     if(!mapReady)return;
+
     map.resize();
     if(isUserMapControlActive())return;
+
     requestAnimationFrame(()=>{
       updateEpicenterMarker();
+
       if(isUserMapControlActive())return;
+
       if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
       else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
       else if(!initialViewFitted)ensureEpicenterVisible();
-      else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished)performWaveCircleFit(lastAutoFitRadius,true);
+      else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished){
+        performWaveCircleFit(lastAutoFitRadius,true);
+      }
     });
   });
+
   mapResizeObserver.observe(container);
 }
 
 function text(id,value){
-  const el=$(id);if(!el)return;
+  const el=$(id);
+  if(!el)return;
   el.textContent=value===null||value===undefined||value===""?"--":String(value);
 }
-function boolText(value){return value===true?"はい":value===false?"いいえ":"--";}
-function setConnection(label,state){text("connectionText",label);$("dot").className="dot "+state;text("wsState",label);}
+
+function boolText(value){
+  return value===true?"はい":value===false?"いいえ":"--";
+}
+
+function setConnection(label,state){
+  text("connectionText",label);
+  $("dot").className="dot "+state;
+  text("wsState",label);
+}
+
 function formatNumber(value,digits=2){
   if(value===null||value===undefined||value==="")return "--";
-  const n=Number(value);return Number.isFinite(n)?n.toFixed(digits):"--";
+  const n=Number(value);
+  return Number.isFinite(n)?n.toFixed(digits):"--";
 }
+
 function formatMagnitude(value){
   if(value===null||value===undefined||value==="")return "--";
-  const n=Number(value);return Number.isFinite(n)?n.toFixed(1):String(value);
+  const n=Number(value);
+  return Number.isFinite(n)?n.toFixed(1):String(value);
 }
+
 function intensityClass(value){
   const s=String(value||"");
   if(/5強|6弱|6強|7/.test(s))return "high";
@@ -345,82 +766,171 @@ function intensityClass(value){
   if(/1|2|3/.test(s))return "low";
   return "";
 }
-function setTag(id,value,visible=true){text(id,value);$(id).classList.toggle("hidden",!visible);}
-function setRaw(raw){$("rawJson").textContent=raw;}
-function isValidCoordinate(lat,lon){return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;}
+
+function setTag(id,value,visible=true){
+  text(id,value);
+  $(id).classList.toggle("hidden",!visible);
+}
+
+function setRaw(raw){
+  $("rawJson").textContent=raw;
+}
+
+function isValidCoordinate(lat,lon){
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;
+}
+
 function parseOriginTime(value){
   if(!value||typeof value!=="string")return null;
   const ms=Date.parse(value.trim().replace(/\//g,"-").replace(" ","T"));
   return Number.isFinite(ms)?ms:null;
 }
+
 function getEventOrigin(data){
-  if(data.Latitude===null||data.Latitude===undefined||data.Latitude===""||data.Longitude===null||data.Longitude===undefined||data.Longitude==="")return null;
-  const lat=Number(data.Latitude),lon=Number(data.Longitude);
+  if(
+    data.Latitude===null||data.Latitude===undefined||data.Latitude===""||
+    data.Longitude===null||data.Longitude===undefined||data.Longitude===""
+  )return null;
+
+  const lat=Number(data.Latitude);
+  const lon=Number(data.Longitude);
+
   if(!isValidCoordinate(lat,lon))return null;
+
   const d=Number(data.Depth);
-  return {lat,lon,depth:Number.isFinite(d)?Math.max(0,d):0};
+
+  return {
+    lat,
+    lon,
+    depth:Number.isFinite(d)?Math.max(0,d):0
+  };
 }
+
 function haversineKm(lat1,lon1,lat2,lon2){
-  const rad=v=>v*Math.PI/180,dLat=rad(lat2-lat1),dLon=rad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2+Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+  const rad=v=>v*Math.PI/180;
+  const dLat=rad(lat2-lat1);
+  const dLon=rad(lon2-lon1);
+  const a=
+    Math.sin(dLat/2)**2+
+    Math.cos(rad(lat1))*Math.cos(rad(lat2))*Math.sin(dLon/2)**2;
+
   return 2*EARTH_RADIUS_KM*Math.asin(Math.sqrt(Math.min(1,a)));
 }
+
 function distanceToCoverJapan(origin){
-  return Math.max(...JAPAN_EDGE_POINTS.map(([lat,lon])=>haversineKm(origin.lat,origin.lon,lat,lon)));
+  return Math.max(
+    ...JAPAN_EDGE_POINTS.map(([lat,lon])=>
+      haversineKm(origin.lat,origin.lon,lat,lon)
+    )
+  );
 }
+
 function fitJapanView(immediate=false){
   if(!mapReady||isUserMapControlActive())return;
-  if(waveDisplayFinished&&currentOrigin){focusEpicenterAndNearbyJapan(immediate);return;}
-  if(japanViewLocked&&currentOrigin){focusEpicenterAndNearbyJapan(immediate);return;}
+
+  if((waveDisplayFinished||japanViewLocked)&&currentOrigin){
+    focusEpicenterAndNearbyJapan(immediate);
+    return;
+  }
+
   map.stop();
-  map.fitBounds(JAPAN_BOUNDS,{padding:{top:35,bottom:35,left:35,right:35},duration:immediate?0:1000,maxZoom:5.2,essential:true});
+
+  map.fitBounds(JAPAN_BOUNDS,{
+    padding:{top:35,bottom:35,left:35,right:35},
+    duration:immediate?0:1000,
+    maxZoom:5.2,
+    essential:true
+  });
 }
 
 function fitWaveCircle(radiusKm,immediate=false){
   if(!mapReady||!currentOrigin||!Number.isFinite(radiusKm)||radiusKm<=0)return;
   if(isUserMapControlActive()||sWavePassedJapan||waveDisplayFinished)return;
+
   pendingWaveFitRadius=Math.max(pendingWaveFitRadius||0,radiusKm);
+
   if(!firstWaveFitDone&&!immediate){
     if(waveFitTimer===null){
       waveFitTimer=setTimeout(()=>{
         waveFitTimer=null;
-        const radius=pendingWaveFitRadius;pendingWaveFitRadius=null;
-        if(radius&&mapReady&&!isUserMapControlActive()&&!sWavePassedJapan&&!waveDisplayFinished)performWaveCircleFit(radius,false);
+        const radius=pendingWaveFitRadius;
+        pendingWaveFitRadius=null;
+
+        if(radius&&mapReady&&!isUserMapControlActive()&&!sWavePassedJapan&&!waveDisplayFinished){
+          performWaveCircleFit(radius,false);
+        }
       },1100);
     }
     return;
   }
+
   const now=Date.now();
+
   if(!immediate&&lastAutoFitRadius!==null){
-    const change=Math.abs(radiusKm-lastAutoFitRadius),threshold=Math.max(12,lastAutoFitRadius*.04);
+    const change=Math.abs(radiusKm-lastAutoFitRadius);
+    const threshold=Math.max(12,lastAutoFitRadius*.04);
+
     if(change<threshold||now-lastAutoFitAt<1200)return;
   }
+
   performWaveCircleFit(radiusKm,immediate);
 }
 
 function performWaveCircleFit(radiusKm,immediate=false){
   if(!mapReady||!currentOrigin||!Number.isFinite(radiusKm)||radiusKm<=0)return;
   if(isUserMapControlActive()||sWavePassedJapan||waveDisplayFinished)return;
-  const bounds=new maplibregl.LngLatBounds(),fitRadiusKm=Math.max(radiusKm,20);
+
+  const bounds=new maplibregl.LngLatBounds();
+  const fitRadiusKm=Math.max(radiusKm,20);
+
   for(let i=0;i<360;i++){
-    const point=destinationPoint(currentOrigin.lat,currentOrigin.lon,fitRadiusKm,i);
+    const point=destinationPoint(
+      currentOrigin.lat,
+      currentOrigin.lon,
+      fitRadiusKm,
+      i
+    );
     bounds.extend(point);
   }
+
   bounds.extend([currentOrigin.lon,currentOrigin.lat]);
-  const container=map.getContainer(),width=container.clientWidth,height=container.clientHeight;
+
+  const container=map.getContainer();
+  const width=container.clientWidth;
+  const height=container.clientHeight;
   if(width<1||height<1)return;
-  const pad=Math.max(30,Math.min(64,Math.round(Math.min(width,height)*.11)));
-  lastAutoFitRadius=radiusKm;lastAutoFitAt=Date.now();firstWaveFitDone=true;
+
+  const pad=Math.max(30,Math.min(64,Math.round(Math.min(width,height)*.11));
+
+  lastAutoFitRadius=radiusKm;
+  lastAutoFitAt=Date.now();
+  firstWaveFitDone=true;
+
   map.stop();
-  map.fitBounds(bounds,{padding:{top:pad,bottom:pad,left:pad,right:pad},duration:immediate?0:650,maxZoom:9.5,essential:true});
+
+  map.fitBounds(bounds,{
+    padding:{top:pad,bottom:pad,left:pad,right:pad},
+    duration:immediate?0:650,
+    maxZoom:9.5,
+    essential:true
+  });
 }
 
 function fitJapanAndWaves(pRadius,sRadius){
   if(!mapReady||isUserMapControlActive())return;
-  if(waveDisplayFinished&&currentOrigin){focusEpicenterAndNearbyJapan(false);return;}
-  if(japanViewLocked&&currentOrigin){focusEpicenterAndNearbyJapan(false);return;}
+
+  if((waveDisplayFinished||japanViewLocked)&&currentOrigin){
+    focusEpicenterAndNearbyJapan(false);
+    return;
+  }
+
   const radii=[pRadius,sRadius].filter(v=>Number.isFinite(v)&&v>0);
-  if(radii.length){fitWaveCircle(Math.max(...radii),false);return;}
+
+  if(radii.length){
+    fitWaveCircle(Math.max(...radii),false);
+    return;
+  }
+
   fitJapanView(false);
 }
 
@@ -428,35 +938,56 @@ function moveToEpicenter(origin,immediate=false,newEvent=false){
   if(!mapReady||!origin)return;
   if(newEvent)fitJapanView(immediate);
 }
+
 function serialNumber(value){
   if(value===null||value===undefined||value==="")return null;
   if(typeof value==="number"&&Number.isFinite(value))return value;
-  const m=String(value).match(/\d+/);return m?Number(m[0]):null;
+  const m=String(value).match(/\d+/);
+  return m?Number(m[0]):null;
 }
+
 function isOlderSerial(incoming,existing){
   if(!existing)return false;
-  const a=serialNumber(incoming.Serial),b=serialNumber(existing.data?.Serial);
+
+  const a=serialNumber(incoming.Serial);
+  const b=serialNumber(existing.data?.Serial);
+
   if(a!==null&&b!==null)return a<b;
-  const at=Date.parse(incoming.AnnouncedTime||""),bt=Date.parse(existing.data?.AnnouncedTime||"");
+
+  const at=Date.parse(incoming.AnnouncedTime||"");
+  const bt=Date.parse(existing.data?.AnnouncedTime||"");
+
   return Number.isFinite(at)&&Number.isFinite(bt)&&at<bt;
 }
 
 async function loadTravelTable(){
   const status=$("tableStatus");
+
   try{
     const response=await fetch(TRAVEL_TABLE_URL,{cache:"no-store"});
     if(!response.ok)throw new Error("HTTP "+response.status);
-    const content=await response.text(),parsed=[];
+
+    const content=await response.text();
+    const parsed=[];
+
     for(const line of content.split(/\r?\n/)){
-      const s=line.trim();if(!s)continue;
+      const s=line.trim();
+      if(!s)continue;
+
       const m=s.match(/^P\s*([-+]?\d+(?:\.\d+)?)\s+S\s*([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s*$/);
       if(!m)continue;
+
       const [pTime,sTime,depth,distance]=m.slice(1).map(Number);
+
       if(![pTime,sTime,depth,distance].every(Number.isFinite)||pTime<0||sTime<0||depth<0||distance<0)continue;
+
       parsed.push({pTime,sTime,depth,distance});
     }
+
     if(!parsed.length)throw new Error("有効な走時データがありません");
-    travelTable=parsed;tableLoaded=true;
+
+    travelTable=parsed;
+    tableLoaded=true;
     status.textContent="走時表読み込み済み · "+parsed.length+" 行";
     status.className="source-status ok";
     updateWaveMap();
@@ -470,64 +1001,105 @@ async function loadTravelTable(){
 
 function getRowsForDepth(depthKm){
   if(!travelTable.length)return [];
-  let closest=travelTable[0].depth,diff=Math.abs(closest-depthKm);
-  for(const row of travelTable){const d=Math.abs(row.depth-depthKm);if(d<diff){diff=d;closest=row.depth;}}
+
+  let closest=travelTable[0].depth;
+  let diff=Math.abs(closest-depthKm);
+
+  for(const row of travelTable){
+    const d=Math.abs(row.depth-depthKm);
+    if(d<diff){
+      diff=d;
+      closest=row.depth;
+    }
+  }
+
   return travelTable.filter(row=>row.depth===closest).sort((a,b)=>a.distance-b.distance);
 }
+
 function interpolateDistance(rows,elapsedSeconds,wave){
   if(!rows.length||!Number.isFinite(elapsedSeconds)||elapsedSeconds<0)return null;
+
   const key=wave==="P"?"pTime":"sTime";
   const points=rows.filter(r=>Number.isFinite(r[key])&&Number.isFinite(r.distance)).sort((a,b)=>a[key]-b[key]);
+
   if(!points.length||elapsedSeconds<points[0][key])return null;
   if(points.length===1)return points[0].distance;
+
   for(let i=1;i<points.length;i++){
     const a=points[i-1],b=points[i];
+
     if(elapsedSeconds<=b[key]){
       const dt=b[key]-a[key];
       if(dt<=0)return b.distance;
+
       return a.distance+(b.distance-a.distance)*(elapsedSeconds-a[key])/dt;
     }
   }
+
   return points[points.length-1].distance;
 }
+
 function destinationPoint(lat,lon,distanceKm,bearingDegrees){
-  const angular=distanceKm/EARTH_RADIUS_KM,bearing=bearingDegrees*Math.PI/180;
-  const lat1=lat*Math.PI/180,lon1=lon*Math.PI/180;
-  const lat2=Math.asin(Math.sin(lat1)*Math.cos(angular)+Math.cos(lat1)*Math.sin(angular)*Math.cos(bearing));
-  const lon2=lon1+Math.atan2(Math.sin(bearing)*Math.sin(angular)*Math.cos(lat1),Math.cos(angular)-Math.sin(lat1)*Math.sin(lat2));
+  const angular=distanceKm/EARTH_RADIUS_KM;
+  const bearing=bearingDegrees*Math.PI/180;
+  const lat1=lat*Math.PI/180;
+  const lon1=lon*Math.PI/180;
+
+  const lat2=Math.asin(
+    Math.sin(lat1)*Math.cos(angular)+
+    Math.cos(lat1)*Math.sin(angular)*Math.cos(bearing)
+  );
+
+  const lon2=lon1+Math.atan2(
+    Math.sin(bearing)*Math.sin(angular)*Math.cos(lat1),
+    Math.cos(angular)-Math.sin(lat1)*Math.sin(lat2)
+  );
+
   return [((lon2*180/Math.PI+540)%360)-180,lat2*180/Math.PI];
 }
+
 function createCircleFeature(lat,lon,radiusKm,count=180){
   const coordinates=[];
-  for(let i=0;i<=count;i++)coordinates.push(destinationPoint(lat,lon,radiusKm,i/count*360));
-  return {type:"Feature",properties:{radiusKm},geometry:{type:"Polygon",coordinates:[coordinates]}};
+
+  for(let i=0;i<=count;i++){
+    coordinates.push(destinationPoint(lat,lon,radiusKm,i/count*360));
+  }
+
+  return {
+    type:"Feature",
+    properties:{radiusKm},
+    geometry:{type:"Polygon",coordinates:[coordinates]}
+  };
 }
+
 function setGeoJSON(sourceId,data){
   if(!mapReady)return;
   const source=map.getSource(sourceId);
   if(source)source.setData(data);
 }
+
 function clearWaveLayers(){
   setGeoJSON("wave-p",emptyFeatureCollection());
   setGeoJSON("wave-s",emptyFeatureCollection());
 }
+
 function finalWaveDisplayExpired(){
   return finalAnnouncedTime!==null&&Date.now()-finalAnnouncedTime>=FINAL_HIDE_MS;
 }
 
-/*
- * 波の表示終了処理。
- * 終了フラグを先に設定してからレイヤーを消し、
- * 以後の1秒更新で波が再描画されないようにする。
- */
 function finishWaveDisplay(reason="P波・S波 日本通過済み ・ 波表示終了"){
   if(waveDisplayFinished)return;
+
   waveDisplayFinished=true;
   pWavePassedJapan=true;
   sWavePassedJapan=true;
+  japanViewLocked=true;
   pendingWaveFitRadius=null;
 
-  if(waveFitTimer!==null){clearTimeout(waveFitTimer);waveFitTimer=null;}
+  if(waveFitTimer!==null){
+    clearTimeout(waveFitTimer);
+    waveFitTimer=null;
+  }
 
   clearWaveLayers();
   text("mapStatus",reason);
@@ -550,18 +1122,34 @@ function updateWaveMap(){
     return;
   }
 
-  if(!tableLoaded){text("mapStatus","走時表の読み込み待ち");return;}
+  if(!tableLoaded){
+    text("mapStatus","走時表の読み込み待ち");
+    return;
+  }
 
   const elapsed=Math.max(0,(Date.now()-currentOriginTime)/1000);
   const rows=getRowsForDepth(currentOrigin.depth);
+
   if(!rows.length){
     text("mapStatus","該当する深さの走時データがありません");
-    clearWaveLayers();return;
+    clearWaveLayers();
+    return;
   }
 
   const pRadius=interpolateDistance(rows,elapsed,"P");
   const sRadius=interpolateDistance(rows,elapsed,"S");
-  lastPRadius=pRadius;lastSRadius=sRadius;
+
+  lastPRadius=pRadius;
+  lastSRadius=sRadius;
+
+  // ★変更点：P波またはS波のどちらかが2000 kmを超えたら両方を終了
+  if(
+    (pRadius!==null&&pRadius>MAX_WAVE_RADIUS_KM)||
+    (sRadius!==null&&sRadius>MAX_WAVE_RADIUS_KM)
+  ){
+    finishWaveDisplay("P波・S波の予想円が2000 km超過・波表示終了");
+    return;
+  }
 
   const japanDistance=distanceToCoverJapan(currentOrigin);
 
@@ -569,16 +1157,18 @@ function updateWaveMap(){
     pWavePassedJapan=true;
   }
 
-  // S波が代表地点をすべて含む距離まで広がったら、両方の波を消してズーム。
   if(!sWavePassedJapan&&sRadius!==null&&sRadius>=japanDistance){
     finishWaveDisplay();
     return;
   }
 
-  const pFeatures=[],sFeatures=[];
+  const pFeatures=[];
+  const sFeatures=[];
+
   if(!pWavePassedJapan&&pRadius!==null&&pRadius>0){
     pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
   }
+
   if(sRadius!==null&&sRadius>0){
     sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
   }
@@ -591,18 +1181,33 @@ function updateWaveMap(){
     fitJapanAndWaves(pWavePassedJapan?null:pRadius,sRadius);
   }else if(!sWavePassedJapan&&!isUserMapControlActive()){
     const visibleRadii=[pWavePassedJapan?null:pRadius,sRadius].filter(v=>Number.isFinite(v)&&v>0);
-    if(visibleRadii.length)fitWaveCircle(Math.max(...visibleRadii));
+
+    if(visibleRadii.length){
+      fitWaveCircle(Math.max(...visibleRadii));
+    }
   }
 
-  const pStatus=pWavePassedJapan?"P波 日本通過済み":pRadius!==null?"P波 約 "+Math.round(pRadius)+" km":"P波 到達前";
-  const sStatus=sRadius!==null?"S波 約 "+Math.round(sRadius)+" km":"S波 到達前";
+  const pStatus=pWavePassedJapan
+    ?"P波 日本通過済み"
+    :pRadius!==null
+      ?"P波 約 "+Math.round(pRadius)+" km"
+      :"P波 到達前";
+
+  const sStatus=sRadius!==null
+    ?"S波 約 "+Math.round(sRadius)+" km"
+    :"S波 到達前";
+
   text("mapStatus",pStatus+" ・ "+sStatus);
   scheduleEpicenterAdjustment();
 }
 
 function setMapEvent(data,eventKey){
   const origin=getEventOrigin(data);
-  if(!origin){text("mapStatus","震源の緯度・経度を取得できません");return;}
+
+  if(!origin){
+    text("mapStatus","震源の緯度・経度を取得できません");
+    return;
+  }
 
   const mapEventId=String(data.EventID||eventKey);
   const isNewEvent=lastMapEventKey!==mapEventId;
@@ -625,9 +1230,20 @@ function setMapEvent(data,eventKey){
     firstWaveFitDone=false;
     pendingWaveFitRadius=null;
 
-    if(waveFitTimer!==null){clearTimeout(waveFitTimer);waveFitTimer=null;}
-    if(mapReturnTimer!==null){clearTimeout(mapReturnTimer);mapReturnTimer=null;}
-    if(mapReturnAnimationTimer!==null){clearTimeout(mapReturnAnimationTimer);mapReturnAnimationTimer=null;}
+    if(waveFitTimer!==null){
+      clearTimeout(waveFitTimer);
+      waveFitTimer=null;
+    }
+
+    if(mapReturnTimer!==null){
+      clearTimeout(mapReturnTimer);
+      mapReturnTimer=null;
+    }
+
+    if(mapReturnAnimationTimer!==null){
+      clearTimeout(mapReturnAnimationTimer);
+      mapReturnAnimationTimer=null;
+    }
 
     savedMapView=null;
     manualGestureActive=false;
@@ -645,96 +1261,173 @@ function setMapEvent(data,eventKey){
   }
 
   currentOrigin=origin;
+
   if(isNewEvent)moveToEpicenter(origin,true,true);
 
   if(currentOriginTime===null){
     text("mapStatus","地震発生時刻が取得できません");
-    clearWaveLayers();updateEpicenterMarker();scheduleEpicenterAdjustment();return;
+    clearWaveLayers();
+    updateEpicenterMarker();
+    scheduleEpicenterAdjustment();
+    return;
   }
+
   updateWaveMap();
   updateEpicenterMarker();
 }
 
 function removeEpicenterMarker(){
-  if(epicenterMarker){epicenterMarker.remove();epicenterMarker=null;}
-  if(epicenterPopup){epicenterPopup.remove();epicenterPopup=null;}
+  if(epicenterMarker){
+    epicenterMarker.remove();
+    epicenterMarker=null;
+  }
+
+  if(epicenterPopup){
+    epicenterPopup.remove();
+    epicenterPopup=null;
+  }
 }
+
 function updateEpicenterMarker(){
   if(!mapReady||!currentOrigin)return;
+
   const coordinates=[currentOrigin.lon,currentOrigin.lat];
-  const popupHTML="<strong>震源地</strong><br>緯度: "+currentOrigin.lat.toFixed(3)+"°<br>経度: "+currentOrigin.lon.toFixed(3)+"°<br>深さ: "+currentOrigin.depth+" km";
+
+  const popupHTML=
+    "<strong>震源地</strong><br>"+
+    "緯度: "+currentOrigin.lat.toFixed(3)+"°<br>"+
+    "経度: "+currentOrigin.lon.toFixed(3)+"°<br>"+
+    "深さ: "+currentOrigin.depth+" km";
 
   if(epicenterMarker){
     epicenterMarker.setLngLat(coordinates);
-    if(epicenterPopup)epicenterPopup.setHTML(popupHTML);
-    else{epicenterPopup=new maplibregl.Popup({offset:18}).setHTML(popupHTML);epicenterMarker.setPopup(epicenterPopup);}
-    scheduleEpicenterAdjustment();return;
+
+    if(epicenterPopup){
+      epicenterPopup.setHTML(popupHTML);
+    }else{
+      epicenterPopup=new maplibregl.Popup({offset:18}).setHTML(popupHTML);
+      epicenterMarker.setPopup(epicenterPopup);
+    }
+
+    scheduleEpicenterAdjustment();
+    return;
   }
 
   const element=document.createElement("div");
-  element.className="epicenter-icon";element.textContent="×";
+  element.className="epicenter-icon";
+  element.textContent="×";
   element.setAttribute("aria-label","震源地");
   element.setAttribute("role","button");
   element.setAttribute("tabindex","0");
   element.title="震源地（クリックで詳細）";
 
   epicenterPopup=new maplibregl.Popup({offset:18}).setHTML(popupHTML);
-  epicenterMarker=new maplibregl.Marker({element,anchor:"center"}).setLngLat(coordinates).setPopup(epicenterPopup).addTo(map);
+
+  epicenterMarker=new maplibregl.Marker({
+    element,
+    anchor:"center"
+  }).setLngLat(coordinates).setPopup(epicenterPopup).addTo(map);
+
   scheduleEpicenterAdjustment();
 }
 
 function stopPing(){
   if(pingTimer!==null)clearInterval(pingTimer);
-  pingTimer=null;pingPending=false;
+  pingTimer=null;
+  pingPending=false;
 }
+
 function sendPing(){
   if(!socket||socket.readyState!==WebSocket.OPEN)return;
+
   if(pingPending){
     if(performance.now()-pingSentAt<PING_TIMEOUT)return;
-    pingPending=false;pingMissed++;
+    pingPending=false;
+    pingMissed++;
     if(pingMissed>=2)text("latency","応答なし");
   }
-  pingSentAt=performance.now();pingPending=true;
-  try{socket.send("ping");}catch{pingPending=false;text("latency","計測失敗");}
+
+  pingSentAt=performance.now();
+  pingPending=true;
+
+  try{
+    socket.send("ping");
+  }catch{
+    pingPending=false;
+    text("latency","計測失敗");
+  }
 }
+
 function startPing(){
-  stopPing();pingMissed=0;text("latency","計測中");sendPing();
+  stopPing();
+  pingMissed=0;
+  text("latency","計測中");
+  sendPing();
   pingTimer=setInterval(sendPing,PING_INTERVAL);
 }
+
 function handlePong(data){
-  const pong=data==="pong"||(data&&typeof data==="object"&&String(data.type||"").toLowerCase()==="pong");
+  const pong=data==="pong"||
+    (data&&typeof data==="object"&&String(data.type||"").toLowerCase()==="pong");
+
   if(!pong||!pingPending)return false;
+
   text("latency",Math.round(performance.now()-pingSentAt)+" ms");
-  pingMissed=0;pingPending=false;return true;
+  pingMissed=0;
+  pingPending=false;
+  return true;
 }
 
 function render(data,raw,eventKey){
-  const issue=data.Issue||{},accuracy=data.Accuracy||{},change=data.MaxIntChange||{};
+  const issue=data.Issue||{};
+  const accuracy=data.Accuracy||{};
+  const change=data.MaxIntChange||{};
   const areas=Array.isArray(data.WarnArea)?data.WarnArea:[];
-  text("headline",data.Title||"緊急地震速報");
-  text("description",data.Hypocenter?"震源: "+data.Hypocenter:"震源情報は未設定、またはまだ発表されていません。");
 
-  const canceled=data.isCancel===true,warned=data.isWarn===true,training=data.isTraining===true,finalReport=data.isFinal===true;
+  text("headline",data.Title||"緊急地震速報");
+  text(
+    "description",
+    data.Hypocenter
+      ?"震源: "+data.Hypocenter
+      :"震源情報は未設定、またはまだ発表されていません。"
+  );
+
+  const canceled=data.isCancel===true;
+  const warned=data.isWarn===true;
+  const training=data.isTraining===true;
+  const finalReport=data.isFinal===true;
+
   setTag("typeTag",canceled?"CANCEL REPORT":warned?"WARNING":"EEW MONITOR");
   setTag("statusTag",canceled?"取消報":warned?"警報発表":"速報情報");
   $("statusTag").className="tag "+(canceled?"":warned?"red":"");
   setTag("trainingTag","訓練報",training);
   setTag("finalTag","最終報",finalReport);
+
   text("maxIntensity",data.MaxIntensity||"--");
   text("intensitySub",data.MaxIntensity?"発表された最大震度":"震度情報なし");
 
   $("magnitude").replaceChildren();
+
   const magValue=document.createElement("span");
   magValue.textContent=formatMagnitude(data.Magnitude??data.Magunitude);
+
   const magUnit=document.createElement("span");
-  magUnit.className="unit";magUnit.textContent="M";
+  magUnit.className="unit";
+  magUnit.textContent="M";
+
   $("magnitude").append(magValue,magUnit);
 
   $("depth").replaceChildren();
+
   const depthValue=document.createElement("span");
-  depthValue.textContent=data.Depth===null||data.Depth===undefined||data.Depth===""?"--":String(data.Depth);
+  depthValue.textContent=data.Depth===null||data.Depth===undefined||data.Depth===""
+    ?"--"
+    :String(data.Depth);
+
   const depthUnit=document.createElement("span");
-  depthUnit.className="unit";depthUnit.textContent="km";
+  depthUnit.className="unit";
+  depthUnit.textContent="km";
+
   $("depth").append(depthValue,depthUnit);
 
   text("serial",data.Serial);
@@ -761,23 +1454,46 @@ function render(data,raw,eventKey){
 
   $("areas").replaceChildren();
   text("areaCount",areas.length+" 地域");
+
   if(!areas.length){
     const empty=document.createElement("div");
     empty.className="empty";
-    empty.textContent=canceled?"取消報です。警報対象地域はありません。":"警報対象地域のデータはありません。";
+    empty.textContent=canceled
+      ?"取消報です。警報対象地域はありません。"
+      :"警報対象地域のデータはありません。";
+
     $("areas").appendChild(empty);
   }else{
     const fragment=document.createDocumentFragment();
+
     for(const area of areas){
-      const row=document.createElement("div");row.className="area";
+      const row=document.createElement("div");
+      row.className="area";
+
       const left=document.createElement("div");
-      const name=document.createElement("div");name.className="area-name";name.textContent=area.Chiiki||"地域名未設定";
-      const meta=document.createElement("div");meta.className="area-meta";
-      meta.textContent=[area.Type||"",area.Time||"",area.Arrive===true?"到達":area.Arrive===false?"未到達":""].filter(Boolean).join(" ・ ")||"詳細情報なし";
+
+      const name=document.createElement("div");
+      name.className="area-name";
+      name.textContent=area.Chiiki||"地域名未設定";
+
+      const meta=document.createElement("div");
+      meta.className="area-meta";
+      meta.textContent=[
+        area.Type||"",
+        area.Time||"",
+        area.Arrive===true?"到達":area.Arrive===false?"未到達":""
+      ].filter(Boolean).join(" ・ ")||"詳細情報なし";
+
       left.append(name,meta);
-      const badge=document.createElement("div");badge.className="intensity "+intensityClass(area.Shindo1);badge.textContent=area.Shindo1||"--";
-      row.append(left,badge);fragment.appendChild(row);
+
+      const badge=document.createElement("div");
+      badge.className="intensity "+intensityClass(area.Shindo1);
+      badge.textContent=area.Shindo1||"--";
+
+      row.append(left,badge);
+      fragment.appendChild(row);
     }
+
     $("areas").appendChild(fragment);
   }
 
@@ -785,64 +1501,132 @@ function render(data,raw,eventKey){
   text("updateTime","更新 "+new Date().toLocaleTimeString("ja-JP"));
   text("lastReceive",new Date().toLocaleTimeString("ja-JP"));
   text("parseState","成功");
+
   setRaw(raw);
   setMapEvent(data,eventKey);
 }
 
-function isDone(data){return data.isFinal===true||data.isCancel===true;}
-function hideDelay(e){return e.data?.isCancel===true?CANCEL_HIDE_MS:FINAL_HIDE_MS;}
-function isExpired(e,now=Date.now()){return !!e.done&&Number.isFinite(e.receivedAt)&&now-e.receivedAt>=hideDelay(e);}
+function isDone(data){
+  return data.isFinal===true||data.isCancel===true;
+}
+
+function hideDelay(e){
+  return e.data?.isCancel===true?CANCEL_HIDE_MS:FINAL_HIDE_MS;
+}
+
+function isExpired(e,now=Date.now()){
+  return !!e.done&&Number.isFinite(e.receivedAt)&&now-e.receivedAt>=hideDelay(e);
+}
+
 function activeList(){
   const now=Date.now();
-  return [...events.values()].filter(e=>e.done?!isExpired(e,now):performance.now()-e.updatedAt<EVENT_TTL).sort((a,b)=>a.firstAt-b.firstAt);
+
+  return [...events.values()]
+    .filter(e=>e.done?!isExpired(e,now):performance.now()-e.updatedAt<EVENT_TTL)
+    .sort((a,b)=>a.firstAt-b.firstAt);
 }
+
 function pruneEvents(){
   const now=Date.now();
+
   for(const [key,e] of events){
-    if(e.done&&isExpired(e,now)){events.delete(key);continue;}
-    if(!e.done&&key!==currentKey&&performance.now()-e.updatedAt>EVENT_KEEP)events.delete(key);
+    if(e.done&&isExpired(e,now)){
+      events.delete(key);
+      continue;
+    }
+
+    if(!e.done&&key!==currentKey&&performance.now()-e.updatedAt>EVENT_KEEP){
+      events.delete(key);
+    }
   }
 }
+
 function tabLabel(e){
-  const d=e.data,mag=d.Magnitude??d.Magunitude;
-  return [d.Hypocenter||"震源不明",mag!==undefined&&mag!==null&&mag!==""?"M"+formatMagnitude(mag):"",d.MaxIntensity?"震度"+d.MaxIntensity:"",d.isCancel===true?"(取消)":d.isFinal===true?"(最終)":""
+  const d=e.data;
+  const mag=d.Magnitude??d.Magunitude;
+
+  return [
+    d.Hypocenter||"震源不明",
+    mag!==undefined&&mag!==null&&mag!==""?"M"+formatMagnitude(mag):"",
+    d.MaxIntensity?"震度"+d.MaxIntensity:"",
+    d.isCancel===true?"(取消)":d.isFinal===true?"(最終)":""
   ].filter(Boolean).join(" ");
 }
+
 function renderTabs(){
-  const box=$("eventTabs"),note=$("rotateNote"),all=[...events.values()].sort((a,b)=>a.firstAt-b.firstAt),active=activeList();
+  const box=$("eventTabs");
+  const note=$("rotateNote");
+  const all=[...events.values()].sort((a,b)=>a.firstAt-b.firstAt);
+  const active=activeList();
+
   box.replaceChildren();
-  if(all.length<2){box.classList.add("hidden");note.classList.add("hidden");return;}
+
+  if(all.length<2){
+    box.classList.add("hidden");
+    note.classList.add("hidden");
+    return;
+  }
+
   box.classList.remove("hidden");
+
   all.forEach((e,i)=>{
     const button=document.createElement("button");
     button.type="button";
-    button.className="event-tab"+(e.key===currentKey?" active":"")+(e.done?" done":"");
+    button.className="event-tab"+
+      (e.key===currentKey?" active":"")+
+      (e.done?" done":"");
     button.textContent=(i+1)+". "+tabLabel(e);
-    button.addEventListener("click",()=>{show(e.key);resetRotate();});
+    button.addEventListener("click",()=>{
+      show(e.key);
+      resetRotate();
+    });
     box.appendChild(button);
   });
+
   if(active.length>=2){
     note.textContent="同時に "+active.length+" 件を "+(ROTATE_MS/1000)+" 秒ごとに巡回表示中。";
     note.classList.remove("hidden");
-  }else note.classList.add("hidden");
+  }else{
+    note.classList.add("hidden");
+  }
 }
+
 function show(key){
-  const e=events.get(key);if(!e)return;
+  const e=events.get(key);
+  if(!e)return;
+
   if(key!==currentKey)shownAt=performance.now();
-  currentKey=key;render(e.data,e.raw,e.eventKey);renderTabs();
+
+  currentKey=key;
+  render(e.data,e.raw,e.eventKey);
+  renderTabs();
 }
+
 function rotate(){
-  pruneEvents();const list=activeList();
-  if(!list.length){renderTabs();return;}
-  if(list.length===1){if(list[0].key!==currentKey)show(list[0].key);else renderTabs();return;}
+  pruneEvents();
+  const list=activeList();
+
+  if(!list.length){
+    renderTabs();
+    return;
+  }
+
+  if(list.length===1){
+    if(list[0].key!==currentKey)show(list[0].key);
+    else renderTabs();
+    return;
+  }
+
   const index=list.findIndex(e=>e.key===currentKey);
   show(list[index<0?0:(index+1)%list.length].key);
 }
+
 function rotateTick(){
   sweep();
   if(performance.now()-shownAt<ROTATE_MS||activeList().length<2)return;
   rotate();
 }
+
 function resetRotate(){
   shownAt=performance.now();
   if(rotateTimer===null)rotateTimer=setInterval(rotateTick,250);
@@ -850,158 +1634,325 @@ function resetRotate(){
 
 function handleEvent(data,raw){
   if(!data||typeof data!=="object"||Array.isArray(data)){
-    text("parseState","想定外のデータ形式");setRaw(raw);return;
-  }
-  const eventId=data.EventID?String(data.EventID):null;
-  if(!eventId){text("parseState","EventIDがありません");setRaw(raw);return;}
-  const key=eventId;
-  const eventKey=[key,data.Serial??"",data.AnnouncedTime||"",data.isCancel===true?"cancel":"",data.isFinal===true?"final":""].join("|");
-  const existing=events.get(key);
-  if(existing&&isOlderSerial(data,existing)){text("parseState","古いSerialを無視");return;}
-  if(existing&&existing.eventKey===eventKey){
-    existing.raw=raw;if(currentKey===key)setRaw(raw);return;
+    text("parseState","想定外のデータ形式");
+    setRaw(raw);
+    return;
   }
 
-  const done=isDone(data),nowPerf=performance.now(),receivedAt=Date.now();
+  const eventId=data.EventID?String(data.EventID):null;
+
+  if(!eventId){
+    text("parseState","EventIDがありません");
+    setRaw(raw);
+    return;
+  }
+
+  const key=eventId;
+
+  const eventKey=[
+    key,
+    data.Serial??"",
+    data.AnnouncedTime||"",
+    data.isCancel===true?"cancel":"",
+    data.isFinal===true?"final":""
+  ].join("|");
+
+  const existing=events.get(key);
+
+  if(existing&&isOlderSerial(data,existing)){
+    text("parseState","古いSerialを無視");
+    return;
+  }
+
+  if(existing&&existing.eventKey===eventKey){
+    existing.raw=raw;
+    if(currentKey===key)setRaw(raw);
+    return;
+  }
+
+  const done=isDone(data);
+  const nowPerf=performance.now();
+  const receivedAt=Date.now();
   const e=existing||{key,firstAt:nowPerf,receivedAt:null};
+
   if(done){
-    const wasCancel=existing?.data?.isCancel===true,isCancelNow=data.isCancel===true;
-    if(!existing||!existing.done||wasCancel!==isCancelNow)e.receivedAt=receivedAt;
-  }else e.receivedAt=null;
-  e.data=data;e.raw=raw;e.eventKey=eventKey;e.done=done;e.updatedAt=nowPerf;
-  events.set(key,e);pruneEvents();
+    const wasCancel=existing?.data?.isCancel===true;
+    const isCancelNow=data.isCancel===true;
+
+    if(!existing||!existing.done||wasCancel!==isCancelNow){
+      e.receivedAt=receivedAt;
+    }
+  }else{
+    e.receivedAt=null;
+  }
+
+  e.data=data;
+  e.raw=raw;
+  e.eventKey=eventKey;
+  e.done=done;
+  e.updatedAt=nowPerf;
+
+  events.set(key,e);
+  pruneEvents();
 
   const current=events.get(currentKey);
-  if(!current){show(key);return;}
-  if(currentKey===key){show(key);return;}
-  if(current.done&&!done){show(key);return;}
-  if(!existing&&!done){show(key);return;}
+
+  if(!current){
+    show(key);
+    return;
+  }
+
+  if(currentKey===key){
+    show(key);
+    return;
+  }
+
+  if(current.done&&!done){
+    show(key);
+    return;
+  }
+
+  if(!existing&&!done){
+    show(key);
+    return;
+  }
+
   renderTabs();
 }
 
 function processMessage(raw){
   lastMessageAt=performance.now();
+
   let data;
-  try{data=JSON.parse(raw);}catch{
+
+  try{
+    data=JSON.parse(raw);
+  }catch{
     if(handlePong(raw))return;
-    text("parseState","JSON以外のデータ");setRaw(raw);return;
-  }
-  if(handlePong(data))return;
-  if(data&&data.type==="heartbeat"){
-    if(socket&&socket.readyState===WebSocket.OPEN){try{socket.send("ping");}catch{}}
+    text("parseState","JSON以外のデータ");
+    setRaw(raw);
     return;
   }
-  if(data&&data.type&&data.type!=="jma_eew"){setRaw(raw);text("parseState","別タイプ: "+data.type);return;}
+
+  if(handlePong(data))return;
+
+  if(data&&data.type==="heartbeat"){
+    if(socket&&socket.readyState===WebSocket.OPEN){
+      try{socket.send("ping");}catch{}
+    }
+    return;
+  }
+
+  if(data&&data.type&&data.type!=="jma_eew"){
+    setRaw(raw);
+    text("parseState","別タイプ: "+data.type);
+    return;
+  }
+
   handleEvent(data,raw);
 }
 
 function closeSocket(){
   if(!socket)return;
-  const s=socket;socket=null;s.onopen=s.onmessage=s.onerror=s.onclose=null;
+
+  const s=socket;
+  socket=null;
+  s.onopen=s.onmessage=s.onerror=s.onclose=null;
+
   try{s.close();}catch{}
 }
+
 function connect(){
   if(stopped)return;
-  if(reconnectTimer!==null){clearTimeout(reconnectTimer);reconnectTimer=null;}
-  stopPing();closeSocket();setConnection("接続中","");
+
+  if(reconnectTimer!==null){
+    clearTimeout(reconnectTimer);
+    reconnectTimer=null;
+  }
+
+  stopPing();
+  closeSocket();
+  setConnection("接続中","");
+
   let s;
-  try{s=new WebSocket(WS_URL);}catch{setConnection("通信エラー","error");scheduleReconnect();return;}
-  socket=s;lastMessageAt=performance.now();
+
+  try{
+    s=new WebSocket(WS_URL);
+  }catch{
+    setConnection("通信エラー","error");
+    scheduleReconnect();
+    return;
+  }
+
+  socket=s;
+  lastMessageAt=performance.now();
+
   s.onopen=()=>{
     if(socket!==s)return;
-    reconnectDelay=RECONNECT_MIN;lastMessageAt=performance.now();setConnection("接続済み","online");
-    try{s.send(COMMAND);startPing();}catch{setConnection("通信エラー","error");try{s.close();}catch{}}
+
+    reconnectDelay=RECONNECT_MIN;
+    lastMessageAt=performance.now();
+    setConnection("接続済み","online");
+
+    try{
+      s.send(COMMAND);
+      startPing();
+    }catch{
+      setConnection("通信エラー","error");
+      try{s.close();}catch{}
+    }
   };
+
   s.onmessage=event=>{
     if(socket!==s)return;
-    if(typeof event.data==="string")processMessage(event.data);
-    else if(event.data instanceof Blob){event.data.text().then(processMessage).catch(()=>text("parseState","読み取り失敗"));}
-    else if(event.data instanceof ArrayBuffer)processMessage(new TextDecoder("utf-8").decode(event.data));
+
+    if(typeof event.data==="string"){
+      processMessage(event.data);
+    }else if(event.data instanceof Blob){
+      event.data.text().then(processMessage).catch(()=>{
+        text("parseState","読み取り失敗");
+      });
+    }else if(event.data instanceof ArrayBuffer){
+      processMessage(new TextDecoder("utf-8").decode(event.data));
+    }
   };
-  s.onerror=()=>{if(socket===s)setConnection("通信エラー","error");};
+
+  s.onerror=()=>{
+    if(socket===s)setConnection("通信エラー","error");
+  };
+
   s.onclose=()=>{
     if(socket!==s)return;
-    stopPing();text("latency","--");setConnection("切断・再接続待ち","error");scheduleReconnect();
+
+    stopPing();
+    text("latency","--");
+    setConnection("切断・再接続待ち","error");
+    scheduleReconnect();
   };
 }
+
 function scheduleReconnect(){
   if(stopped||reconnectTimer!==null)return;
-  const delay=reconnectDelay;reconnectDelay=Math.min(Math.ceil(reconnectDelay*1.6),RECONNECT_MAX);
-  reconnectTimer=setTimeout(()=>{reconnectTimer=null;connect();},delay);
+
+  const delay=reconnectDelay;
+  reconnectDelay=Math.min(Math.ceil(reconnectDelay*1.6),RECONNECT_MAX);
+
+  reconnectTimer=setTimeout(()=>{
+    reconnectTimer=null;
+    connect();
+  },delay);
 }
-function reconnectNow(){reconnectDelay=RECONNECT_MIN;connect();}
+
+function reconnectNow(){
+  reconnectDelay=RECONNECT_MIN;
+  connect();
+}
+
 function startWatchdog(){
   if(watchdogTimer!==null)return;
+
   watchdogTimer=setInterval(()=>{
     if(stopped)return;
+
     if(socket&&socket.readyState===WebSocket.OPEN){
-      if(performance.now()-lastMessageAt>SILENCE_LIMIT){setConnection("無通信・再接続","error");reconnectNow();}
-    }else if(!socket&&reconnectTimer===null)reconnectNow();
+      if(performance.now()-lastMessageAt>SILENCE_LIMIT){
+        setConnection("無通信・再接続","error");
+        reconnectNow();
+      }
+    }else if(!socket&&reconnectTimer===null){
+      reconnectNow();
+    }
   },3000);
 }
 
 function sweep(){
-  const before=new Set(events.keys());pruneEvents();
+  const before=new Set(events.keys());
+  pruneEvents();
+
   if(currentKey&&!events.has(currentKey)){
     const active=activeList();
-    if(active.length)show(active[0].key);
-    else{
+
+    if(active.length){
+      show(active[0].key);
+    }else{
       const remaining=[...events.values()].sort((a,b)=>b.updatedAt-a.updatedAt);
-      if(remaining.length)show(remaining[0].key);
-      else{
-        currentKey=null;clearWaveLayers();
+
+      if(remaining.length){
+        show(remaining[0].key);
+      }else{
+        currentKey=null;
+        clearWaveLayers();
         text("mapStatus","速報履歴の期限切れ・震央マーカーを保持中");
       }
     }
   }
+
   const changed=before.size!==events.size||[...before].some(key=>!events.has(key));
+
   if(changed)renderTabs();
-}
-function startMapUpdater(){
-  if(mapUpdateTimer!==null)clearInterval(mapUpdateTimer);
-  mapUpdateTimer=setInterval(()=>{updateWaveMap();updateEpicenterMarker();},1000);
 }
 
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState!=="visible")return;
-  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2)reconnectNow();
-  else sendPing();
+
+  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2){
+    reconnectNow();
+  }else{
+    sendPing();
+  }
 
   setTimeout(()=>{
-    map.resize();updateEpicenterMarker();
+    map.resize();
+    updateEpicenterMarker();
+
     if(isUserMapControlActive())return;
+
     if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
     else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
     else if(!currentOrigin)fitJapanView(true);
 
     requestAnimationFrame(()=>{
       map.resize();
+
       if(isUserMapControlActive())return;
+
       if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
       else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
       else if(!initialViewFitted)ensureEpicenterVisible();
-      else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished)performWaveCircleFit(lastAutoFitRadius,true);
+      else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished){
+        performWaveCircleFit(lastAutoFitRadius,true);
+      }
     });
   },150);
 });
 
 window.addEventListener("resize",()=>{
   if(!mapReady)return;
-  map.resize();if(isUserMapControlActive())return;
+
+  map.resize();
+  if(isUserMapControlActive())return;
+
   if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
   else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
   else if(!initialViewFitted)scheduleEpicenterAdjustment();
-  else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished)performWaveCircleFit(lastAutoFitRadius,true);
+  else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished){
+    performWaveCircleFit(lastAutoFitRadius,true);
+  }
 });
 
 window.addEventListener("orientationchange",()=>{
   setTimeout(()=>{
     if(!mapReady)return;
-    map.resize();if(isUserMapControlActive())return;
+
+    map.resize();
+    if(isUserMapControlActive())return;
+
     if(waveDisplayFinished)focusEpicenterAndNearbyJapan(true);
     else if(japanViewLocked)focusEpicenterAndNearbyJapan(true);
     else if(!initialViewFitted)scheduleEpicenterAdjustment();
-    else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished)performWaveCircleFit(lastAutoFitRadius,true);
+    else if(lastAutoFitRadius!==null&&!sWavePassedJapan&&!waveDisplayFinished){
+      performWaveCircleFit(lastAutoFitRadius,true);
+    }
   },250);
 });
 
@@ -1010,6 +1961,7 @@ $("reconnectBtn").addEventListener("click",reconnectNow);
 
 window.addEventListener("beforeunload",()=>{
   stopped=true;
+
   if(reconnectTimer!==null)clearTimeout(reconnectTimer);
   if(watchdogTimer!==null)clearInterval(watchdogTimer);
   if(rotateTimer!==null)clearInterval(rotateTimer);
@@ -1019,7 +1971,9 @@ window.addEventListener("beforeunload",()=>{
   if(mapReturnTimer!==null)clearTimeout(mapReturnTimer);
   if(mapReturnAnimationTimer!==null)clearTimeout(mapReturnAnimationTimer);
   if(waveFitTimer!==null)clearTimeout(waveFitTimer);
-  stopPing();closeSocket();
+
+  stopPing();
+  closeSocket();
 });
 
 resetRotate();
