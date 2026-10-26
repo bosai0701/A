@@ -75,6 +75,25 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .legend-line.p{background:#3b9bff}
 .legend-line.s{background:#ff4058}
 .legend-x{font-size:21px;line-height:15px;color:#ff304b;font-weight:900}
+
+/* PLUM凡例：地図上のPLUMマーカーと同じ形・サイズ・色 */
+.legend-ring{
+  display:inline-block;
+  flex:0 0 22px;
+  width:22px;
+  height:22px;
+  box-sizing:border-box;
+  border:2.5px solid #ff304b;
+  border-radius:50%;
+  background:transparent;
+  box-shadow:
+    inset 0 0 0 1.5px #fff,
+    inset 0 0 0 3.5px #ff304b;
+  animation:none!important;
+  transform:none!important;
+  opacity:1!important;
+}
+
 #earthquakeMap{width:100%;height:480px;background:#0b1220;position:relative}
 .map-loading{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;background:#0b1220;color:#dce7f5;text-align:center}
 .map-loading.hidden{display:none!important}
@@ -97,6 +116,39 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .source-status.ok{color:var(--green)}
 .source-status.error{color:#ff7888}
 .epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px #080d18,0 0 10px #080d18;text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* PLUM法マーカー：波紋・点滅・拡大縮小なしの固定リング */
+.epicenter-icon.plum{
+  font-size:0;
+  line-height:0;
+  text-shadow:none;
+  animation:none!important;
+  transform:none!important;
+  opacity:1!important;
+}
+.epicenter-icon.plum::before{
+  content:"";
+  display:block;
+  flex:0 0 22px;
+  width:22px;
+  height:22px;
+  box-sizing:border-box;
+  border:2.5px solid #ff304b;
+  border-radius:50%;
+  background:transparent;
+  box-shadow:
+    inset 0 0 0 1.5px #fff,
+    inset 0 0 0 3.5px #ff304b;
+  animation:none!important;
+  transform:none!important;
+  opacity:1!important;
+}
+.epicenter-icon.plum::after{
+  content:none!important;
+  display:none!important;
+  animation:none!important;
+}
+
 .wave-note{padding:12px 18px;color:#9eafc5;font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
 @media(max-width:850px){.grid{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#earthquakeMap{height:400px}}
 @media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}.map-status{padding:12px}}
@@ -126,7 +178,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   </div>
 </section>
 <section class="panel map-panel">
-  <div class="panel-head"><h3>地震波到達予想マップ</h3><div class="map-legend"><span class="legend-item"><span class="legend-line p"></span>P波</span><span class="legend-item"><span class="legend-line s"></span>S波</span><span class="legend-item"><span class="legend-x">×</span>震源</span></div></div>
+  <div class="panel-head"><h3>地震波到達予想マップ</h3><div class="map-legend"><span class="legend-item"><span class="legend-line p"></span>P波</span><span class="legend-item"><span class="legend-line s"></span>S波</span><span class="legend-item"><span class="legend-x">×</span>震源</span><span class="legend-item"><span class="legend-ring"></span>震源(PLUM法)</span></div></div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ">
     <div id="mapLoading" class="map-loading" role="status" aria-live="polite"><div class="map-loading-spinner" aria-hidden="true"></div><div class="map-loading-title">地図を準備しています</div><div id="mapLoadingStatus" class="map-loading-status">地図データと走時表を読み込んでいます…</div></div>
   </div>
@@ -201,7 +253,7 @@ let manualGestureActive=false,manualGestureStartView=null,manualGestureChanged=f
 let finalAnnouncedTime=null,finalAnnouncedEventId=null,pWavePassedJapan=false,sWavePassedJapan=false;
 let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
-let currentIsSea=null,finalMapViewApplied=false;
+let currentIsSea=null,finalMapViewApplied=false,currentIsPlum=false;
 let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0,autoCameraTarget=null;
 
 function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
@@ -634,6 +686,7 @@ function setMapEvent(data,eventKey){
   finalAnnouncedTime=announcedAt!==null?announcedAt:Date.now();finalAnnouncedEventId=mapEventId;
  }
  currentOrigin=origin;currentIsSea=typeof data.isSea==="boolean"?data.isSea:null;
+ currentIsPlum=data.isAssumption===true;
  if(currentOriginTime===null){
   text("mapStatus","地震発生時刻が取得できません");clearWaveLayers();
   updateEpicenterMarker();scheduleEpicenterAdjustment();return;
@@ -654,20 +707,29 @@ function removeEpicenterMarker(){
  if(epicenterMarker){epicenterMarker.remove();epicenterMarker=null;}
  if(epicenterPopup){epicenterPopup.remove();epicenterPopup=null;}
 }
+/* PLUM法（仮定震源要素）の震源は赤・白・赤の空洞リング、それ以外は×で表示 */
+function applyEpicenterStyle(element){
+ element.classList.toggle("plum",currentIsPlum);
+ element.textContent=currentIsPlum?"":"×";
+ element.setAttribute("aria-label",currentIsPlum?"震源地（PLUM法）":"震源地");
+ element.title=currentIsPlum?"震源地・PLUM法（クリックで詳細）":"震源地（クリックで詳細）";
+}
 function updateEpicenterMarker(){
  if(!mapReady||!currentOrigin)return;
  const coordinates=[currentOrigin.lon,currentOrigin.lat];
- const popupHTML="<strong>震源地</strong><br>緯度: "+currentOrigin.lat.toFixed(3)+"°<br>経度: "+currentOrigin.lon.toFixed(3)+"°<br>深さ: "+currentOrigin.depth+" km";
+ const popupHTML="<strong>震源地"+(currentIsPlum?"（PLUM法）":"")+"</strong><br>緯度: "+currentOrigin.lat.toFixed(3)+"°<br>経度: "+currentOrigin.lon.toFixed(3)+"°<br>深さ: "+currentOrigin.depth+" km";
  if(epicenterMarker){
   epicenterMarker.setLngLat(coordinates);
+  applyEpicenterStyle(epicenterMarker.getElement());
   if(epicenterPopup)epicenterPopup.setHTML(popupHTML);
   else{epicenterPopup=new maplibregl.Popup({offset:18}).setHTML(popupHTML);epicenterMarker.setPopup(epicenterPopup);}
   return;
  }
  const element=document.createElement("div");
- element.className="epicenter-icon";element.textContent="×";
- element.setAttribute("aria-label","震源地");element.setAttribute("role","button");
- element.setAttribute("tabindex","0");element.title="震源地（クリックで詳細）";
+ element.className="epicenter-icon";
+ element.setAttribute("role","button");
+ element.setAttribute("tabindex","0");
+ applyEpicenterStyle(element);
  epicenterPopup=new maplibregl.Popup({offset:18}).setHTML(popupHTML);
  epicenterMarker=new maplibregl.Marker({element,anchor:"center"}).setLngLat(coordinates).setPopup(epicenterPopup).addTo(map);
 }
