@@ -172,6 +172,7 @@ const EVENT_TTL=10*60000,EVENT_KEEP=60*60000,FINAL_HIDE_MS=3*60000,CANCEL_HIDE_M
 const EARTH_RADIUS_KM=6371.0088,MAP_RETURN_DELAY=5000,WAVE_MAX_KM=2000;
 const MAP_AUTOMATIC_FOCUS_MAX_ZOOM=7.0,MAP_MERCATOR_MAX_LATITUDE=85.05112878,MAP_TILE_SIZE=512;
 const NEAR_LAND_KM=600;
+const FINAL_VIEW_ZOOM=5;
 const JAPAN_BOUNDS=[[122.8,23.8],[146.0,45.8]];
 const JAPAN_EDGE_POINTS=[
  [45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],
@@ -358,7 +359,7 @@ function applyFinalMapView(immediate=false){
  if(isUserMapControlActive()){pendingAutoCamera=true;return false;}
  map.stop();
  const center=[currentOrigin.lon,currentOrigin.lat];
- const zoom=Math.min(map.getZoom(),MAP_AUTOMATIC_FOCUS_MAX_ZOOM);
+ const zoom=FINAL_VIEW_ZOOM;
  if(immediate)map.jumpTo({center,zoom,padding:{top:0,bottom:0,left:0,right:0}});
  else map.easeTo({center,zoom,padding:{top:0,bottom:0,left:0,right:0},duration:650,essential:true});
  finalMapViewApplied=true;pendingAutoCamera=false;
