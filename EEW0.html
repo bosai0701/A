@@ -202,7 +202,7 @@ let finalAnnouncedTime=null,finalAnnouncedEventId=null,pWavePassedJapan=false,sW
 let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
 let currentIsSea=null,finalMapViewApplied=false;
-let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0;
+let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0,autoCameraTarget=null;
 
 function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
 function isUserMapControlActive(){return manualGestureActive||Date.now()<userMapOverrideUntil||mapReturnInProgress;}
@@ -234,13 +234,13 @@ function restoreSavedMapView(){
  if(!mapReady||savedMapView===null){
   userMapOverrideUntil=0;manualGestureActive=false;return;
  }
- const target=savedMapView;
+ const saved=savedMapView,target=autoCameraTarget||saved;
  manualGestureActive=false;mapReturnInProgress=true;
  map.stop();
- map.easeTo({center:target.center,zoom:target.zoom,bearing:target.bearing,pitch:target.pitch,duration:800,essential:true});
+ map.easeTo({center:target.center,zoom:target.zoom,bearing:target.bearing,pitch:target.pitch,...(target.padding?{padding:target.padding}:{}),duration:800,essential:true});
  mapReturnAnimationTimer=setTimeout(()=>{
   mapReturnAnimationTimer=null;mapReturnInProgress=false;userMapOverrideUntil=0;
-  if(savedMapView===target)savedMapView=null;
+  if(savedMapView===saved)savedMapView=null;
   manualGestureStartView=null;manualGestureChanged=false;
   if(pendingAutoCamera){pendingAutoCamera=false;applyLatestAutomaticCamera(false);}
   else if(waveDisplayFinished&&!finalMapViewApplied)applyFinalMapView(false);
@@ -325,6 +325,7 @@ function automaticFitBounds(bounds,{padding={top:35,bottom:35,left:35,right:35},
  if(!target)return false;
  cameraRevision++;
  const camera={center:target.center,zoom:target.zoom,padding,bearing:0,pitch:0,essential:true};
+ autoCameraTarget={center:target.center,zoom:target.zoom,padding,bearing:0,pitch:0};
  map.stop();
  if(immediate)map.jumpTo(camera);else map.easeTo({...camera,duration});
  pendingAutoCamera=false;lastCameraFitAt=Date.now();
@@ -360,6 +361,7 @@ function applyFinalMapView(immediate=false){
  map.stop();
  const center=[currentOrigin.lon,currentOrigin.lat];
  const zoom=FINAL_VIEW_ZOOM;
+ autoCameraTarget={center,zoom,padding:{top:0,bottom:0,left:0,right:0},bearing:0,pitch:0};
  if(immediate)map.jumpTo({center,zoom,padding:{top:0,bottom:0,left:0,right:0}});
  else map.easeTo({center,zoom,padding:{top:0,bottom:0,left:0,right:0},duration:650,essential:true});
  finalMapViewApplied=true;pendingAutoCamera=false;
@@ -624,7 +626,7 @@ function setMapEvent(data,eventKey){
   if(mapReturnAnimationTimer!==null){clearTimeout(mapReturnAnimationTimer);mapReturnAnimationTimer=null;}
   savedMapView=null;manualGestureActive=false;manualGestureStartView=null;manualGestureChanged=false;
   mapReturnInProgress=false;userMapOverrideUntil=0;pendingAutoCamera=false;cameraRevision++;
-  clearWaveLayers();
+  autoCameraTarget=null;clearWaveLayers();
  }else if(currentOriginTime===null&&originTime!==null)currentOriginTime=originTime;
 
  if(data.isFinal===true&&finalAnnouncedEventId!==mapEventId){
