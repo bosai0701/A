@@ -250,7 +250,7 @@ let mapReady=false,tableLoaded=false,tableSettled=false,startupComplete=false;
 let travelTable=[],currentOrigin=null,currentOriginTime=null,lastMapEventKey=null,mapUpdateRaf=null,lastWaveFrameAt=0,lastWaveStatusAt=0;
 let epicenterMarker=null,epicenterPopup=null,mapResizeObserver=null,markerAdjustFrame=null;
 let mapReturnTimer=null,mapReturnAnimationTimer=null,mapReturnInProgress=false,savedMapView=null;
-let manualGestureActive=false,manualGestureStartView=null,manualGestureChanged=false,userMapOverrideUntil=0;
+let manualGestureActive=false,manualGestureStartView=null,manualGestureChanged=false,userMapOverrideUntil=0,userMoveInProgress=false;
 let finalAnnouncedTime=null,finalAnnouncedEventId=null,pWavePassedJapan=false,sWavePassedJapan=false;
 let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
@@ -301,6 +301,7 @@ function restoreSavedMapView(){
 }
 function finishManualGesture(){
  if(!manualGestureActive)return;
+ if(userMoveInProgress)return; /* ダブルタップズーム・慣性移動などのアニメーション中は moveend 側で復帰を予約 */
  manualGestureActive=false;
  const changed=viewsDiffer(manualGestureStartView,getMapView());
  manualGestureChanged=changed;
@@ -333,6 +334,18 @@ function setupMapInteractionListeners(){
   if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","+","-","=","_"].includes(event.key))return;
   saveMapViewBeforeManualMove();manualGestureChanged=true;scheduleMapReturn();
  },true);
+ /* ユーザー操作由来の移動(ダブルタップズーム含む)は originalEvent が付く。終了時に必ず5秒後の復帰を予約する */
+ map.on("movestart",e=>{
+  if(!e||!e.originalEvent)return;
+  saveMapViewBeforeManualMove();
+  if(mapReturnTimer!==null){clearTimeout(mapReturnTimer);mapReturnTimer=null;}
+  userMoveInProgress=true;manualGestureActive=true;manualGestureChanged=true;
+ });
+ map.on("moveend",()=>{
+  if(!userMoveInProgress)return;
+  userMoveInProgress=false;manualGestureActive=false;manualGestureChanged=true;
+  scheduleMapReturn();
+ });
  map.on("dragend",()=>{if(manualGestureActive)finishManualGesture();});
  map.on("zoomend",()=>{if(savedMapView!==null&&manualGestureChanged&&!manualGestureActive&&!mapReturnInProgress)scheduleMapReturn();});
  map.on("rotatestart",()=>{if(!isUserMapControlActive())saveMapViewBeforeManualMove();});
