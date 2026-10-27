@@ -225,6 +225,7 @@ const EARTH_RADIUS_KM=6371.0088,MAP_RETURN_DELAY=5000,WAVE_MAX_KM=2000;
 const MAP_AUTOMATIC_FOCUS_MAX_ZOOM=7.0,MAP_MERCATOR_MAX_LATITUDE=85.05112878,MAP_TILE_SIZE=512;
 const NEAR_LAND_KM=600;
 const FINAL_VIEW_ZOOM=5;
+const WAVE_FRAME_MS=1000/60,WAVE_STATUS_MS=250;
 const JAPAN_BOUNDS=[[122.8,23.8],[146.0,45.8]];
 const JAPAN_EDGE_POINTS=[
  [45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],
@@ -246,7 +247,7 @@ const map=new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(),"top-right");
 
 let mapReady=false,tableLoaded=false,tableSettled=false,startupComplete=false;
-let travelTable=[],currentOrigin=null,currentOriginTime=null,lastMapEventKey=null,mapUpdateTimer=null;
+let travelTable=[],currentOrigin=null,currentOriginTime=null,lastMapEventKey=null,mapUpdateRaf=null,lastWaveFrameAt=0,lastWaveStatusAt=0;
 let epicenterMarker=null,epicenterPopup=null,mapResizeObserver=null,markerAdjustFrame=null;
 let mapReturnTimer=null,mapReturnAnimationTimer=null,mapReturnInProgress=false,savedMapView=null;
 let manualGestureActive=false,manualGestureStartView=null,manualGestureChanged=false,userMapOverrideUntil=0;
@@ -656,13 +657,26 @@ function updateWaveMap(){
   }
  }else if(isUserMapControlActive())pendingAutoCamera=true;
 
- const pStatus=pWavePassedJapan?"P波 日本通過済み":pRadius!==null?"P波 約 "+Math.round(pRadius)+" km":"P波 到達前";
- const sStatus=sRadius!==null?"S波 約 "+Math.round(sRadius)+" km":"S波 到達前";
- text("mapStatus",pStatus+" ・ "+sStatus);scheduleEpicenterAdjustment();
+ /* 60FPS描画時にDOM更新が毎フレーム走らないよう、ステータス文言と震源マーカー補正は間引く */
+ const nowMs=performance.now();
+ if(nowMs-lastWaveStatusAt>=WAVE_STATUS_MS){
+  lastWaveStatusAt=nowMs;
+  const pStatus=pWavePassedJapan?"P波 日本通過済み":pRadius!==null?"P波 約 "+Math.round(pRadius)+" km":"P波 到達前";
+  const sStatus=sRadius!==null?"S波 約 "+Math.round(sRadius)+" km":"S波 到達前";
+  text("mapStatus",pStatus+" ・ "+sStatus);scheduleEpicenterAdjustment();
+ }
 }
+/* P波・S波アニメーション：requestAnimationFrameで最大60FPS（120Hz等の高リフレッシュ環境でも60FPSに制限） */
 function startMapUpdater(){
- if(mapUpdateTimer!==null)return;
- mapUpdateTimer=setInterval(()=>{if(document.visibilityState!=="hidden")updateWaveMap();},500);
+ if(mapUpdateRaf!==null)return;
+ const tick=timestamp=>{
+  mapUpdateRaf=requestAnimationFrame(tick);
+  if(document.visibilityState==="hidden")return;
+  if(timestamp-lastWaveFrameAt<WAVE_FRAME_MS-1)return;
+  lastWaveFrameAt=timestamp;
+  updateWaveMap();
+ };
+ mapUpdateRaf=requestAnimationFrame(tick);
 }
 function setMapEvent(data,eventKey){
  const origin=getEventOrigin(data);
@@ -960,7 +974,7 @@ window.addEventListener("beforeunload",()=>{
  if(reconnectTimer!==null)clearTimeout(reconnectTimer);
  if(watchdogTimer!==null)clearInterval(watchdogTimer);
  if(rotateTimer!==null)clearInterval(rotateTimer);
- if(mapUpdateTimer!==null)clearInterval(mapUpdateTimer);
+ if(mapUpdateRaf!==null)cancelAnimationFrame(mapUpdateRaf);
  if(markerAdjustFrame!==null)cancelAnimationFrame(markerAdjustFrame);
  if(mapResizeObserver)mapResizeObserver.disconnect();
  if(mapReturnTimer!==null)clearTimeout(mapReturnTimer);
