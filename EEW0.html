@@ -3,13 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#080d18">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#080d18" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
 <title>JMA EEW | Earthquake Monitor</title>
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
-:root{color-scheme:dark;--bg:#080d18;--panel:#101827;--border:#263449;--text:#f1f5f9;--muted:#8ea0b8;--red:#ff4058;--orange:#ffad42;--green:#36dfaa;--blue:#63b3ff}
+/* ===== テーマ変数：デフォルトはダーク、端末がライト設定の場合は自動でライトに切替 ===== */
+:root{
+  color-scheme:dark;
+  --bg:#080d18;--panel:#101827;--border:#263449;--text:#f1f5f9;--muted:#8ea0b8;
+  --red:#ff4058;--orange:#ffad42;--green:#36dfaa;--blue:#63b3ff;
+  --glow:#1b3150;
+  --hero-bg:linear-gradient(125deg,#281421,#171624 52%,#111b2d);
+  --watermark:#ffffff08;
+  --tag-bg:#ffffff0b;--tag-border:#ffffff14;--tag-red:#ff7888;
+  --tab-border:#ffffff1c;--tab-bg:#0a101c99;--tab-text:#c6d3e4;--tab-active:#ff8a98;
+  --sub:#b7c2d3;--sub2:#b0bfd2;
+  --metric-bg:#090f1b75;
+  --panel-a:#111b2b;--panel-b:#0e1624;
+  --line:#ffffff0c;--area-bg:#ffffff04;--area-border:#ffffff10;
+  --btn-bg:#172337;--btn-hover:#22334b;--btn-text:#dce7f5;
+  --pre-bg:#080e19;--pre-text:#b9d7f7;
+  --footer:#667890;
+  --legend:#cbd5e1;--strong:#e2e8f0;--note:#9eafc5;
+  --map-bg:#0b1220;--map-fg:#dce7f5;
+  --popup-bg:#101827;--attrib-bg:#101827cc;--attrib-text:#d1d5db;--attrib-link:#93c5fd;
+  --ctrl-filter:invert(.85);
+  --halo:#080d18;
+  --dot-off:#64748b;
+}
+@media (prefers-color-scheme:light){
+  :root{
+    color-scheme:light;
+    --bg:#f1f5f9;--panel:#ffffff;--border:#d4dce8;--text:#0f172a;--muted:#5b6b82;
+    --red:#d4203a;--orange:#b86a08;--green:#0e8f67;--blue:#1d6fd1;
+    --glow:#cfe0f5;
+    --hero-bg:linear-gradient(125deg,#ffeef1,#f5f1fb 52%,#eaf2fd);
+    --watermark:#0f172a0a;
+    --tag-bg:#0f172a08;--tag-border:#0f172a1a;--tag-red:#c4203a;
+    --tab-border:#0f172a22;--tab-bg:#ffffffcc;--tab-text:#334155;--tab-active:#c4203a;
+    --sub:#475569;--sub2:#475569;
+    --metric-bg:#ffffffb3;
+    --panel-a:#ffffff;--panel-b:#f8fafc;
+    --line:#0f172a14;--area-bg:#0f172a05;--area-border:#0f172a14;
+    --btn-bg:#eef2f7;--btn-hover:#dde5ef;--btn-text:#1e293b;
+    --pre-bg:#f4f7fb;--pre-text:#1e4a7a;
+    --footer:#64748b;
+    --legend:#334155;--strong:#0f172a;--note:#546478;
+    --map-bg:#e8edf3;--map-fg:#1e293b;
+    --popup-bg:#ffffff;--attrib-bg:#ffffffcc;--attrib-text:#475569;--attrib-link:#1d6fd1;
+    --ctrl-filter:none;
+    --halo:#ffffff;
+    --dot-off:#94a3b8;
+  }
+}
 *{box-sizing:border-box}
-body{margin:0;background:radial-gradient(ellipse at 50% -15%,#1b3150 0,transparent 55%),var(--bg);color:var(--text);font:14px Inter,"Noto Sans JP",system-ui,sans-serif}
+body{margin:0;background:radial-gradient(ellipse at 50% -15%,var(--glow) 0,transparent 55%),var(--bg);color:var(--text);font:14px Inter,"Noto Sans JP",system-ui,sans-serif}
 button{font:inherit;cursor:pointer}
 button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .wrap{max-width:1440px;margin:auto;padding:20px}
@@ -18,43 +68,43 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .brand-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#ff4058,#d51f47);font-size:24px}
 .brand h1{font-size:19px;margin:0;letter-spacing:.04em}
 .brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
-.connection{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:99px;padding:9px 13px;background:#101827;color:var(--muted);font-size:12px}
-.dot{width:8px;height:8px;border-radius:50%;background:#64748b}
+.connection{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:99px;padding:9px 13px;background:var(--panel);color:var(--muted);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dot-off)}
 .dot.online{background:var(--green);box-shadow:0 0 12px #36dfaa80}
 .dot.error{background:var(--red)}
-.hero{border:1px solid #ff40583b;border-radius:18px;background:linear-gradient(125deg,#281421,#171624 52%,#111b2d);padding:22px;margin-bottom:16px;position:relative;overflow:hidden}
-.hero:after{content:"EEW";position:absolute;right:14px;top:2px;font-size:clamp(65px,12vw,145px);font-weight:900;color:#ffffff08;pointer-events:none}
+.hero{border:1px solid #ff40583b;border-radius:18px;background:var(--hero-bg);padding:22px;margin-bottom:16px;position:relative;overflow:hidden}
+.hero:after{content:"EEW";position:absolute;right:14px;top:2px;font-size:clamp(65px,12vw,145px);font-weight:900;color:var(--watermark);pointer-events:none}
 .hero-top{position:relative;z-index:1;display:flex;align-items:center;flex-wrap:wrap;gap:9px}
-.tag{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 9px;font-size:11px;font-weight:800;background:#ffffff0b;border:1px solid #ffffff14}
-.tag.red{background:#ff40581b;color:#ff7888;border-color:#ff40583b}
+.tag{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:6px 9px;font-size:11px;font-weight:800;background:var(--tag-bg);border:1px solid var(--tag-border)}
+.tag.red{background:#ff40581b;color:var(--tag-red);border-color:#ff40583b}
 .tag.green{color:var(--green)}
 .tag.orange{color:var(--orange)}
 .event-tabs{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
-.event-tab{border:1px solid #ffffff1c;border-radius:8px;padding:7px 11px;background:#0a101c99;color:#c6d3e4;font-size:11px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.event-tab.active{border-color:#ff405899;color:#ff8a98;background:#ff40581a}
+.event-tab{border:1px solid var(--tab-border);border-radius:8px;padding:7px 11px;background:var(--tab-bg);color:var(--tab-text);font-size:11px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.event-tab.active{border-color:#ff405899;color:var(--tab-active);background:#ff40581a}
 .event-tab.done{color:var(--muted)}
 .rotate-note{position:relative;z-index:1;margin-top:8px;color:var(--muted);font-size:10px}
 .hero h2{margin:17px 0 5px;font-size:clamp(23px,4vw,36px);letter-spacing:.02em}
-.hero-desc{color:#b7c2d3;margin:0;font-size:13px}
+.hero-desc{color:var(--sub);margin:0;font-size:13px}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:23px;position:relative;z-index:1}
-.metric{min-width:0;border:1px solid #ffffff14;background:#090f1b75;border-radius:12px;padding:16px}
+.metric{min-width:0;border:1px solid var(--tag-border);background:var(--metric-bg);border-radius:12px;padding:16px}
 .metric .label{color:var(--muted);font-size:11px;margin-bottom:12px}
 .metric .value{font-size:clamp(22px,3.4vw,38px);font-weight:850;letter-spacing:-.04em;overflow-wrap:anywhere}
-.metric .unit{font-size:12px;font-weight:500;color:#b0bfd2;margin-left:5px}
-.metric .sub{margin-top:8px;color:#8ea0b8;font-size:11px;overflow-wrap:anywhere}
+.metric .unit{font-size:12px;font-weight:500;color:var(--sub2);margin-left:5px}
+.metric .sub{margin-top:8px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
 .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:16px;align-items:start}
-.panel{min-width:0;background:linear-gradient(145deg,#111b2b,#0e1624);border:1px solid var(--border);border-radius:15px;overflow:hidden}
+.panel{min-width:0;background:linear-gradient(145deg,var(--panel-a),var(--panel-b));border:1px solid var(--border);border-radius:15px;overflow:hidden}
 .panel-head{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .panel-head h3{margin:0;font-size:14px}
 .panel-head span{color:var(--muted);font-size:11px}
 .panel-body{padding:17px 18px}
 .kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}
-.kv-item{display:flex;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid #ffffff0c}
+.kv-item{display:flex;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid var(--line)}
 .kv-item .k{color:var(--muted);font-size:12px}
 .kv-item .v{text-align:right;font-size:12px;font-weight:700;overflow-wrap:anywhere}
 .section{margin-top:16px}
 .area-list{display:grid;gap:9px}
-.area{background:#ffffff04;border:1px solid #ffffff10;border-radius:10px;padding:13px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.area{background:var(--area-bg);border:1px solid var(--area-border);border-radius:10px;padding:13px;display:flex;justify-content:space-between;align-items:center;gap:12px}
 .area-name{font-weight:700;font-size:13px;overflow-wrap:anywhere}
 .area-meta{color:var(--muted);font-size:11px;margin-top:6px}
 .intensity{flex-shrink:0;min-width:49px;text-align:center;border-radius:8px;padding:9px 7px;color:#fff;font-weight:900;background:#334155}
@@ -63,14 +113,14 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .intensity.low{background:#245b91}
 .empty{color:var(--muted);text-align:center;padding:28px 10px;font-size:12px}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px}
-.btn{border:1px solid var(--border);border-radius:7px;padding:8px 11px;background:#172337;color:#dce7f5;font-size:11px}
-.btn:hover{background:#22334b}
-pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#080e19;color:#b9d7f7;font-size:11px;line-height:1.7}
-.footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#667890;font-size:10px;padding:18px 2px}
+.btn{border:1px solid var(--border);border-radius:7px;padding:8px 11px;background:var(--btn-bg);color:var(--btn-text);font-size:11px}
+.btn:hover{background:var(--btn-hover)}
+pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--pre-bg);color:var(--pre-text);font-size:11px;line-height:1.7}
+.footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;color:var(--footer);font-size:10px;padding:18px 2px}
 .hidden{display:none!important}
 .map-panel{margin-bottom:16px}
 .map-legend{display:flex;align-items:center;flex-wrap:wrap;gap:14px}
-.legend-item{display:flex;align-items:center;gap:7px;color:#cbd5e1;font-size:11px}
+.legend-item{display:flex;align-items:center;gap:7px;color:var(--legend);font-size:11px}
 .legend-line{width:22px;height:4px;border-radius:4px}
 .legend-line.p{background:#3b9bff}
 .legend-line.s{background:#ff4058}
@@ -94,28 +144,28 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   opacity:1!important;
 }
 
-#earthquakeMap{width:100%;height:480px;background:#0b1220;position:relative}
-.map-loading{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;background:#0b1220;color:#dce7f5;text-align:center}
+#earthquakeMap{width:100%;height:480px;background:var(--map-bg);position:relative}
+.map-loading{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;background:var(--map-bg);color:var(--map-fg);text-align:center}
 .map-loading.hidden{display:none!important}
-.map-loading-spinner{width:36px;height:36px;border:3px solid #263449;border-top-color:#63b3ff;border-radius:50%;animation:mapSpin .8s linear infinite}
+.map-loading-spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:mapSpin .8s linear infinite}
 .map-loading-title{font-weight:800;font-size:13px}
-.map-loading-status{color:#8ea0b8;font-size:11px;line-height:1.7}
+.map-loading-status{color:var(--muted);font-size:11px;line-height:1.7}
 @keyframes mapSpin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.map-loading-spinner{animation:none}}
 .map-status{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 18px;border-top:1px solid var(--border);color:var(--muted);font-size:11px}
-.map-status strong{color:#e2e8f0}
+.map-status strong{color:var(--strong)}
 .maplibregl-map{font-family:inherit}
 .maplibregl-ctrl-attrib{font-size:9px!important}
-.maplibregl-popup-content{background:#101827;color:#f1f5f9;font-size:12px;border:1px solid var(--border)}
-.maplibregl-popup-tip{border-top-color:#101827!important;border-bottom-color:#101827!important}
-.maplibregl-ctrl-group{background:#101827!important}
-.maplibregl-ctrl-group button{filter:invert(.85)}
-.maplibregl-ctrl-attrib{color:#d1d5db!important;background:#101827cc!important}
-.maplibregl-ctrl-attrib a{color:#93c5fd!important}
+.maplibregl-popup-content{background:var(--popup-bg);color:var(--text);font-size:12px;border:1px solid var(--border)}
+.maplibregl-popup-tip{border-top-color:var(--popup-bg)!important;border-bottom-color:var(--popup-bg)!important}
+.maplibregl-ctrl-group{background:var(--popup-bg)!important}
+.maplibregl-ctrl-group button{filter:var(--ctrl-filter)}
+.maplibregl-ctrl-attrib{color:var(--attrib-text)!important;background:var(--attrib-bg)!important}
+.maplibregl-ctrl-attrib a{color:var(--attrib-link)!important}
 .source-status{color:var(--muted);font-size:11px}
 .source-status.ok{color:var(--green)}
-.source-status.error{color:#ff7888}
-.epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px #080d18,0 0 10px #080d18;text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.source-status.error{color:var(--tag-red)}
+.epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px var(--halo),0 0 10px var(--halo);text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 
 /* PLUM法マーカー：波紋・点滅・拡大縮小なしの固定リング */
 .epicenter-icon.plum{
@@ -149,7 +199,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   animation:none!important;
 }
 
-.wave-note{padding:12px 18px;color:#9eafc5;font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
+.wave-note{padding:12px 18px;color:var(--note);font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
 @media(max-width:850px){.grid{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#earthquakeMap{height:400px}}
 @media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}.map-status{padding:12px}}
 </style>
@@ -231,7 +281,13 @@ const JAPAN_EDGE_POINTS=[
  [45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],
  [41.5575,140.9078],[34.7054,135.49],[31,130],[26.2125,127.6811]
 ];
+const MAP_STYLE_DARK="https://tiles.openfreemap.org/styles/dark";
+const MAP_STYLE_LIGHT="https://tiles.openfreemap.org/styles/positron";
 const $=id=>document.getElementById(id);
+
+/* 端末のライト/ダーク設定を取得（変更時は自動追従） */
+const schemeQuery=window.matchMedia("(prefers-color-scheme: light)");
+function currentMapStyle(){return schemeQuery.matches?MAP_STYLE_LIGHT:MAP_STYLE_DARK;}
 
 let socket=null,reconnectTimer=null,reconnectDelay=RECONNECT_MIN,stopped=false;
 let lastMessageAt=0,pingTimer=null,pingSentAt=0,pingPending=false,watchdogTimer=null,pingMissed=0;
@@ -240,7 +296,7 @@ let currentKey=null,rotateTimer=null,shownAt=0;
 
 const map=new maplibregl.Map({
  container:"earthquakeMap",
- style:"https://tiles.openfreemap.org/styles/dark",
+ style:currentMapStyle(),
  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
  attributionControl:true,trackResize:true
 });
@@ -462,19 +518,35 @@ function finishMapStartup(){
   });
  });
 }
+/* 波表示用のソース・レイヤーを追加（スタイル切替後にも再利用） */
+function addWaveLayers(){
+ if(!map.getSource("wave-p"))map.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
+ if(!map.getSource("wave-s"))map.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
+ if(!map.getLayer("wave-p-fill"))map.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
+ if(!map.getLayer("wave-p-line"))map.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
+ if(!map.getLayer("wave-s-fill"))map.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
+ if(!map.getLayer("wave-s-line"))map.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
+}
 map.on("load",()=>{
  mapReady=true;
- map.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
- map.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
- map.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
- map.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
- map.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
- map.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
+ addWaveLayers();
  setupMapInteractionListeners();setupMapResizeObserver();
  showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
  loadTravelTable().finally(()=>{tableSettled=true;finishMapStartup();});
 });
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
+
+/* 端末のライト/ダーク切替に追従して地図スタイルを入れ替える */
+function onSchemeChange(){
+ if(!mapReady)return;
+ map.once("style.load",()=>{
+  addWaveLayers();
+  updateWaveMap();
+ });
+ map.setStyle(currentMapStyle());
+}
+if(typeof schemeQuery.addEventListener==="function")schemeQuery.addEventListener("change",onSchemeChange);
+else if(typeof schemeQuery.addListener==="function")schemeQuery.addListener(onSchemeChange);
 
 function scheduleEpicenterAdjustment(){
  if(markerAdjustFrame!==null)cancelAnimationFrame(markerAdjustFrame);
