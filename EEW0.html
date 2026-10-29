@@ -527,9 +527,19 @@ function addWaveLayers(){
  if(!map.getLayer("wave-s-fill"))map.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
  if(!map.getLayer("wave-s-line"))map.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
 }
+/* 波レイヤーが無ければ再作成（スタイル再読込・WebGL復帰などで消えた場合の保険） */
+function ensureWaveLayers(){
+ if(!mapReady)return false;
+ try{
+  if(map.getSource("wave-p")&&map.getSource("wave-s")&&map.getLayer("wave-p-fill")&&map.getLayer("wave-p-line")&&map.getLayer("wave-s-fill")&&map.getLayer("wave-s-line"))return true;
+  addWaveLayers();return true;
+ }catch{return false;}
+}
 map.on("load",()=>{
  mapReady=true;
  addWaveLayers();
+ map.on("style.load",()=>{ensureWaveLayers();updateWaveMap();});
+ map.getCanvas().addEventListener("webglcontextrestored",()=>{ensureWaveLayers();updateWaveMap();map.triggerRepaint();});
  setupMapInteractionListeners();setupMapResizeObserver();
  showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
  loadTravelTable().finally(()=>{tableSettled=true;finishMapStartup();});
@@ -537,13 +547,24 @@ map.on("load",()=>{
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
 
 /* 端末のライト/ダーク切替に追従して地図スタイルを入れ替える */
+/* 復帰直後などに端末のテーマ判定が一瞬揺れても地図スタイルを入れ替えないよう、
+   (1)非表示中は無視 (2)400ms待って確定値を再取得 (3)現在適用中のスタイルと同じなら何もしない */
+let appliedMapStyle=currentMapStyle(),schemeTimer=null;
 function onSchemeChange(){
  if(!mapReady)return;
- map.once("style.load",()=>{
-  addWaveLayers();
-  updateWaveMap();
- });
- map.setStyle(currentMapStyle());
+ if(schemeTimer!==null)clearTimeout(schemeTimer);
+ schemeTimer=setTimeout(()=>{
+  schemeTimer=null;
+  if(document.visibilityState==="hidden")return;
+  const next=currentMapStyle();
+  if(next===appliedMapStyle)return;
+  appliedMapStyle=next;
+  map.once("style.load",()=>{
+   addWaveLayers();
+   updateWaveMap();
+  });
+  map.setStyle(next);
+ },400);
 }
 if(typeof schemeQuery.addEventListener==="function")schemeQuery.addEventListener("change",onSchemeChange);
 else if(typeof schemeQuery.addListener==="function")schemeQuery.addListener(onSchemeChange);
@@ -618,7 +639,9 @@ function createCircleFeature(lat,lon,radiusKm,count=180){
 }
 function setGeoJSON(sourceId,data){
  if(!mapReady)return;
- const source=map.getSource(sourceId);if(source)source.setData(data);
+ let source=map.getSource(sourceId);
+ if(!source){ensureWaveLayers();source=map.getSource(sourceId);}
+ if(source)source.setData(data);
 }
 function clearWaveLayers(){
  setGeoJSON("wave-p",emptyFeatureCollection());setGeoJSON("wave-s",emptyFeatureCollection());
@@ -711,6 +734,7 @@ function updateWaveMap(){
  if(!currentOrigin||currentOriginTime===null||!mapReady)return;
  if(waveDisplayFinished){clearWaveLayers();return;}
  if(finalWaveDisplayExpired()){finishWaveDisplay("最終報の発表から3分経過・波表示終了");return;}
+ ensureWaveLayers();
  if(!tableLoaded){text("mapStatus","走時表の読み込み待ち");return;}
  const elapsed=Math.max(0,(Date.now()-currentOriginTime)/1000);
  const rows=getRowsForDepth(currentOrigin.depth);
@@ -1048,7 +1072,8 @@ document.addEventListener("visibilitychange",()=>{
  if(document.visibilityState!=="visible")return;
  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2)reconnectNow();
  else sendPing();
- requestAnimationFrame(()=>{if(!mapReady)return;map.resize();updateEpicenterMarker();});
+ requestAnimationFrame(()=>{if(!mapReady)return;map.resize();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();});
+ onSchemeChange(); /* 非表示中にテーマが変わっていた場合のみ、確定後に入れ替える */
 });
 window.addEventListener("resize",()=>{if(mapReady)map.resize();});
 window.addEventListener("orientationchange",()=>{setTimeout(()=>{if(mapReady)map.resize();},250);});
