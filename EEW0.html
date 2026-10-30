@@ -1,11 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#080d18" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f1f5f9">
 <title>JMA EEW | Earthquake Monitor</title>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
@@ -13,54 +13,28 @@
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js" defer></script>
 <style>
-/* ===== テーマ変数：デフォルトはダーク、端末がライト設定の場合は自動でライトに切替 ===== */
 :root{
-  color-scheme:dark;
-  --bg:#080d18;--panel:#101827;--border:#263449;--text:#f1f5f9;--muted:#8ea0b8;
-  --red:#ff4058;--orange:#ffad42;--green:#36dfaa;--blue:#63b3ff;
-  --glow:#1b3150;
-  --hero-bg:linear-gradient(125deg,#281421,#171624 52%,#111b2d);
-  --watermark:#ffffff08;
-  --tag-bg:#ffffff0b;--tag-border:#ffffff14;--tag-red:#ff7888;
-  --tab-border:#ffffff1c;--tab-bg:#0a101c99;--tab-text:#c6d3e4;--tab-active:#ff8a98;
-  --sub:#b7c2d3;--sub2:#b0bfd2;
-  --metric-bg:#090f1b75;
-  --panel-a:#111b2b;--panel-b:#0e1624;
-  --line:#ffffff0c;--area-bg:#ffffff04;--area-border:#ffffff10;
-  --btn-bg:#172337;--btn-hover:#22334b;--btn-text:#dce7f5;
-  --pre-bg:#080e19;--pre-text:#b9d7f7;
-  --footer:#667890;
-  --legend:#cbd5e1;--strong:#e2e8f0;--note:#9eafc5;
-  --map-bg:#0b1220;--map-fg:#dce7f5;
-  --popup-bg:#101827;--attrib-bg:#101827cc;--attrib-text:#d1d5db;--attrib-link:#93c5fd;
-  --ctrl-filter:invert(.85);
-  --halo:#080d18;
-  --dot-off:#64748b;
-}
-@media (prefers-color-scheme:light){
-  :root{
-    color-scheme:light;
-    --bg:#f1f5f9;--panel:#ffffff;--border:#d4dce8;--text:#0f172a;--muted:#5b6b82;
-    --red:#d4203a;--orange:#b86a08;--green:#0e8f67;--blue:#1d6fd1;
-    --glow:#cfe0f5;
-    --hero-bg:linear-gradient(125deg,#ffeef1,#f5f1fb 52%,#eaf2fd);
-    --watermark:#0f172a0a;
-    --tag-bg:#0f172a08;--tag-border:#0f172a1a;--tag-red:#c4203a;
-    --tab-border:#0f172a22;--tab-bg:#ffffffcc;--tab-text:#334155;--tab-active:#c4203a;
-    --sub:#475569;--sub2:#475569;
-    --metric-bg:#ffffffb3;
-    --panel-a:#ffffff;--panel-b:#f8fafc;
-    --line:#0f172a14;--area-bg:#0f172a05;--area-border:#0f172a14;
-    --btn-bg:#eef2f7;--btn-hover:#dde5ef;--btn-text:#1e293b;
-    --pre-bg:#f4f7fb;--pre-text:#1e4a7a;
-    --footer:#64748b;
-    --legend:#334155;--strong:#0f172a;--note:#546478;
-    --map-bg:#e8edf3;--map-fg:#1e293b;
-    --popup-bg:#ffffff;--attrib-bg:#ffffffcc;--attrib-text:#475569;--attrib-link:#1d6fd1;
-    --ctrl-filter:none;
-    --halo:#ffffff;
-    --dot-off:#94a3b8;
-  }
+  color-scheme:light;
+  --bg:#f1f5f9;--panel:#ffffff;--border:#d4dce8;--text:#0f172a;--muted:#5b6b82;
+  --red:#d4203a;--orange:#b86a08;--green:#0e8f67;--blue:#1d6fd1;
+  --glow:#cfe0f5;
+  --hero-bg:linear-gradient(125deg,#ffeef1,#f5f1fb 52%,#eaf2fd);
+  --watermark:#0f172a0a;
+  --tag-bg:#0f172a08;--tag-border:#0f172a1a;--tag-red:#c4203a;
+  --tab-border:#0f172a22;--tab-bg:#ffffffcc;--tab-text:#334155;--tab-active:#c4203a;
+  --sub:#475569;--sub2:#475569;
+  --metric-bg:#ffffffb3;
+  --panel-a:#ffffff;--panel-b:#f8fafc;
+  --line:#0f172a14;--area-bg:#0f172a05;--area-border:#0f172a14;
+  --btn-bg:#eef2f7;--btn-hover:#dde5ef;--btn-text:#1e293b;
+  --pre-bg:#f4f7fb;--pre-text:#1e4a7a;
+  --footer:#64748b;
+  --legend:#334155;--strong:#0f172a;--note:#546478;
+  --map-bg:#e8edf3;--map-fg:#1e293b;
+  --popup-bg:#ffffff;--attrib-bg:#ffffffcc;--attrib-text:#475569;--attrib-link:#1d6fd1;
+  --ctrl-filter:none;
+  --halo:#ffffff;
+  --dot-off:#94a3b8;
 }
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(ellipse at 50% -15%,var(--glow) 0,transparent 55%),var(--bg);color:var(--text);font:14px Inter,"Noto Sans JP",system-ui,sans-serif}
@@ -129,8 +103,6 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .legend-line.p{background:#3b9bff}
 .legend-line.s{background:#ff4058}
 .legend-x{font-size:21px;line-height:15px;color:#ff304b;font-weight:900}
-
-/* PLUM凡例：地図上のPLUMマーカーと同じ形・サイズ・色 */
 .legend-ring{
   display:inline-block;
   flex:0 0 22px;
@@ -140,21 +112,13 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
   border:2.5px solid #ff304b;
   border-radius:50%;
   background:transparent;
-  box-shadow:
-    inset 0 0 0 1.5px #fff,
-    inset 0 0 0 3.5px #ff304b;
+  box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3.5px #ff304b;
   animation:none!important;
   transform:none!important;
   opacity:1!important;
 }
-
-#earthquakeMap{width:100%;height:480px;background:#0b1220;position:relative}
-#earthquakeMap[data-map-theme="light"]{background:#e8edf3}
-#earthquakeMap .map-layer{position:absolute;inset:0}
-#mapAlt{z-index:0;visibility:hidden}
-#mapMain{z-index:1}
-#earthquakeMap.use-alt #mapAlt{visibility:visible}
-#earthquakeMap.use-alt #mapMain .maplibregl-canvas{opacity:0}
+#earthquakeMap{width:100%;height:480px;background:#e8edf3;position:relative}
+#mapMain{position:absolute;inset:0}
 .map-loading{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;background:var(--map-bg);color:var(--map-fg);text-align:center}
 .map-loading.hidden{display:none!important}
 .map-loading-spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:mapSpin .8s linear infinite}
@@ -169,46 +133,24 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .maplibregl-popup-content{background:var(--popup-bg);color:var(--text);font-size:12px;border:1px solid var(--border)}
 .maplibregl-popup-tip{border-top-color:var(--popup-bg)!important;border-bottom-color:var(--popup-bg)!important}
 .maplibregl-ctrl-group{background:var(--popup-bg)!important}
-.maplibregl-ctrl-group button{filter:var(--ctrl-filter)}
+.maplibregl-ctrl-group button{filter:none}
 .maplibregl-ctrl-attrib{color:var(--attrib-text)!important;background:var(--attrib-bg)!important}
 .maplibregl-ctrl-attrib a{color:var(--attrib-link)!important}
 .source-status{color:var(--muted);font-size:11px}
 .source-status.ok{color:var(--green)}
 .source-status.error{color:var(--tag-red)}
 .epicenter-icon{color:#ff304b;font:bold 34px/34px Arial,sans-serif;text-shadow:0 0 5px var(--halo),0 0 10px var(--halo);text-align:center;width:34px;height:34px;pointer-events:auto;user-select:none;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-
-/* PLUM法マーカー：波紋・点滅・拡大縮小なしの固定リング */
 .epicenter-icon.plum{
-  font-size:0;
-  line-height:0;
-  text-shadow:none;
-  animation:none!important;
-  transform:none!important;
-  opacity:1!important;
+  font-size:0;line-height:0;text-shadow:none;
+  animation:none!important;transform:none!important;opacity:1!important;
 }
 .epicenter-icon.plum::before{
-  content:"";
-  display:block;
-  flex:0 0 22px;
-  width:22px;
-  height:22px;
-  box-sizing:border-box;
-  border:2.5px solid #ff304b;
-  border-radius:50%;
-  background:transparent;
-  box-shadow:
-    inset 0 0 0 1.5px #fff,
-    inset 0 0 0 3.5px #ff304b;
-  animation:none!important;
-  transform:none!important;
-  opacity:1!important;
+  content:"";display:block;flex:0 0 22px;width:22px;height:22px;box-sizing:border-box;
+  border:2.5px solid #ff304b;border-radius:50%;background:transparent;
+  box-shadow:inset 0 0 0 1.5px #fff,inset 0 0 0 3.5px #ff304b;
+  animation:none!important;transform:none!important;opacity:1!important;
 }
-.epicenter-icon.plum::after{
-  content:none!important;
-  display:none!important;
-  animation:none!important;
-}
-
+.epicenter-icon.plum::after{content:none!important;display:none!important;animation:none!important}
 .wave-note{padding:12px 18px;color:var(--note);font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
 @media(max-width:850px){.grid{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#earthquakeMap{height:400px}}
 @media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}.map-status{padding:12px}}
@@ -240,11 +182,11 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 <section class="panel map-panel">
   <div class="panel-head"><h3>地震波到達予想マップ</h3><div class="map-legend"><span class="legend-item"><span class="legend-line p"></span>P波</span><span class="legend-item"><span class="legend-line s"></span>S波</span><span class="legend-item"><span class="legend-x">×</span>震源</span><span class="legend-item"><span class="legend-ring"></span>震源(PLUM法)</span></div></div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ">
-    <div id="mapAlt" class="map-layer"></div><div id="mapMain" class="map-layer"></div>
+    <div id="mapMain"></div>
     <div id="mapLoading" class="map-loading" role="status" aria-live="polite"><div class="map-loading-spinner" aria-hidden="true"></div><div class="map-loading-title">地図を準備しています</div><div id="mapLoadingStatus" class="map-loading-status">地図データと走時表を読み込んでいます…</div></div>
   </div>
   <div class="map-status"><span id="mapStatus">地図の準備中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
-  <div class="wave-note">気象庁の走時表（JMA2001走時表）から計算される、地震波のP波およびS波初動の到達予想地点を表示しています。P波・S波到達予想円の半径が2,000kmに達して以降は、走時表の範囲を超えるため、円の表示を行いません。</div>
+  <div class="wave-note">気象庁の走時表（JMA2001走時表）から計算される、地震波のP波およびS波初動の到達予想地点を表示しています。P波・S波のいずれかが2,000kmに達した時点で、両方の円を消去します。</div>
 </section>
 <div class="grid"><div>
 <section class="panel">
@@ -278,6 +220,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 
 const WS_URL="wss://ws-api.wolfx.jp/jma_eew",COMMAND="query_jmaeew";
 const TRAVEL_TABLE_URL="./tjma2001.txt";
+const MAP_STYLE_LIGHT="https://tiles.openfreemap.org/styles/positron";
 const PING_INTERVAL=5000,PING_TIMEOUT=10000,SILENCE_LIMIT=20000;
 const RECONNECT_MIN=500,RECONNECT_MAX=10000,ROTATE_MS=4000;
 const EVENT_TTL=10*60000,EVENT_KEEP=60*60000,FINAL_HIDE_MS=3*60000,CANCEL_HIDE_MS=20000;
@@ -291,28 +234,30 @@ const JAPAN_EDGE_POINTS=[
  [45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],
  [41.5575,140.9078],[34.7054,135.49],[31,130],[26.2125,127.6811]
 ];
-const MAP_STYLE_DARK="https://tiles.openfreemap.org/styles/dark";
-const MAP_STYLE_LIGHT="https://tiles.openfreemap.org/styles/positron";
 const $=id=>document.getElementById(id);
-
-/* 端末のライト/ダーク設定を取得（変更時は自動追従） */
-const schemeQuery=window.matchMedia("(prefers-color-scheme: light)");
-function currentMapStyle(){return schemeQuery.matches?MAP_STYLE_LIGHT:MAP_STYLE_DARK;}
 
 let socket=null,reconnectTimer=null,reconnectDelay=RECONNECT_MIN,stopped=false;
 let lastMessageAt=0,pingTimer=null,pingSentAt=0,pingPending=false,watchdogTimer=null,pingMissed=0;
 const events=new Map();
 let currentKey=null,rotateTimer=null,shownAt=0;
 
-const primaryTheme=schemeQuery.matches?"light":"dark";
-$("earthquakeMap").dataset.mapTheme=primaryTheme;
-let altMap=null,altReady=false;
+/* 地図の初期表示を高速化する設定 */
 const map=new maplibregl.Map({
  container:"mapMain",
- style:currentMapStyle(),
+ style:MAP_STYLE_LIGHT,
  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
- pixelRatio:Math.min(window.devicePixelRatio||1,2),canvasContextAttributes:{antialias:false},
- attributionControl:true,trackResize:true
+ pixelRatio:Math.min(window.devicePixelRatio||1,2),
+ canvasContextAttributes:{antialias:false},
+ attributionControl:true,
+ trackResize:false,
+ fadeDuration:0,
+ maxTileCacheSize:128,
+ maxTileCacheZoomLevels:2,
+ refreshExpiredTiles:false,
+ localIdeographFontFamily:"sans-serif",
+ crossSourceCollisions:false,
+ renderWorldCopies:false,
+ preserveDrawingBuffer:false
 });
 map.addControl(new maplibregl.NavigationControl(),"top-right");
 
@@ -326,7 +271,6 @@ let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
 let currentIsSea=null,finalMapViewApplied=false,currentIsPlum=false;
 let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0,autoCameraTarget=null;
-/* 走時表は地図の読み込み完了を待たず、スクリプト開始と同時に並列取得 */
 const tablePromise=loadTravelTable();
 
 function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
@@ -373,7 +317,7 @@ function restoreSavedMapView(){
 }
 function finishManualGesture(){
  if(!manualGestureActive)return;
- if(userMoveInProgress)return; /* ダブルタップズーム・慣性移動などのアニメーション中は moveend 側で復帰を予約 */
+ if(userMoveInProgress)return;
  manualGestureActive=false;
  const changed=viewsDiffer(manualGestureStartView,getMapView());
  manualGestureChanged=changed;
@@ -406,7 +350,6 @@ function setupMapInteractionListeners(){
   if(!["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","+","-","=","_"].includes(event.key))return;
   saveMapViewBeforeManualMove();manualGestureChanged=true;scheduleMapReturn();
  },true);
- /* ユーザー操作由来の移動(ダブルタップズーム含む)は originalEvent が付く。終了時に必ず5秒後の復帰を予約する */
  map.on("movestart",e=>{
   if(!e||!e.originalEvent)return;
   saveMapViewBeforeManualMove();
@@ -424,7 +367,6 @@ function setupMapInteractionListeners(){
  map.on("pitchstart",()=>{if(!isUserMapControlActive())saveMapViewBeforeManualMove();});
 }
 
-/* Web Mercatorに基づいて、表示領域に収まるカメラ位置を算出 */
 function mercatorY(latitude){
  const lat=Math.max(-MAP_MERCATOR_MAX_LATITUDE,Math.min(MAP_MERCATOR_MAX_LATITUDE,latitude));
  const radians=lat*Math.PI/180;
@@ -492,7 +434,6 @@ function getNearestJapanPoint(){
  }
  return nearest;
 }
-/* 波表示終了後の最終表示。陸地と震源が近い場合は震源を画面上端(y=0)に置く */
 function applyFinalMapView(immediate=false){
  if(!mapReady||!currentOrigin||finalMapViewApplied)return false;
  if(isUserMapControlActive()){pendingAutoCamera=true;return false;}
@@ -529,19 +470,18 @@ function finishMapStartup(){
    else if(!initialViewFitted)applyLatestAutomaticCamera(true);
   }else fitJapanView(true);
   requestAnimationFrame(()=>{
-   resizeAllMaps();$("mapLoading").classList.add("hidden");
-   text("mapStatus",currentOrigin?"地震情報を表示中":"地震情報を待機中");
+   resizeAllMaps();
+   $("mapLoading").classList.add("hidden");
+   text("mapStatus",currentOrigin?"地震情報を表示中":"地図スタイル読み込み済み・地震情報待機中");
   });
  });
 }
-/* 波表示用のソース・レイヤーを追加 */
 function addWaveLayers(m=map){
  if(!m.getSource("wave-p"))m.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
  if(!m.getSource("wave-s"))m.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
  if(!m.getLayer("wave-p-line"))m.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
  if(!m.getLayer("wave-s-line"))m.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
 }
-/* 波レイヤーが無ければ再作成（スタイル再読込・WebGL復帰などで消えた場合の保険） */
 function ensureWaveLayersOn(m){
  try{
   if(m.getSource("wave-p")&&m.getSource("wave-s")&&m.getLayer("wave-p-line")&&m.getLayer("wave-s-line"))return true;
@@ -550,99 +490,40 @@ function ensureWaveLayersOn(m){
 }
 function ensureWaveLayers(){
  if(!mapReady)return false;
- const ok=ensureWaveLayersOn(map);
- if(altReady)ensureWaveLayersOn(altMap);
- return ok;
+ return ensureWaveLayersOn(map);
 }
 let lastMapW=-1,lastMapH=-1;
 function resizeAllMaps(){
  const c=map.getContainer(),w=c.clientWidth,h=c.clientHeight;
- if(w===lastMapW&&h===lastMapH)return; /* resize()はキャンバスを一瞬空にするため、サイズ不変なら呼ばない */
+ if(w===lastMapW&&h===lastMapH)return;
  lastMapW=w;lastMapH=h;
  map.resize();
- if(altReady)altMap.resize();
 }
 
-/*
- * テーマ切替の仕組み：
- * 起動時のテーマの地図(mapMain)と、反対テーマの地図(mapAlt)を重ねて常に保持する。
- * テーマ切替は「どちらの地図を見せるか」をCSSで切り替えるだけなので、
- * スタイルの再読込・タイル再取得・空白・色のチラつきが発生せず、即時に反映される。
- * mapAlt は操作を受けず、mapMain のカメラに追従する。
- */
-function syncAltCamera(force=false){
- if(!altMap||!altReady||!mapReady)return;
- if(!force&&!altVisible())return; /* 見えていない側のカメラは動かさない（描画を止める） */
- altMap.jumpTo({center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),padding:map.getPadding()});
-}
-function createAltMap(){
- if(altMap||!mapReady)return;
- const altTheme=primaryTheme==="light"?"dark":"light";
- altMap=new maplibregl.Map({
-  container:"mapAlt",
-  style:altTheme==="light"?MAP_STYLE_LIGHT:MAP_STYLE_DARK,
-  center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),
-  minZoom:1,maxZoom:18,pixelRatio:Math.min(window.devicePixelRatio||1,2),canvasContextAttributes:{antialias:false},interactive:false,attributionControl:false,fadeDuration:0,trackResize:true
- });
- altMap.on("load",()=>{
-  addWaveLayers(altMap);altReady=true;
-  altMap.resize();syncAltCamera(true);
-  updateWaveMap();applyTheme();
- });
- altMap.on("style.load",()=>{if(altReady){ensureWaveLayersOn(altMap);updateWaveMap();}});
- altMap.on("error",e=>{if(e&&e.error)console.warn("MapLibre(alt):",e.error);});
- altMap.getCanvas().addEventListener("webglcontextrestored",()=>{ensureWaveLayers();updateWaveMap();altMap.triggerRepaint();});
-}
-function altVisible(){return $("earthquakeMap").classList.contains("use-alt");}
-function applyTheme(){
- const want=schemeQuery.matches?"light":"dark";
- const stage=$("earthquakeMap");
- const wasAlt=stage.classList.contains("use-alt");
- let nowAlt=wasAlt;
- if(want===primaryTheme)nowAlt=false;
- else if(altReady)nowAlt=true;
- else return; /* 反対テーマの地図が未準備。準備完了時に再適用される */
- if(nowAlt===wasAlt)return;
- if(nowAlt)syncAltCamera(true);
- stage.classList.toggle("use-alt",nowAlt);
- stage.dataset.mapTheme=nowAlt?(primaryTheme==="light"?"dark":"light"):primaryTheme;
- /* 見えなくなった側の波データは空にし、見える側へ即座に再描画 */
- const hidden=nowAlt?map:altMap;
- try{
-  for(const id of ["wave-p","wave-s"]){const src=hidden.getSource(id);if(src)src.setData(emptyFeatureCollection());}
- }catch{}
- wavesEmpty=false;
+/* style.load で初期化することで、全タイルの取得完了を待たない */
+map.on("style.load",()=>{
+ if(!mapReady){
+  mapReady=true;
+  addWaveLayers();
+  setupMapInteractionListeners();
+  setupMapResizeObserver();
+  showMapLoading("地図スタイルを読み込みました。地図タイルを取得しています…");
+  tablePromise.finally(()=>{
+   tableSettled=true;
+   finishMapStartup();
+  });
+ }else{
+  ensureWaveLayers();
+  updateWaveMap();
+ }
+});
+
+map.getCanvas().addEventListener("webglcontextrestored",()=>{
+ ensureWaveLayers();
  updateWaveMap();
-}
-map.on("load",()=>{
- mapReady=true;
- addWaveLayers();
- map.on("style.load",()=>{ensureWaveLayers();updateWaveMap();});
- map.getCanvas().addEventListener("webglcontextrestored",()=>{ensureWaveLayers();updateWaveMap();map.triggerRepaint();});
- setupMapInteractionListeners();setupMapResizeObserver();
- showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
- tablePromise.finally(()=>{tableSettled=true;finishMapStartup();});
- map.on("move",()=>syncAltCamera());
- setTimeout(createAltMap,200);
+ map.triggerRepaint();
 });
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
-
-/* 端末のライト/ダーク切替に追従して表示する地図を切り替える */
-/* 復帰直後などに端末のテーマ判定が一瞬揺れても切り替えないよう、
-   (1)非表示中は無視 (2)復帰直後は長め、通常操作は短い待ちで確定値を再取得 */
-let schemeTimer=null,lastVisibleAt=0;
-function onSchemeChange(){
- if(!mapReady)return;
- if(schemeTimer!==null)clearTimeout(schemeTimer);
- const delay=performance.now()-lastVisibleAt<1500?400:30;
- schemeTimer=setTimeout(()=>{
-  schemeTimer=null;
-  if(document.visibilityState==="hidden")return;
-  applyTheme();
- },delay);
-}
-if(typeof schemeQuery.addEventListener==="function")schemeQuery.addEventListener("change",onSchemeChange);
-else if(typeof schemeQuery.addListener==="function")schemeQuery.addListener(onSchemeChange);
 
 function scheduleEpicenterAdjustment(){
  if(markerAdjustFrame!==null)cancelAnimationFrame(markerAdjustFrame);
@@ -653,7 +534,12 @@ function scheduleEpicenterAdjustment(){
 }
 function setupMapResizeObserver(){
  if(mapResizeObserver||typeof ResizeObserver==="undefined")return;
- mapResizeObserver=new ResizeObserver(()=>{if(mapReady)resizeAllMaps();});
+ mapResizeObserver=new ResizeObserver(()=>{
+  if(mapReady){
+   lastMapW=-1;lastMapH=-1;
+   resizeAllMaps();
+  }
+ });
  mapResizeObserver.observe($("earthquakeMap"));
 }
 function text(id,value){
@@ -714,14 +600,13 @@ function createCircleFeature(lat,lon,radiusKm,count=180){
 }
 function setGeoJSON(sourceId,data){
  if(!mapReady)return;
- const m=(altReady&&altVisible())?altMap:map;
- let source=m.getSource(sourceId);
- if(!source){ensureWaveLayersOn(m);source=m.getSource(sourceId);}
+ let source=map.getSource(sourceId);
+ if(!source){ensureWaveLayersOn(map);source=map.getSource(sourceId);}
  if(source)source.setData(data);
 }
 let wavesEmpty=false;
 function clearWaveLayers(){
- if(wavesEmpty)return; /* 既に空なら毎フレーム送らない */
+ if(wavesEmpty)return;
  wavesEmpty=true;
  setGeoJSON("wave-p",emptyFeatureCollection());setGeoJSON("wave-s",emptyFeatureCollection());
 }
@@ -820,9 +705,13 @@ function updateWaveMap(){
  if(!rows.length){text("mapStatus","該当する深さの走時データがありません");clearWaveLayers();return;}
  const pRadius=interpolateDistance(rows,elapsed,"P"),sRadius=interpolateDistance(rows,elapsed,"S");
  lastPRadius=pRadius;lastSRadius=sRadius;
- if((pRadius!==null&&pRadius>WAVE_MAX_KM)||(sRadius!==null&&sRadius>WAVE_MAX_KM)){
-  finishWaveDisplay("P波またはS波が"+WAVE_MAX_KM+"kmを超えたため波表示終了");return;
+
+ /* P波またはS波のどちらかが2,000kmに到達したら、両方の波表示を終了 */
+ if((pRadius!==null&&pRadius>=WAVE_MAX_KM)||(sRadius!==null&&sRadius>=WAVE_MAX_KM)){
+  finishWaveDisplay("P波またはS波が"+WAVE_MAX_KM+"kmに到達したため波表示終了");
+  return;
  }
+
  const japanDistance=distanceToCoverJapan(currentOrigin);
  if(!pWavePassedJapan&&pRadius!==null&&pRadius>=japanDistance)pWavePassedJapan=true;
  if(!sWavePassedJapan&&sRadius!==null&&sRadius>=japanDistance){finishWaveDisplay();return;}
@@ -833,10 +722,6 @@ function updateWaveMap(){
  setGeoJSON("wave-p",{type:"FeatureCollection",features:pFeatures});
  setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
 
- /*
-  * 初回だけでなく、波の半径が十分変わったときにカメラを再計算。
-  * 連続移動によるちらつきを避け、最低4秒間隔・半径20%以上の変化を条件にする。
-  */
  const visibleRadii=[pWavePassedJapan?null:pRadius,sRadius].filter(v=>Number.isFinite(v)&&v>0&&v<=WAVE_MAX_KM);
  if(startupComplete&&!japanViewLocked&&!waveDisplayFinished&&visibleRadii.length&&!isUserMapControlActive()){
   const radius=Math.max(...visibleRadii);
@@ -846,7 +731,6 @@ function updateWaveMap(){
   }
  }else if(isUserMapControlActive())pendingAutoCamera=true;
 
- /* 60FPS描画時にDOM更新が毎フレーム走らないよう、ステータス文言と震源マーカー補正は間引く */
  const nowMs=performance.now();
  if(nowMs-lastWaveStatusAt>=WAVE_STATUS_MS){
   lastWaveStatusAt=nowMs;
@@ -855,7 +739,6 @@ function updateWaveMap(){
   text("mapStatus",pStatus+" ・ "+sStatus);scheduleEpicenterAdjustment();
  }
 }
-/* P波・S波アニメーション：requestAnimationFrameで最大60FPS（120Hz等の高リフレッシュ環境でも60FPSに制限） */
 function startMapUpdater(){
  if(mapUpdateRaf!==null)return;
  const tick=timestamp=>{
@@ -896,7 +779,6 @@ function setMapEvent(data,eventKey){
  }
  updateEpicenterMarker();updateWaveMap();
 
- /* 新しい地震の初回表示を、別処理で直後に日本全体へ戻さない */
  if(startupComplete&&isNewEvent&&!waveDisplayFinished){
   if(isUserMapControlActive())pendingAutoCamera=true;
   else if(!initialViewFitted){
@@ -910,7 +792,6 @@ function removeEpicenterMarker(){
  if(epicenterMarker){epicenterMarker.remove();epicenterMarker=null;}
  if(epicenterPopup){epicenterPopup.remove();epicenterPopup=null;}
 }
-/* PLUM法（仮定震源要素）の震源は赤・白・赤の空洞リング、それ以外は×で表示 */
 function applyEpicenterStyle(element){
  element.classList.toggle("plum",currentIsPlum);
  element.textContent=currentIsPlum?"":"×";
@@ -1150,14 +1031,22 @@ function sweep(){
 }
 document.addEventListener("visibilitychange",()=>{
  if(document.visibilityState!=="visible")return;
- lastVisibleAt=performance.now();
  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2)reconnectNow();
  else sendPing();
- requestAnimationFrame(()=>{if(!mapReady)return;resizeAllMaps();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();});
- onSchemeChange(); /* 非表示中にテーマが変わっていた場合のみ、確定後に入れ替える */
+ requestAnimationFrame(()=>{
+  if(!mapReady)return;
+  lastMapW=-1;lastMapH=-1;
+  resizeAllMaps();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();
+ });
 });
-window.addEventListener("resize",()=>{if(mapReady)resizeAllMaps();});
-window.addEventListener("orientationchange",()=>{setTimeout(()=>{if(mapReady)resizeAllMaps();},250);});
+window.addEventListener("resize",()=>{
+ if(mapReady){lastMapW=-1;lastMapH=-1;resizeAllMaps();}
+});
+window.addEventListener("orientationchange",()=>{
+ setTimeout(()=>{
+  if(mapReady){lastMapW=-1;lastMapH=-1;resizeAllMaps();}
+ },250);
+});
 window.addEventListener("online",reconnectNow);
 $("reconnectBtn").addEventListener("click",reconnectNow);
 window.addEventListener("beforeunload",()=>{
