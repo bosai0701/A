@@ -7,6 +7,9 @@
 <meta name="theme-color" content="#080d18" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)">
 <title>JMA EEW | Earthquake Monitor</title>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+<link rel="preload" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js" as="script" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
 /* ===== テーマ変数：デフォルトはダーク、端末がライト設定の場合は自動でライトに切替 ===== */
@@ -312,6 +315,8 @@ let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
 let currentIsSea=null,finalMapViewApplied=false,currentIsPlum=false;
 let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0,autoCameraTarget=null;
+/* 走時表は地図の読み込み完了を待たず、スクリプト開始と同時に並列取得 */
+const tablePromise=loadTravelTable();
 
 function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
 function isUserMapControlActive(){return manualGestureActive||Date.now()<userMapOverrideUntil||mapReturnInProgress;}
@@ -542,29 +547,46 @@ map.on("load",()=>{
  map.getCanvas().addEventListener("webglcontextrestored",()=>{ensureWaveLayers();updateWaveMap();map.triggerRepaint();});
  setupMapInteractionListeners();setupMapResizeObserver();
  showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
- loadTravelTable().finally(()=>{tableSettled=true;finishMapStartup();});
+ tablePromise.finally(()=>{tableSettled=true;finishMapStartup();});
+ prefetchMapStyles();
 });
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
 
 /* 端末のライト/ダーク切替に追従して地図スタイルを入れ替える */
-/* 復帰直後などに端末のテーマ判定が一瞬揺れても地図スタイルを入れ替えないよう、
-   (1)非表示中は無視 (2)400ms待って確定値を再取得 (3)現在適用中のスタイルと同じなら何もしない */
-let appliedMapStyle=currentMapStyle(),schemeTimer=null;
+/* 両テーマのスタイルJSONを先読みしておき、切替時はネットワーク待ち・タイル再取得なしで差分適用する */
+const styleJsonCache=new Map();
+function prefetchMapStyles(){
+ for(const url of [MAP_STYLE_DARK,MAP_STYLE_LIGHT]){
+  if(styleJsonCache.has(url))continue;
+  fetch(url).then(r=>r.ok?r.json():null).then(j=>{if(j)styleJsonCache.set(url,j);}).catch(()=>{});
+ }
+}
+function applyMapStyle(url){
+ const cached=styleJsonCache.get(url);
+ if(cached){
+  try{
+   map.setStyle(structuredClone(cached),{diff:true});
+   ensureWaveLayers();updateWaveMap();
+   return;
+  }catch(error){console.warn("スタイル差分適用に失敗。通常読み込みに切替:",error);}
+ }
+ map.setStyle(url); /* style.load ハンドラ側で波レイヤーを再作成 */
+}
+/* 復帰直後などに端末のテーマ判定が一瞬揺れても入れ替えないよう、
+   (1)非表示中は無視 (2)復帰直後は長め、通常操作は短い待ちで確定値を再取得 (3)適用中のスタイルと同じなら何もしない */
+let appliedMapStyle=currentMapStyle(),schemeTimer=null,lastVisibleAt=0;
 function onSchemeChange(){
  if(!mapReady)return;
  if(schemeTimer!==null)clearTimeout(schemeTimer);
+ const delay=performance.now()-lastVisibleAt<1500?400:80;
  schemeTimer=setTimeout(()=>{
   schemeTimer=null;
   if(document.visibilityState==="hidden")return;
   const next=currentMapStyle();
   if(next===appliedMapStyle)return;
   appliedMapStyle=next;
-  map.once("style.load",()=>{
-   addWaveLayers();
-   updateWaveMap();
-  });
-  map.setStyle(next);
- },400);
+  applyMapStyle(next);
+ },delay);
 }
 if(typeof schemeQuery.addEventListener==="function")schemeQuery.addEventListener("change",onSchemeChange);
 else if(typeof schemeQuery.addListener==="function")schemeQuery.addListener(onSchemeChange);
@@ -681,7 +703,7 @@ function isOlderSerial(incoming,existing){
 async function loadTravelTable(){
  const status=$("tableStatus");
  try{
-  const response=await fetch(TRAVEL_TABLE_URL,{cache:"no-store"});
+  const response=await fetch(TRAVEL_TABLE_URL);
   if(!response.ok)throw new Error("HTTP "+response.status);
   const content=await response.text(),parsed=[];
   for(const line of content.split(/\r?\n/)){
@@ -1070,6 +1092,7 @@ function sweep(){
 }
 document.addEventListener("visibilitychange",()=>{
  if(document.visibilityState!=="visible")return;
+ lastVisibleAt=performance.now();
  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2)reconnectNow();
  else sendPing();
  requestAnimationFrame(()=>{if(!mapReady)return;map.resize();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();});
