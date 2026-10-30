@@ -148,6 +148,11 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 }
 
 #earthquakeMap{width:100%;height:480px;background:var(--map-bg);position:relative}
+#earthquakeMap .map-layer{position:absolute;inset:0}
+#mapAlt{z-index:0;visibility:hidden}
+#mapMain{z-index:1}
+#earthquakeMap.use-alt #mapAlt{visibility:visible}
+#earthquakeMap.use-alt #mapMain .maplibregl-canvas{opacity:0}
 .map-loading{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;background:var(--map-bg);color:var(--map-fg);text-align:center}
 .map-loading.hidden{display:none!important}
 .map-loading-spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:mapSpin .8s linear infinite}
@@ -233,6 +238,7 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 <section class="panel map-panel">
   <div class="panel-head"><h3>地震波到達予想マップ</h3><div class="map-legend"><span class="legend-item"><span class="legend-line p"></span>P波</span><span class="legend-item"><span class="legend-line s"></span>S波</span><span class="legend-item"><span class="legend-x">×</span>震源</span><span class="legend-item"><span class="legend-ring"></span>震源(PLUM法)</span></div></div>
   <div id="earthquakeMap" aria-label="P波・S波到達予想マップ">
+    <div id="mapAlt" class="map-layer"></div><div id="mapMain" class="map-layer"></div>
     <div id="mapLoading" class="map-loading" role="status" aria-live="polite"><div class="map-loading-spinner" aria-hidden="true"></div><div class="map-loading-title">地図を準備しています</div><div id="mapLoadingStatus" class="map-loading-status">地図データと走時表を読み込んでいます…</div></div>
   </div>
   <div class="map-status"><span id="mapStatus">地図の準備中</span><span id="tableStatus" class="source-status">走時表を読み込み中</span></div>
@@ -297,8 +303,10 @@ let lastMessageAt=0,pingTimer=null,pingSentAt=0,pingPending=false,watchdogTimer=
 const events=new Map();
 let currentKey=null,rotateTimer=null,shownAt=0;
 
+const primaryTheme=schemeQuery.matches?"light":"dark";
+let altMap=null,altReady=false;
 const map=new maplibregl.Map({
- container:"earthquakeMap",
+ container:"mapMain",
  style:currentMapStyle(),
  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
  attributionControl:true,trackResize:true
@@ -511,34 +519,91 @@ function finishMapStartup(){
  if(startupComplete||!mapReady||!tableSettled)return;
  startupComplete=true;
  requestAnimationFrame(()=>{
-  map.resize();
+  resizeAllMaps();
   if(currentOrigin){
    updateEpicenterMarker();updateWaveMap();
    if(waveDisplayFinished)applyFinalMapView(true);
    else if(!initialViewFitted)applyLatestAutomaticCamera(true);
   }else fitJapanView(true);
   requestAnimationFrame(()=>{
-   map.resize();$("mapLoading").classList.add("hidden");
+   resizeAllMaps();$("mapLoading").classList.add("hidden");
    text("mapStatus",currentOrigin?"地震情報を表示中":"地震情報を待機中");
   });
  });
 }
-/* 波表示用のソース・レイヤーを追加（スタイル切替後にも再利用） */
-function addWaveLayers(){
- if(!map.getSource("wave-p"))map.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
- if(!map.getSource("wave-s"))map.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
- if(!map.getLayer("wave-p-fill"))map.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
- if(!map.getLayer("wave-p-line"))map.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
- if(!map.getLayer("wave-s-fill"))map.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
- if(!map.getLayer("wave-s-line"))map.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
+/* 波表示用のソース・レイヤーを追加 */
+function addWaveLayers(m=map){
+ if(!m.getSource("wave-p"))m.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
+ if(!m.getSource("wave-s"))m.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
+ if(!m.getLayer("wave-p-fill"))m.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
+ if(!m.getLayer("wave-p-line"))m.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
+ if(!m.getLayer("wave-s-fill"))m.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
+ if(!m.getLayer("wave-s-line"))m.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
 }
 /* 波レイヤーが無ければ再作成（スタイル再読込・WebGL復帰などで消えた場合の保険） */
+function ensureWaveLayersOn(m){
+ try{
+  if(m.getSource("wave-p")&&m.getSource("wave-s")&&m.getLayer("wave-p-fill")&&m.getLayer("wave-p-line")&&m.getLayer("wave-s-fill")&&m.getLayer("wave-s-line"))return true;
+  addWaveLayers(m);return true;
+ }catch{return false;}
+}
 function ensureWaveLayers(){
  if(!mapReady)return false;
+ const ok=ensureWaveLayersOn(map);
+ if(altReady)ensureWaveLayersOn(altMap);
+ return ok;
+}
+function resizeAllMaps(){
+ map.resize();
+ if(altReady)altMap.resize();
+}
+
+/*
+ * テーマ切替の仕組み：
+ * 起動時のテーマの地図(mapMain)と、反対テーマの地図(mapAlt)を重ねて常に保持する。
+ * テーマ切替は「どちらの地図を見せるか」をCSSで切り替えるだけなので、
+ * スタイルの再読込・タイル再取得・空白・色のチラつきが発生せず、即時に反映される。
+ * mapAlt は操作を受けず、mapMain のカメラに追従する。
+ */
+function syncAltCamera(){
+ if(!altMap||!altReady||!mapReady)return;
+ altMap.jumpTo({center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),padding:map.getPadding()});
+}
+function createAltMap(){
+ if(altMap||!mapReady)return;
+ const altTheme=primaryTheme==="light"?"dark":"light";
+ altMap=new maplibregl.Map({
+  container:"mapAlt",
+  style:altTheme==="light"?MAP_STYLE_LIGHT:MAP_STYLE_DARK,
+  center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),
+  minZoom:1,maxZoom:18,interactive:false,attributionControl:false,fadeDuration:0,trackResize:true
+ });
+ altMap.on("load",()=>{
+  addWaveLayers(altMap);altReady=true;
+  altMap.resize();syncAltCamera();
+  updateWaveMap();applyTheme();
+ });
+ altMap.on("style.load",()=>{if(altReady){ensureWaveLayersOn(altMap);updateWaveMap();}});
+ altMap.on("error",e=>{if(e&&e.error)console.warn("MapLibre(alt):",e.error);});
+ altMap.getCanvas().addEventListener("webglcontextrestored",()=>{ensureWaveLayers();updateWaveMap();altMap.triggerRepaint();});
+}
+function altVisible(){return $("earthquakeMap").classList.contains("use-alt");}
+function applyTheme(){
+ const want=schemeQuery.matches?"light":"dark";
+ const stage=$("earthquakeMap");
+ const wasAlt=stage.classList.contains("use-alt");
+ let nowAlt=wasAlt;
+ if(want===primaryTheme)nowAlt=false;
+ else if(altReady)nowAlt=true;
+ else return; /* 反対テーマの地図が未準備。準備完了時に再適用される */
+ if(nowAlt===wasAlt)return;
+ stage.classList.toggle("use-alt",nowAlt);
+ /* 見えなくなった側の波データは空にし、見える側へ即座に再描画 */
+ const hidden=nowAlt?map:altMap;
  try{
-  if(map.getSource("wave-p")&&map.getSource("wave-s")&&map.getLayer("wave-p-fill")&&map.getLayer("wave-p-line")&&map.getLayer("wave-s-fill")&&map.getLayer("wave-s-line"))return true;
-  addWaveLayers();return true;
- }catch{return false;}
+  for(const id of ["wave-p","wave-s"]){const src=hidden.getSource(id);if(src)src.setData(emptyFeatureCollection());}
+ }catch{}
+ updateWaveMap();
 }
 map.on("load",()=>{
  mapReady=true;
@@ -548,44 +613,23 @@ map.on("load",()=>{
  setupMapInteractionListeners();setupMapResizeObserver();
  showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
  tablePromise.finally(()=>{tableSettled=true;finishMapStartup();});
- prefetchMapStyles();
+ map.on("move",syncAltCamera);
+ setTimeout(createAltMap,200);
 });
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
 
-/* 端末のライト/ダーク切替に追従して地図スタイルを入れ替える */
-/* 両テーマのスタイルJSONを先読みしておき、切替時はネットワーク待ち・タイル再取得なしで差分適用する */
-const styleJsonCache=new Map();
-function prefetchMapStyles(){
- for(const url of [MAP_STYLE_DARK,MAP_STYLE_LIGHT]){
-  if(styleJsonCache.has(url))continue;
-  fetch(url).then(r=>r.ok?r.json():null).then(j=>{if(j)styleJsonCache.set(url,j);}).catch(()=>{});
- }
-}
-function applyMapStyle(url){
- const cached=styleJsonCache.get(url);
- if(cached){
-  try{
-   map.setStyle(structuredClone(cached),{diff:true});
-   ensureWaveLayers();updateWaveMap();
-   return;
-  }catch(error){console.warn("スタイル差分適用に失敗。通常読み込みに切替:",error);}
- }
- map.setStyle(url); /* style.load ハンドラ側で波レイヤーを再作成 */
-}
-/* 復帰直後などに端末のテーマ判定が一瞬揺れても入れ替えないよう、
-   (1)非表示中は無視 (2)復帰直後は長め、通常操作は短い待ちで確定値を再取得 (3)適用中のスタイルと同じなら何もしない */
-let appliedMapStyle=currentMapStyle(),schemeTimer=null,lastVisibleAt=0;
+/* 端末のライト/ダーク切替に追従して表示する地図を切り替える */
+/* 復帰直後などに端末のテーマ判定が一瞬揺れても切り替えないよう、
+   (1)非表示中は無視 (2)復帰直後は長め、通常操作は短い待ちで確定値を再取得 */
+let schemeTimer=null,lastVisibleAt=0;
 function onSchemeChange(){
  if(!mapReady)return;
  if(schemeTimer!==null)clearTimeout(schemeTimer);
- const delay=performance.now()-lastVisibleAt<1500?400:80;
+ const delay=performance.now()-lastVisibleAt<1500?400:30;
  schemeTimer=setTimeout(()=>{
   schemeTimer=null;
   if(document.visibilityState==="hidden")return;
-  const next=currentMapStyle();
-  if(next===appliedMapStyle)return;
-  appliedMapStyle=next;
-  applyMapStyle(next);
+  applyTheme();
  },delay);
 }
 if(typeof schemeQuery.addEventListener==="function")schemeQuery.addEventListener("change",onSchemeChange);
@@ -600,7 +644,7 @@ function scheduleEpicenterAdjustment(){
 }
 function setupMapResizeObserver(){
  if(mapResizeObserver||typeof ResizeObserver==="undefined")return;
- mapResizeObserver=new ResizeObserver(()=>{if(mapReady)map.resize();});
+ mapResizeObserver=new ResizeObserver(()=>{if(mapReady)resizeAllMaps();});
  mapResizeObserver.observe($("earthquakeMap"));
 }
 function text(id,value){
@@ -661,8 +705,9 @@ function createCircleFeature(lat,lon,radiusKm,count=180){
 }
 function setGeoJSON(sourceId,data){
  if(!mapReady)return;
- let source=map.getSource(sourceId);
- if(!source){ensureWaveLayers();source=map.getSource(sourceId);}
+ const m=(altReady&&altVisible())?altMap:map;
+ let source=m.getSource(sourceId);
+ if(!source){ensureWaveLayersOn(m);source=m.getSource(sourceId);}
  if(source)source.setData(data);
 }
 function clearWaveLayers(){
@@ -1095,11 +1140,11 @@ document.addEventListener("visibilitychange",()=>{
  lastVisibleAt=performance.now();
  if(!socket||socket.readyState!==WebSocket.OPEN||performance.now()-lastMessageAt>PING_INTERVAL*2)reconnectNow();
  else sendPing();
- requestAnimationFrame(()=>{if(!mapReady)return;map.resize();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();});
+ requestAnimationFrame(()=>{if(!mapReady)return;resizeAllMaps();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();});
  onSchemeChange(); /* 非表示中にテーマが変わっていた場合のみ、確定後に入れ替える */
 });
-window.addEventListener("resize",()=>{if(mapReady)map.resize();});
-window.addEventListener("orientationchange",()=>{setTimeout(()=>{if(mapReady)map.resize();},250);});
+window.addEventListener("resize",()=>{if(mapReady)resizeAllMaps();});
+window.addEventListener("orientationchange",()=>{setTimeout(()=>{if(mapReady)resizeAllMaps();},250);});
 window.addEventListener("online",reconnectNow);
 $("reconnectBtn").addEventListener("click",reconnectNow);
 window.addEventListener("beforeunload",()=>{
