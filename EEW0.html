@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
 <link rel="preload" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js" as="script" crossorigin>
 <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js" defer></script>
 <style>
 /* ===== テーマ変数：デフォルトはダーク、端末がライト設定の場合は自動でライトに切替 ===== */
 :root{
@@ -271,9 +272,8 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 </div></div>
 <footer class="footer"><span>DATA SOURCE: Wolfx JMA EEW WebSocket</span><span>受信データを基に表示。到達予想は走時表に基づく概算です。</span></footer>
 </div>
-<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
 <script>
-(() => {
+document.addEventListener("DOMContentLoaded",()=>{
 "use strict";
 
 const WS_URL="wss://ws-api.wolfx.jp/jma_eew",COMMAND="query_jmaeew";
@@ -311,6 +311,7 @@ const map=new maplibregl.Map({
  container:"mapMain",
  style:currentMapStyle(),
  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
+ pixelRatio:Math.min(window.devicePixelRatio||1,2),canvasContextAttributes:{antialias:false},
  attributionControl:true,trackResize:true
 });
 map.addControl(new maplibregl.NavigationControl(),"top-right");
@@ -537,15 +538,13 @@ function finishMapStartup(){
 function addWaveLayers(m=map){
  if(!m.getSource("wave-p"))m.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
  if(!m.getSource("wave-s"))m.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
- if(!m.getLayer("wave-p-fill"))m.addLayer({id:"wave-p-fill",type:"fill",source:"wave-p",paint:{"fill-color":"#3b9bff","fill-opacity":.10}});
  if(!m.getLayer("wave-p-line"))m.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
- if(!m.getLayer("wave-s-fill"))m.addLayer({id:"wave-s-fill",type:"fill",source:"wave-s",paint:{"fill-color":"#ff4058","fill-opacity":.08}});
  if(!m.getLayer("wave-s-line"))m.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
 }
 /* 波レイヤーが無ければ再作成（スタイル再読込・WebGL復帰などで消えた場合の保険） */
 function ensureWaveLayersOn(m){
  try{
-  if(m.getSource("wave-p")&&m.getSource("wave-s")&&m.getLayer("wave-p-fill")&&m.getLayer("wave-p-line")&&m.getLayer("wave-s-fill")&&m.getLayer("wave-s-line"))return true;
+  if(m.getSource("wave-p")&&m.getSource("wave-s")&&m.getLayer("wave-p-line")&&m.getLayer("wave-s-line"))return true;
   addWaveLayers(m);return true;
  }catch{return false;}
 }
@@ -571,8 +570,9 @@ function resizeAllMaps(){
  * スタイルの再読込・タイル再取得・空白・色のチラつきが発生せず、即時に反映される。
  * mapAlt は操作を受けず、mapMain のカメラに追従する。
  */
-function syncAltCamera(){
+function syncAltCamera(force=false){
  if(!altMap||!altReady||!mapReady)return;
+ if(!force&&!altVisible())return; /* 見えていない側のカメラは動かさない（描画を止める） */
  altMap.jumpTo({center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),padding:map.getPadding()});
 }
 function createAltMap(){
@@ -582,11 +582,11 @@ function createAltMap(){
   container:"mapAlt",
   style:altTheme==="light"?MAP_STYLE_LIGHT:MAP_STYLE_DARK,
   center:map.getCenter(),zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch(),
-  minZoom:1,maxZoom:18,interactive:false,attributionControl:false,fadeDuration:0,trackResize:true
+  minZoom:1,maxZoom:18,pixelRatio:Math.min(window.devicePixelRatio||1,2),canvasContextAttributes:{antialias:false},interactive:false,attributionControl:false,fadeDuration:0,trackResize:true
  });
  altMap.on("load",()=>{
   addWaveLayers(altMap);altReady=true;
-  altMap.resize();syncAltCamera();
+  altMap.resize();syncAltCamera(true);
   updateWaveMap();applyTheme();
  });
  altMap.on("style.load",()=>{if(altReady){ensureWaveLayersOn(altMap);updateWaveMap();}});
@@ -603,6 +603,7 @@ function applyTheme(){
  else if(altReady)nowAlt=true;
  else return; /* 反対テーマの地図が未準備。準備完了時に再適用される */
  if(nowAlt===wasAlt)return;
+ if(nowAlt)syncAltCamera(true);
  stage.classList.toggle("use-alt",nowAlt);
  stage.dataset.mapTheme=nowAlt?(primaryTheme==="light"?"dark":"light"):primaryTheme;
  /* 見えなくなった側の波データは空にし、見える側へ即座に再描画 */
@@ -610,6 +611,7 @@ function applyTheme(){
  try{
   for(const id of ["wave-p","wave-s"]){const src=hidden.getSource(id);if(src)src.setData(emptyFeatureCollection());}
  }catch{}
+ wavesEmpty=false;
  updateWaveMap();
 }
 map.on("load",()=>{
@@ -620,7 +622,7 @@ map.on("load",()=>{
  setupMapInteractionListeners();setupMapResizeObserver();
  showMapLoading("地図スタイルを読み込みました。走時表を確認しています…");
  tablePromise.finally(()=>{tableSettled=true;finishMapStartup();});
- map.on("move",syncAltCamera);
+ map.on("move",()=>syncAltCamera());
  setTimeout(createAltMap,200);
 });
 map.on("error",e=>{if(e&&e.error)console.warn("MapLibre:",e.error);});
@@ -717,7 +719,10 @@ function setGeoJSON(sourceId,data){
  if(!source){ensureWaveLayersOn(m);source=m.getSource(sourceId);}
  if(source)source.setData(data);
 }
+let wavesEmpty=false;
 function clearWaveLayers(){
+ if(wavesEmpty)return; /* 既に空なら毎フレーム送らない */
+ wavesEmpty=true;
  setGeoJSON("wave-p",emptyFeatureCollection());setGeoJSON("wave-s",emptyFeatureCollection());
 }
 function fitWaveCircle(radiusKm,immediate=false,allowRefit=false){
@@ -824,6 +829,7 @@ function updateWaveMap(){
  const pFeatures=[],sFeatures=[];
  if(!pWavePassedJapan&&pRadius!==null&&pRadius>0)pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
  if(sRadius!==null&&sRadius>0)sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
+ wavesEmpty=false;
  setGeoJSON("wave-p",{type:"FeatureCollection",features:pFeatures});
  setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
 
@@ -1167,7 +1173,7 @@ window.addEventListener("beforeunload",()=>{
  stopPing();closeSocket();
 });
 resetRotate();connect();startWatchdog();startMapUpdater();setInterval(sweep,1000);
-})();
+});
 </script>
 </body>
 </html>
