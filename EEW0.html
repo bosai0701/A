@@ -224,13 +224,41 @@ const EARTH_RADIUS_KM=6371.0088,MAP_RETURN_DELAY=5000,WAVE_MAX_KM=2000;
 const MAP_AUTOMATIC_FOCUS_MAX_ZOOM=7.0,MAP_MERCATOR_MAX_LATITUDE=85.05112878,MAP_TILE_SIZE=512;
 const NEAR_LAND_KM=600;
 const FINAL_VIEW_ZOOM=5;
-const WAVE_FRAME_MS=1000/60,WAVE_STATUS_MS=250;
+const WAVE_FRAME_MS=1000/20,WAVE_STATUS_MS=250;
+const WAVE_CIRCLE_POINTS=96;
+const CLOCK_SYNC_INTERVAL=30*60000;
 const JAPAN_BOUNDS=[[122.8,23.8],[146.0,45.8]];
 const JAPAN_EDGE_POINTS=[
  [45.5228,141.9367],[24.0456,123.7767],[24.4494,122.9333],
  [41.5575,140.9078],[34.7054,135.49],[31,130],[26.2125,127.6811]
 ];
 const $=id=>document.getElementById(id);
+
+/* 端末の時計ずれ補正（ミリ秒）。サーバーのDateヘッダーから推定する */
+let clockOffset=0;
+function nowMs(){return Date.now()+clockOffset;}
+async function syncClock(){
+ if(location.protocol!=="http:"&&location.protocol!=="https:")return;
+ const samples=[];
+ for(let i=0;i<5;i++){
+  try{
+   const t0=Date.now();
+   const r=await fetch(location.pathname+"?_t="+t0+"_"+i,{method:"HEAD",cache:"no-store"});
+   const t1=Date.now();
+   const header=r.headers.get("Date");
+   let d=header?Date.parse(header):NaN;
+   if(Number.isFinite(d)&&t1-t0<2000){
+    d+=(Number(r.headers.get("Age"))||0)*1000;
+    samples.push(d+500-(t0+t1)/2);
+   }
+  }catch{}
+  await new Promise(res=>setTimeout(res,230+Math.random()*340));
+ }
+ if(samples.length<3)return;
+ samples.sort((a,b)=>a-b);
+ const median=samples[samples.length>>1];
+ clockOffset=Math.abs(median)<1000?0:Math.round(median);
+}
 
 let socket=null,reconnectTimer=null,reconnectDelay=RECONNECT_MIN,stopped=false;
 let lastMessageAt=0,pingTimer=null,pingSentAt=0,pingPending=false,watchdogTimer=null,pingMissed=0;
@@ -242,7 +270,7 @@ const map=new maplibregl.Map({
  container:"mapMain",
  style:MAP_STYLE_LIGHT,
  center:[135,35.5],zoom:4.2,minZoom:1,maxZoom:18,
- pixelRatio:Math.min(window.devicePixelRatio||1,2),
+ pixelRatio:Math.min(window.devicePixelRatio||1,window.innerWidth>850?1.5:2),
  canvasContextAttributes:{antialias:false},
  attributionControl:true,
  trackResize:false,
@@ -267,6 +295,9 @@ let initialViewFitted=false,japanViewLocked=false,waveDisplayFinished=false;
 let lastPRadius=null,lastSRadius=null,lastAutoFitRadius=null;
 let currentIsSea=null,finalMapViewApplied=false,currentIsPlum=false;
 let pendingAutoCamera=false,lastCameraFitAt=0,cameraRevision=0,autoCameraTarget=null;
+let lastWaveSig="",japanDistanceKey="",japanDistanceValue=0;
+const waveCache=new Map();
+let depthList=[];
 const tablePromise=loadTravelTable();
 
 function emptyFeatureCollection(){return {type:"FeatureCollection",features:[]};}
@@ -472,8 +503,10 @@ function finishMapStartup(){
  });
 }
 function addWaveLayers(m=map){
- if(!m.getSource("wave-p"))m.addSource("wave-p",{type:"geojson",data:emptyFeatureCollection()});
- if(!m.getSource("wave-s"))m.addSource("wave-s",{type:"geojson",data:emptyFeatureCollection()});
+ /* バッファと簡略化を絞り、setData 時のタイル再生成コストを下げる */
+ const sourceOptions={type:"geojson",data:emptyFeatureCollection(),buffer:64,tolerance:0.5,maxzoom:10};
+ if(!m.getSource("wave-p"))m.addSource("wave-p",sourceOptions);
+ if(!m.getSource("wave-s"))m.addSource("wave-s",{...sourceOptions,data:emptyFeatureCollection()});
  if(!m.getLayer("wave-p-line"))m.addLayer({id:"wave-p-line",type:"line",source:"wave-p",paint:{"line-color":"#3b9bff","line-width":3,"line-opacity":.95}});
  if(!m.getLayer("wave-s-line"))m.addLayer({id:"wave-s-line",type:"line",source:"wave-s",paint:{"line-color":"#ff4058","line-width":3,"line-opacity":.95}});
 }
@@ -509,12 +542,14 @@ map.on("style.load",()=>{
   });
  }else{
   ensureWaveLayers();
+  lastWaveSig="";
   updateWaveMap();
  }
 });
 
 map.getCanvas().addEventListener("webglcontextrestored",()=>{
  ensureWaveLayers();
+ lastWaveSig="";
  updateWaveMap();
  map.triggerRepaint();
 });
@@ -561,9 +596,12 @@ function intensityClass(value){
 function setTag(id,value,visible=true){text(id,value);$(id).classList.toggle("hidden",!visible);}
 function setRaw(raw){$("rawJson").textContent=raw;}
 function isValidCoordinate(lat,lon){return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;}
+/* 気象庁・Wolfxの時刻はJST。タイムゾーン表記がなければ +09:00 を付けて端末のタイムゾーンに依存させない */
 function parseOriginTime(value){
  if(!value||typeof value!=="string")return null;
- const ms=Date.parse(value.trim().replace(/\//g,"-").replace(" ","T"));
+ let s=value.trim().replace(/\//g,"-").replace(" ","T");
+ if(!/(Z|[+-]\d{2}:?\d{2})$/i.test(s))s+="+09:00";
+ const ms=Date.parse(s);
  return Number.isFinite(ms)?ms:null;
 }
 function getEventOrigin(data){
@@ -579,7 +617,11 @@ function haversineKm(lat1,lon1,lat2,lon2){
  return 2*EARTH_RADIUS_KM*Math.asin(Math.sqrt(Math.min(1,a)));
 }
 function distanceToCoverJapan(origin){
- return Math.max(...JAPAN_EDGE_POINTS.map(([lat,lon])=>haversineKm(origin.lat,origin.lon,lat,lon)));
+ const key=origin.lat+","+origin.lon;
+ if(key===japanDistanceKey)return japanDistanceValue;
+ japanDistanceKey=key;
+ japanDistanceValue=Math.max(...JAPAN_EDGE_POINTS.map(([lat,lon])=>haversineKm(origin.lat,origin.lon,lat,lon)));
+ return japanDistanceValue;
 }
 function destinationPoint(lat,lon,distanceKm,bearingDegrees){
  const angular=distanceKm/EARTH_RADIUS_KM,bearing=bearingDegrees*Math.PI/180;
@@ -588,10 +630,11 @@ function destinationPoint(lat,lon,distanceKm,bearingDegrees){
  const lon2=lon1+Math.atan2(Math.sin(bearing)*Math.sin(angular)*Math.cos(lat1),Math.cos(angular)-Math.sin(lat1)*Math.sin(lat2));
  return [((lon2*180/Math.PI+540)%360)-180,lat2*180/Math.PI];
 }
-function createCircleFeature(lat,lon,radiusKm,count=180){
+/* 塗りつぶし不要なので Polygon ではなく閉じた LineString にする（タイル分割が軽い） */
+function createCircleFeature(lat,lon,radiusKm,count=WAVE_CIRCLE_POINTS){
  const coordinates=[];
  for(let i=0;i<=count;i++)coordinates.push(destinationPoint(lat,lon,radiusKm,i/count*360));
- return {type:"Feature",properties:{radiusKm},geometry:{type:"Polygon",coordinates:[coordinates]}};
+ return {type:"Feature",properties:{radiusKm},geometry:{type:"LineString",coordinates}};
 }
 function setGeoJSON(sourceId,data){
  if(!mapReady)return;
@@ -601,6 +644,7 @@ function setGeoJSON(sourceId,data){
 }
 let wavesEmpty=false;
 function clearWaveLayers(){
+ lastWaveSig="";
  if(wavesEmpty)return;
  wavesEmpty=true;
  setGeoJSON("wave-p",emptyFeatureCollection());setGeoJSON("wave-s",emptyFeatureCollection());
@@ -616,7 +660,7 @@ function performWaveCircleFit(radiusKm,immediate=false,allowRefit=false){
  if(isUserMapControlActive()||sWavePassedJapan||waveDisplayFinished){if(isUserMapControlActive())pendingAutoCamera=true;return false;}
  const bounds=new maplibregl.LngLatBounds();
  const fitRadiusKm=Math.max(radiusKm,20);
- for(let i=0;i<360;i++)bounds.extend(destinationPoint(currentOrigin.lat,currentOrigin.lon,fitRadiusKm,i));
+ for(let i=0;i<360;i+=5)bounds.extend(destinationPoint(currentOrigin.lat,currentOrigin.lon,fitRadiusKm,i));
  bounds.extend([currentOrigin.lon,currentOrigin.lat]);
  const container=map.getContainer();
  if(container.clientWidth<1||container.clientHeight<1)return false;
@@ -652,7 +696,7 @@ async function loadTravelTable(){
    parsed.push({pTime,sTime,depth,distance});
   }
   if(!parsed.length)throw new Error("有効な走時データがありません");
-  travelTable=parsed;tableLoaded=true;
+  travelTable=parsed;buildWaveCache();tableLoaded=true;
   if(status){status.textContent="走時表読み込み済み · "+parsed.length+" 行";status.className="source-status ok";}
  }catch(error){
   tableLoaded=false;
@@ -663,28 +707,45 @@ async function loadTravelTable(){
   console.error("走時表読み込みエラー:",error);
  }
 }
-function getRowsForDepth(depthKm){
- if(!travelTable.length)return [];
- let closest=travelTable[0].depth,diff=Math.abs(closest-depthKm);
- for(const row of travelTable){const d=Math.abs(row.depth-depthKm);if(d<diff){diff=d;closest=row.depth;}}
- return travelTable.filter(row=>row.depth===closest).sort((a,b)=>a.distance-b.distance);
-}
-function interpolateDistance(rows,elapsedSeconds,wave){
- if(!rows.length||!Number.isFinite(elapsedSeconds)||elapsedSeconds<0)return null;
- const key=wave==="P"?"pTime":"sTime";
- const points=rows.filter(r=>Number.isFinite(r[key])&&Number.isFinite(r.distance)).sort((a,b)=>a[key]-b[key]);
- if(!points.length||elapsedSeconds<points[0][key])return null;
- if(points.length===1)return points[0].distance;
- for(let i=1;i<points.length;i++){
-  const a=points[i-1],b=points[i];
-  if(elapsedSeconds<=b[key]){
-   const dt=b[key]-a[key];if(dt<=0)return b.distance;
-   return a.distance+(b.distance-a.distance)*(elapsedSeconds-a[key])/dt;
-  }
+/* 深さごとの走時を読み込み時に1回だけ整形し、毎フレームの filter/sort をなくす */
+function buildWaveCache(){
+ waveCache.clear();
+ const byDepth=new Map();
+ for(const row of travelTable){
+  let g=byDepth.get(row.depth);
+  if(!g){g={P:[],S:[]};byDepth.set(row.depth,g);}
+  g.P.push([row.pTime,row.distance]);
+  g.S.push([row.sTime,row.distance]);
  }
- return points[points.length-1].distance;
+ for(const [depth,g] of byDepth){
+  g.P.sort((a,b)=>a[0]-b[0]);g.S.sort((a,b)=>a[0]-b[0]);
+  waveCache.set(depth,g);
+ }
+ depthList=[...waveCache.keys()].sort((a,b)=>a-b);
 }
-function finalWaveDisplayExpired(){return finalAnnouncedTime!==null&&Date.now()-finalAnnouncedTime>=FINAL_HIDE_MS;}
+function getWaveTables(depthKm){
+ if(!depthList.length)return null;
+ let closest=depthList[0],diff=Math.abs(closest-depthKm);
+ for(const d of depthList){const v=Math.abs(d-depthKm);if(v<diff){diff=v;closest=d;}}
+ return waveCache.get(closest)||null;
+}
+function interpolateDistance(points,elapsedSeconds){
+ if(!points||!points.length||!Number.isFinite(elapsedSeconds)||elapsedSeconds<0)return null;
+ if(elapsedSeconds<points[0][0])return null;
+ if(points.length===1)return points[0][1];
+ const last=points.length-1;
+ if(elapsedSeconds>points[last][0])return points[last][1];
+ let lo=0,hi=last;
+ while(lo<hi){
+  const mid=(lo+hi)>>1;
+  if(points[mid][0]>=elapsedSeconds)hi=mid;else lo=mid+1;
+ }
+ if(lo===0)return points[0][1];
+ const a=points[lo-1],b=points[lo],dt=b[0]-a[0];
+ if(dt<=0)return b[1];
+ return a[1]+(b[1]-a[1])*(elapsedSeconds-a[0])/dt;
+}
+function finalWaveDisplayExpired(){return finalAnnouncedTime!==null&&nowMs()-finalAnnouncedTime>=FINAL_HIDE_MS;}
 function finishWaveDisplay(reason="P波・S波 日本通過済み ・ 波表示終了"){
  if(waveDisplayFinished)return;
  waveDisplayFinished=true;pWavePassedJapan=true;sWavePassedJapan=true;japanViewLocked=true;
@@ -699,10 +760,10 @@ function updateWaveMap(){
  if(finalWaveDisplayExpired()){finishWaveDisplay("最終報の発表から3分経過・波表示終了");return;}
  ensureWaveLayers();
  if(!tableLoaded){text("mapStatus","走時表の読み込み待ち");return;}
- const elapsed=Math.max(0,(Date.now()-currentOriginTime)/1000);
- const rows=getRowsForDepth(currentOrigin.depth);
- if(!rows.length){text("mapStatus","該当する深さの走時データがありません");clearWaveLayers();return;}
- const pRadius=interpolateDistance(rows,elapsed,"P"),sRadius=interpolateDistance(rows,elapsed,"S");
+ const elapsed=Math.max(0,(nowMs()-currentOriginTime)/1000);
+ const tables=getWaveTables(currentOrigin.depth);
+ if(!tables){text("mapStatus","該当する深さの走時データがありません");clearWaveLayers();return;}
+ const pRadius=interpolateDistance(tables.P,elapsed),sRadius=interpolateDistance(tables.S,elapsed);
  lastPRadius=pRadius;lastSRadius=sRadius;
 
  /* P波またはS波のどちらかが2,000kmに到達したら、両方の波表示を終了 */
@@ -714,12 +775,17 @@ function updateWaveMap(){
  const japanDistance=distanceToCoverJapan(currentOrigin);
  if(!pWavePassedJapan&&pRadius!==null&&pRadius>=japanDistance)pWavePassedJapan=true;
  if(!sWavePassedJapan&&sRadius!==null&&sRadius>=japanDistance){finishWaveDisplay();return;}
- const pFeatures=[],sFeatures=[];
- if(!pWavePassedJapan&&pRadius!==null&&pRadius>0)pFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius));
- if(sRadius!==null&&sRadius>0)sFeatures.push(createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius));
- wavesEmpty=false;
- setGeoJSON("wave-p",{type:"FeatureCollection",features:pFeatures});
- setGeoJSON("wave-s",{type:"FeatureCollection",features:sFeatures});
+ const showP=!pWavePassedJapan&&pRadius!==null&&pRadius>0;
+ const showS=sRadius!==null&&sRadius>0;
+
+ /* 半径が実質変わっていなければ setData を呼ばない */
+ const sig=(showP?pRadius.toFixed(1):"-")+"|"+(showS?sRadius.toFixed(1):"-")+"|"+currentOrigin.lat+","+currentOrigin.lon;
+ if(sig!==lastWaveSig){
+  lastWaveSig=sig;
+  wavesEmpty=false;
+  setGeoJSON("wave-p",{type:"FeatureCollection",features:showP?[createCircleFeature(currentOrigin.lat,currentOrigin.lon,pRadius)]:[]});
+  setGeoJSON("wave-s",{type:"FeatureCollection",features:showS?[createCircleFeature(currentOrigin.lat,currentOrigin.lon,sRadius)]:[]});
+ }
 
  const visibleRadii=[pWavePassedJapan?null:pRadius,sRadius].filter(v=>Number.isFinite(v)&&v>0&&v<=WAVE_MAX_KM);
  if(startupComplete&&!japanViewLocked&&!waveDisplayFinished&&visibleRadii.length&&!isUserMapControlActive()){
@@ -730,9 +796,9 @@ function updateWaveMap(){
   }
  }else if(isUserMapControlActive())pendingAutoCamera=true;
 
- const nowMs=performance.now();
- if(nowMs-lastWaveStatusAt>=WAVE_STATUS_MS){
-  lastWaveStatusAt=nowMs;
+ const nowPerf=performance.now();
+ if(nowPerf-lastWaveStatusAt>=WAVE_STATUS_MS){
+  lastWaveStatusAt=nowPerf;
   const pStatus=pWavePassedJapan?"P波 日本通過済み":pRadius!==null?"P波 約 "+Math.round(pRadius)+" km":"P波 到達前";
   const sStatus=sRadius!==null?"S波 約 "+Math.round(sRadius)+" km":"S波 到達前";
   text("mapStatus",pStatus+" ・ "+sStatus);scheduleEpicenterAdjustment();
@@ -768,7 +834,7 @@ function setMapEvent(data,eventKey){
 
  if(data.isFinal===true&&finalAnnouncedEventId!==mapEventId){
   const announcedAt=parseOriginTime(data.AnnouncedTime);
-  finalAnnouncedTime=announcedAt!==null?announcedAt:Date.now();finalAnnouncedEventId=mapEventId;
+  finalAnnouncedTime=announcedAt!==null?announcedAt:nowMs();finalAnnouncedEventId=mapEventId;
  }
  currentOrigin=origin;currentIsSea=typeof data.isSea==="boolean"?data.isSea:null;
  currentIsPlum=data.isAssumption===true;
@@ -1035,7 +1101,7 @@ document.addEventListener("visibilitychange",()=>{
  requestAnimationFrame(()=>{
   if(!mapReady)return;
   lastMapW=-1;lastMapH=-1;
-  resizeAllMaps();ensureWaveLayers();updateEpicenterMarker();updateWaveMap();map.triggerRepaint();
+  resizeAllMaps();ensureWaveLayers();updateEpicenterMarker();lastWaveSig="";updateWaveMap();map.triggerRepaint();
  });
 });
 window.addEventListener("resize",()=>{
@@ -1061,6 +1127,7 @@ window.addEventListener("beforeunload",()=>{
  stopPing();closeSocket();
 });
 resetRotate();connect();startWatchdog();startMapUpdater();setInterval(sweep,1000);
+syncClock();setInterval(syncClock,CLOCK_SYNC_INTERVAL);
 });
 </script>
 </body>
