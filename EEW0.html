@@ -215,7 +215,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 "use strict";
 
 const WS_URL="wss://ws-api.wolfx.jp/jma_eew",COMMAND="query_jmaeew";
-const TRAVEL_TABLE_URL="./tjma2001.txt";
+const TRAVEL_TABLE_URL="./tjma2001.csv";
 const MAP_STYLE_LIGHT="https://tiles.openfreemap.org/styles/positron";
 const PING_INTERVAL=5000,PING_TIMEOUT=10000,SILENCE_LIMIT=20000;
 const RECONNECT_MIN=500,RECONNECT_MAX=10000,ROTATE_MS=4000;
@@ -425,9 +425,18 @@ function targetForBounds(bounds,padding={}){
  const lat=(2*Math.atan(Math.exp((southY+northY)/2))-Math.PI/2)*180/Math.PI;
  return {center:[lon,lat],zoom};
 }
-function automaticFitBounds(bounds,{padding={top:35,bottom:35,left:35,right:35},immediate=false,duration=650,force=false}={}){
+/* 震源が画面中央に来るよう、震源を中心に左右対称・上下対称の範囲へ広げる */
+function symmetricBounds(bounds,c){
+ const clon=c[0],clat=c[1],cy=mercatorY(clat);
+ const dLon=Math.min(179,Math.max(bounds.getEast()-clon,clon-bounds.getWest()));
+ const dy=Math.max(mercatorY(bounds.getNorth())-cy,cy-mercatorY(bounds.getSouth()));
+ const toLat=y=>(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI;
+ return new maplibregl.LngLatBounds([clon-dLon,toLat(cy-dy)],[clon+dLon,toLat(cy+dy)]);
+}
+function automaticFitBounds(bounds,{padding={top:35,bottom:35,left:35,right:35},immediate=false,duration=650,force=false,centerOn=null}={}){
  if(!mapReady)return false;
  if(!force&&isUserMapControlActive()){pendingAutoCamera=true;return false;}
+ if(centerOn)bounds=symmetricBounds(bounds,centerOn);
  const target=targetForBounds(bounds,padding);
  if(!target)return false;
  cameraRevision++;
@@ -442,7 +451,7 @@ function fitJapanAndEpicenter(immediate=false){
  if(!mapReady)return false;
  const bounds=new maplibregl.LngLatBounds(JAPAN_BOUNDS[0],JAPAN_BOUNDS[1]);
  if(currentOrigin)bounds.extend([currentOrigin.lon,currentOrigin.lat]);
- const result=automaticFitBounds(bounds,{padding:{top:35,bottom:35,left:35,right:35},immediate,duration:650});
+ const result=automaticFitBounds(bounds,{padding:{top:35,bottom:35,left:35,right:35},immediate,duration:650,centerOn:currentOrigin?[currentOrigin.lon,currentOrigin.lat]:null});
  if(result)initialViewFitted=true;
  return result;
 }
@@ -659,14 +668,15 @@ function performWaveCircleFit(radiusKm,immediate=false,allowRefit=false){
  if(!mapReady||!currentOrigin||!Number.isFinite(radiusKm)||radiusKm<=0)return false;
  if(isUserMapControlActive()||sWavePassedJapan||waveDisplayFinished){if(isUserMapControlActive())pendingAutoCamera=true;return false;}
  const bounds=new maplibregl.LngLatBounds();
- const fitRadiusKm=Math.max(radiusKm,20);
+ /* 円の成長に再フィットが追いつかなくてもはみ出さないよう、余裕を持った半径でフィットする */
+ const fitRadiusKm=Math.max(radiusKm*1.4+40,60);
  for(let i=0;i<360;i+=5)bounds.extend(destinationPoint(currentOrigin.lat,currentOrigin.lon,fitRadiusKm,i));
  bounds.extend([currentOrigin.lon,currentOrigin.lat]);
  const container=map.getContainer();
  if(container.clientWidth<1||container.clientHeight<1)return false;
  const pad=Math.max(30,Math.min(64,Math.round(Math.min(container.clientWidth,container.clientHeight)*.11)));
- const result=automaticFitBounds(bounds,{padding:{top:pad,bottom:pad,left:pad,right:pad},immediate,duration:500});
- if(result){initialViewFitted=true;lastAutoFitRadius=radiusKm;}
+ const result=automaticFitBounds(bounds,{padding:{top:pad,bottom:pad,left:pad,right:pad},immediate,duration:500,centerOn:[currentOrigin.lon,currentOrigin.lat]});
+ if(result){initialViewFitted=true;lastAutoFitRadius=fitRadiusKm;}
  return result;
 }
 function serialNumber(value){
@@ -701,7 +711,7 @@ async function loadTravelTable(){
  }catch(error){
   tableLoaded=false;
   if(status){
-   status.textContent="走時表を読み込めません。tjma2001.txt の配置を確認してください。";
+   status.textContent="走時表を読み込めません。tjma2001.csv の配置を確認してください。";
    status.className="source-status error";
   }
   console.error("走時表読み込みエラー:",error);
@@ -790,8 +800,9 @@ function updateWaveMap(){
  const visibleRadii=[pWavePassedJapan?null:pRadius,sRadius].filter(v=>Number.isFinite(v)&&v>0&&v<=WAVE_MAX_KM);
  if(startupComplete&&!japanViewLocked&&!waveDisplayFinished&&visibleRadii.length&&!isUserMapControlActive()){
   const radius=Math.max(...visibleRadii);
-  const changed=lastAutoFitRadius===null||Math.abs(radius-lastAutoFitRadius)>=Math.max(20,lastAutoFitRadius*.2);
-  if(changed&&(Date.now()-lastCameraFitAt>=4000||!initialViewFitted)){
+  /* 円が現在のフィット範囲の8割に達したら、すぐ余裕を持って引き直す */
+  const changed=lastAutoFitRadius===null||radius>lastAutoFitRadius*0.8;
+  if(changed&&(Date.now()-lastCameraFitAt>=1000||!initialViewFitted)){
    fitWaveCircle(radius,true,true);
   }
  }else if(isUserMapControlActive())pendingAutoCamera=true;
