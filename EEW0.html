@@ -45,10 +45,6 @@ button:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
 .brand-icon{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#ff4058,#d51f47);font-size:24px}
 .brand h1{font-size:19px;margin:0;letter-spacing:.04em}
 .brand p{margin:4px 0 0;color:var(--muted);font-size:11px}
-.top-right{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
-.clock{display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums;border:1px solid var(--border);border-radius:12px;padding:8px 14px;background:var(--panel)}
-.clock b{font-size:20px;letter-spacing:.02em}
-.clock span{font-size:11px;color:var(--muted)}
 .connection{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:99px;padding:9px 13px;background:var(--panel);color:var(--muted);font-size:12px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--dot-off)}
 .dot.online{background:var(--green);box-shadow:0 0 12px #36dfaa80}
@@ -154,17 +150,14 @@ pre{margin:0;padding:15px;max-height:480px;overflow:auto;white-space:pre-wrap;ov
 .epicenter-icon.plum::after{content:none!important;display:none!important;animation:none!important}
 .wave-note{padding:12px 18px;color:var(--note);font-size:11px;line-height:1.8;border-top:1px solid var(--border)}
 @media(max-width:850px){.grid{grid-template-columns:minmax(0,1fr)}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}#earthquakeMap{height:400px}}
-@media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}.clock b{font-size:16px}}
+@media(max-width:460px){.wrap{padding:12px}.hero{padding:16px}.metric{padding:12px}.kv{grid-template-columns:minmax(0,1fr)}.panel-body{padding:13px}.brand h1{font-size:16px}#earthquakeMap{height:340px}}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header class="topbar">
   <div class="brand"><div class="brand-icon">⚡</div><div><h1>JMA EARTHQUAKE MONITOR</h1><p>緊急地震速報 リアルタイムモニター</p></div></div>
-  <div class="top-right">
-    <div class="clock"><b id="clock">----/--/-- --:--:--</b><span id="clockInfo">JST</span></div>
-    <div class="connection"><span id="dot" class="dot"></span><span id="connectionText">接続準備中</span><span id="latency">未測定</span></div>
-  </div>
+  <div class="connection"><span id="dot" class="dot"></span><span id="connectionText">接続準備中</span><span id="latency">未測定</span></div>
 </header>
 <section class="hero">
   <div class="hero-top">
@@ -265,20 +258,6 @@ async function syncClock(){
  samples.sort((a,b)=>a-b);
  const median=samples[samples.length>>1];
  clockOffset=Math.abs(median)<1000?0:Math.round(median);
-}
-
-/* 補正済みの正確な時刻を JST で表示（例: 2011/03/11 14:30:02） */
-const jstFmt=new Intl.DateTimeFormat("ja-JP",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
-function fmtJST(ms){
- const p={};
- for(const x of jstFmt.formatToParts(new Date(ms)))p[x.type]=x.value;
- return p.year+"/"+p.month+"/"+p.day+" "+(p.hour==="24"?"00":p.hour)+":"+p.minute+":"+p.second;
-}
-function tickClock(){
- const t=nowMs();
- $("clock").textContent=fmtJST(t);
- $("clockInfo").textContent="JST"+(clockOffset?" (補正 "+(clockOffset>0?"+":"")+clockOffset+"ms)":"");
- setTimeout(tickClock,1000-(t%1000)+5);
 }
 
 let socket=null,reconnectTimer=null,reconnectDelay=RECONNECT_MIN,stopped=false;
@@ -977,8 +956,8 @@ function render(data,raw,eventKey){
   $("areas").appendChild(fragment);
  }
  text("originalText",data.OriginalText||"原文はありません。");
- text("updateTime","更新 "+fmtJST(nowMs()));
- text("lastReceive",fmtJST(nowMs()));text("parseState","成功");
+ text("updateTime","更新 "+new Date().toLocaleTimeString("ja-JP"));
+ text("lastReceive",new Date().toLocaleTimeString("ja-JP"));text("parseState","成功");
  setRaw(raw);setMapEvent(data,eventKey);
 }
 function isDone(data){return data.isFinal===true||data.isCancel===true;}
@@ -1159,7 +1138,7 @@ window.addEventListener("beforeunload",()=>{
  stopPing();closeSocket();
 });
 resetRotate();connect();startWatchdog();startMapUpdater();setInterval(sweep,1000);
-tickClock();syncClock();setInterval(syncClock,CLOCK_SYNC_INTERVAL);
+syncClock();setInterval(syncClock,CLOCK_SYNC_INTERVAL);
 });
 </script>
 </body>
