@@ -699,9 +699,9 @@ async function loadTravelTable(){
   const content=await response.text(),parsed=[];
   for(const line of content.split(/\r?\n/)){
    const s=line.trim();if(!s)continue;
-   const m=s.match(/^P\s*([-+]?\d+(?:\.\d+)?)\s+S\s*([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s*$/);
-   if(!m)continue;
-   const [pTime,sTime,depth,distance]=m.slice(1).map(Number);
+   const cols=s.split(",");
+   if(cols.length<4)continue;
+   const [pTime,sTime,depth,distance]=cols.slice(0,4).map(v=>Number(v.trim()));
    if(![pTime,sTime,depth,distance].every(Number.isFinite)||pTime<0||sTime<0||depth<0||distance<0)continue;
    parsed.push({pTime,sTime,depth,distance});
   }
