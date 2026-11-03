@@ -6,16 +6,16 @@
     "Source": "東京",
     "Status": "通常"
   },
-  "EventID": "20261103132900",
+  "EventID": "20261103134600",
   "Serial": 1,
-  "AnnouncedTime": "2026/11/03 12:29:00",
-  "OriginTime": "2026/11/03 12:29:00",
-  "Hypocenter": "沖縄本島近海",
-  "Latitude": 26.5,
-  "Longitude": 128.0,
+  "AnnouncedTime": "2026/11/03 13:46:00",
+  "OriginTime": "2026/11/03 13:46:00",
+  "Hypocenter": "新潟県中越沖",
+  "Latitude": 37.5,
+  "Longitude": 138.4,
   "Magunitude": 5.5,
   "Magnitude": 5.5,
-  "Depth": 30,
+  "Depth": 20,
   "MaxIntensity": "4",
   "Accuracy": {
     "Epicenter": "IPF 法（5 点以上）",
@@ -28,7 +28,7 @@
   },
   "WarnArea": [
     {
-      "Chiiki": "沖縄本島中南部",
+      "Chiiki": "新潟県中越",
       "Shindo1": "4",
       "Shindo2": "4",
       "Time": "//////",
@@ -36,7 +36,7 @@
       "Arrive": "予測"
     },
     {
-      "Chiiki": "沖縄本島北部",
+      "Chiiki": "新潟県下越",
       "Shindo1": "3",
       "Shindo2": "3",
       "Time": "//////",
@@ -44,7 +44,23 @@
       "Arrive": "予測"
     },
     {
-      "Chiiki": "久米島",
+      "Chiiki": "新潟県上越",
+      "Shindo1": "3",
+      "Shindo2": "3",
+      "Time": "//////",
+      "Type": "予報",
+      "Arrive": "予測"
+    },
+    {
+      "Chiiki": "長野県北部",
+      "Shindo1": "2",
+      "Shindo2": "2",
+      "Time": "//////",
+      "Type": "予報",
+      "Arrive": "予測"
+    },
+    {
+      "Chiiki": "富山県東部",
       "Shindo1": "2",
       "Shindo2": "2",
       "Time": "//////",
