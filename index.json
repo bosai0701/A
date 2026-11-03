@@ -70,7 +70,7 @@
   ],
   "isSea": true,
   "isTraining": true,
-  "isAssumption": false,
+  "isAssumption": true,
   "isWarn": false,
   "isFinal": true,
   "isCancel": false,
