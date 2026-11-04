@@ -33,68 +33,69 @@ html,body{
 }
 
 /* =====================================
-   全体UI 45%縮小
+   全体UI 70%
+   観測点サイズは変更しない
    ===================================== */
 
 .info-panel{
  position:absolute;
  z-index:10;
- top:7px;
- left:7px;
- width:calc(100% - 14px);
- max-width:214.5px;
- padding:6.6px 7.7px;
+ top:8.9px;
+ left:8.9px;
+ width:calc(100% - 17.8px);
+ max-width:273px;
+ padding:8.4px 9.8px;
  background:rgba(11,18,32,.91);
- border:1px solid rgba(148,163,184,.25);
- border-radius:6.6px;
- backdrop-filter:blur(6.6px);
- -webkit-backdrop-filter:blur(6.6px);
- box-shadow:0 2.75px 12.1px rgba(0,0,0,.25);
+ border:1.27px solid rgba(148,163,184,.25);
+ border-radius:8.4px;
+ backdrop-filter:blur(8.4px);
+ -webkit-backdrop-filter:blur(8.4px);
+ box-shadow:0 3.5px 15.4px rgba(0,0,0,.25);
  pointer-events:none;
 }
 
 .info-title{
- font-size:7.15px;
+ font-size:9.1px;
  font-weight:700;
- margin-bottom:4.95px;
+ margin-bottom:6.3px;
  color:#cbd5e1;
 }
 
 .time-label{
- font-size:6.05px;
+ font-size:7.7px;
  color:#94a3b8;
- margin-bottom:1.65px;
+ margin-bottom:2.1px;
 }
 
 .time-value{
- font-size:10.45px;
+ font-size:13.3px;
  font-weight:700;
- letter-spacing:.165px;
+ letter-spacing:.21px;
  font-variant-numeric:tabular-nums;
  color:#fff;
 }
 
 .divider{
- height:1px;
+ height:1.27px;
  background:rgba(148,163,184,.2);
- margin:5.5px 0;
+ margin:7px 0;
 }
 
 .stats{
  display:grid;
  grid-template-columns:1fr 1fr;
- gap:4.95px;
+ gap:6.3px;
 }
 
 .stat{
  background:rgba(30,41,59,.65);
- border-radius:4.4px;
- padding:4.95px 6.05px;
+ border-radius:5.6px;
+ padding:6.3px 7.7px;
 }
 
 .stat b{
  display:block;
- font-size:11.55px;
+ font-size:14.7px;
  font-weight:700;
  color:#fff;
  font-variant-numeric:tabular-nums;
@@ -102,17 +103,17 @@ html,body{
 
 .stat span{
  display:block;
- font-size:6.05px;
+ font-size:7.7px;
  color:#94a3b8;
- margin-top:1.1px;
+ margin-top:1.4px;
 }
 
 .status{
- margin-top:4.95px;
- padding:4.4px 5.5px;
- border-radius:3.85px;
+ margin-top:6.3px;
+ padding:5.6px 7px;
+ border-radius:4.9px;
  background:rgba(30,41,59,.7);
- font-size:6.05px;
+ font-size:7.7px;
  line-height:1.5;
  color:#a8bbd3;
  overflow-wrap:anywhere;
@@ -125,11 +126,11 @@ html,body{
 
 .status-dot{
  display:inline-block;
- width:3.85px;
- height:3.85px;
+ width:4.9px;
+ height:4.9px;
  border-radius:50%;
  background:#22c55e;
- margin-right:3.3px;
+ margin-right:4.2px;
  vertical-align:middle;
 }
 
@@ -143,27 +144,27 @@ html,body{
 
 .maplibregl-popup-content{
  color:#152033;
- font-size:6.6px;
- padding:4.4px;
- border-radius:3.85px;
+ font-size:8.4px;
+ padding:5.6px;
+ border-radius:4.9px;
 }
 
 .popup-title{
  font-weight:700;
- font-size:7.7px;
- margin-bottom:2.75px;
+ font-size:9.8px;
+ margin-bottom:3.5px;
 }
 
 /* 地図操作ボタン */
 
 .maplibregl-ctrl-top-right{
- transform:scale(.55);
+ transform:scale(.70);
  transform-origin:top right;
 }
 
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left{
- transform:scale(.55);
+ transform:scale(.70);
  transform-origin:bottom right;
 }
 
@@ -172,15 +173,15 @@ html,body{
 @media(max-width:600px){
 
  .info-panel{
-  top:5.5px;
-  left:5.5px;
-  width:calc(100% - 11px);
-  max-width:192.5px;
-  padding:5.5px 6.6px;
+  top:7px;
+  left:7px;
+  width:calc(100% - 14px);
+  max-width:245px;
+  padding:7px 8.4px;
  }
 
- .time-value{font-size:9.35px}
- .stat b{font-size:10.45px}
+ .time-value{font-size:11.9px}
+ .stat b{font-size:13.3px}
 
 }
 </style>
@@ -1434,6 +1435,8 @@ function addSourceAndLayer(){
    ],
 
    paint:{
+
+    /* 観測点サイズは変更なし */
 
     'circle-radius':[
      'interpolate',
