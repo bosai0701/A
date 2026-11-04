@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -18,7 +17,6 @@
  color:#e8eef8;
 }
 *{box-sizing:border-box}
-
 html,body{
  width:100%;
  height:100%;
@@ -26,7 +24,6 @@ html,body{
  overflow:hidden;
  background:#0b1220;
 }
-
 #map{
  position:absolute;
  inset:0;
@@ -34,8 +31,6 @@ html,body{
  height:100%;
  background:#172338;
 }
-
-/* 上部情報パネル */
 .info-panel{
  position:absolute;
  z-index:10;
@@ -52,20 +47,17 @@ html,body{
  box-shadow:0 5px 22px rgba(0,0,0,.25);
  pointer-events:none;
 }
-
 .info-title{
  font-size:13px;
  font-weight:700;
  margin-bottom:9px;
  color:#cbd5e1;
 }
-
 .time-label{
  font-size:11px;
  color:#94a3b8;
  margin-bottom:3px;
 }
-
 .time-value{
  font-size:19px;
  font-weight:700;
@@ -73,25 +65,21 @@ html,body{
  font-variant-numeric:tabular-nums;
  color:#fff;
 }
-
 .divider{
  height:1px;
  background:rgba(148,163,184,.2);
  margin:10px 0;
 }
-
 .stats{
  display:grid;
  grid-template-columns:1fr 1fr;
  gap:9px;
 }
-
 .stat{
  background:rgba(30,41,59,.65);
  border-radius:8px;
  padding:9px 11px;
 }
-
 .stat b{
  display:block;
  font-size:21px;
@@ -99,14 +87,12 @@ html,body{
  color:#fff;
  font-variant-numeric:tabular-nums;
 }
-
 .stat span{
  display:block;
  font-size:11px;
  color:#94a3b8;
  margin-top:2px;
 }
-
 .status{
  margin-top:9px;
  padding:8px 10px;
@@ -117,12 +103,10 @@ html,body{
  color:#a8bbd3;
  overflow-wrap:anywhere;
 }
-
 .status.error{
  color:#ff9999;
  background:rgba(127,29,29,.25);
 }
-
 .status-dot{
  display:inline-block;
  width:7px;
@@ -131,27 +115,19 @@ html,body{
  background:#22c55e;
  margin-right:6px;
 }
-
 .status.error .status-dot{
  background:#ef4444;
 }
-
-/* 非表示の解析用画像 */
-.hidden-elements{
- display:none;
-}
-
+.hidden-elements{display:none}
 .maplibregl-popup-content{
  color:#152033;
  font-size:12px;
 }
-
 .popup-title{
  font-weight:700;
  font-size:14px;
  margin-bottom:5px;
 }
-
 @media(max-width:600px){
  .info-panel{
   top:10px;
@@ -160,14 +136,8 @@ html,body{
   max-width:350px;
   padding:10px 12px;
  }
-
- .time-value{
-  font-size:17px;
- }
-
- .stat b{
-  font-size:19px;
- }
+ .time-value{font-size:17px}
+ .stat b{font-size:19px}
 }
 </style>
 </head>
@@ -176,33 +146,29 @@ html,body{
 
 <main id="map" aria-label="強震モニタ観測点マップ"></main>
 
-<!-- 地図上の情報表示 -->
 <section class="info-panel">
 
  <div class="info-title">強震モニタ リアルタイム画像解析</div>
 
- <div class="time-label">画像時刻（画像ファイル基準・JST）</div>
+ <div class="time-label">画像時刻（実際に取得した画像・JST）</div>
  <div class="time-value" id="imgTime">取得待機中</div>
 
  <div class="divider"></div>
 
- <div class="time-label">同期時刻（サーバー時刻・JST）</div>
+ <div class="time-label">同期時刻（Wolfx・JST）</div>
  <div class="time-value" id="syncTime">同期待機中</div>
 
  <div class="divider"></div>
 
  <div class="stats">
-
   <div class="stat">
    <b id="total">—</b>
    <span>観測点データ数</span>
   </div>
-
   <div class="stat">
    <b id="shown">—</b>
    <span>解析・表示地点数</span>
   </div>
-
  </div>
 
  <div class="status" id="status">
@@ -212,7 +178,6 @@ html,body{
 
 </section>
 
-<!-- 内部処理用 -->
 <div class="hidden-elements">
  <img id="sourceImage" alt="">
  <span id="imageSize"></span>
@@ -220,8 +185,19 @@ html,body{
 </div>
 
 <script>
+
+/* =====================================
+   URL設定
+===================================== */
+
 const BASE_URL =
 'http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/';
+
+const LATEST_URL =
+'http://www.kmoni.bosai.go.jp/webservice/server/pros/latest.json';
+
+const NTP_URL =
+'https://api.wolfx.jp/ntp.json';
 
 const PROXY_BASE =
 'https://green-grass-374f.mirakuro5472.workers.dev/';
@@ -233,246 +209,83 @@ const PROXIES = [
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-/* 画像遅延 */
-const DELAY_SECONDS = 1;
+/*
+ * 強震モニタ色テーブル
+ * CSVの先頭列は使用せず、RGBだけを利用する。
+ */
+const COLOR_MAP_URL =
+'https://raw.githubusercontent.com/ingen084/KyoshinShindoColorMap/refs/heads/master/KyoshinShindoColorMap.csv';
 
-/* 時刻同期設定 */
-const TIME_API_URL =
-'https://www.timeapi.io/api/Time/current/zone?timeZone=UTC';
+/* =====================================
+   更新設定
+===================================== */
 
-const TIME_SYNC_INTERVAL = 60000;
-const TIME_SYNC_SAMPLES = 3;
+const TIME_SYNC_INTERVAL = 15000;
+const TIME_SYNC_SAMPLES = 5;
+
+const LATEST_CHECK_INTERVAL = 500;
+
+const FALLBACK_SECONDS = 5;
+
+const FETCH_TIMEOUT = 10000;
+
+/* =====================================
+   状態
+===================================== */
 
 let clockBaseEpoch = null;
 let clockBasePerf = null;
 let clockSynced = false;
 let timeSyncPromise = null;
 
-const $ = id => document.getElementById(id);
+let latestImageMs = null;
+let lastAppliedImageMs = null;
 
-const image = $('sourceImage');
+let latestCheckBusy = false;
+let imageBusy = false;
 
-let currentObjectURL = null;
+let records = null;
+let recordsPromise = null;
 
-let map;
+/* 事前計算済み観測点 */
+let preparedPoints = null;
 
+/* 色テーブル */
+let colorPalette = null;
+let colorLookupTable = null;
+let colorMapPromise = null;
+let colorMapAvailable = false;
+
+/* GeoJSON */
 let geojson = {
  type:'FeatureCollection',
  features:[]
 };
 
-let allFeatures = [];
-
-let records = null;
-let recordsPromise = null;
-
-let proxyIndex = 0;
-
-let seqCounter = 0;
-let appliedSeq = 0;
-let lastTarget = null;
+let stationFeatures = [];
 
 let firstFit = true;
 
+let map;
+
+/* Canvas再利用 */
+let analysisCanvas = null;
+let analysisContext = null;
+
+let currentObjectURL = null;
+
+let lastImageWidth = 0;
+let lastImageHeight = 0;
+
+const $ = id => document.getElementById(id);
+
+const image = $('sourceImage');
 
 /* =====================================
-   サーバー時刻同期
+   共通処理
 ===================================== */
 
-function getSyncedNow(){
-
- if(!clockSynced){
-  return Date.now();
- }
-
- return clockBaseEpoch+
-  (performance.now()-clockBasePerf);
-
-}
-
-
-/* UTC時刻の解析 */
-function parseServerTime(data){
-
- if(data.dateTime){
-
-  let value=String(data.dateTime);
-
-  if(!/(Z|[+-]\d{2}:\d{2})$/i.test(value)){
-   value+='Z';
-  }
-
-  const ms=Date.parse(value);
-
-  if(Number.isFinite(ms)){
-   return ms;
-  }
-
- }
-
- if(Number.isFinite(Number(data.unixtime))){
-
-  return Number(data.unixtime)*1000;
-
- }
-
- throw new Error('サーバー時刻を解析できません');
-
-}
-
-
-/* 1回の時刻同期 */
-async function fetchServerTime(){
-
- const startPerf=performance.now();
-
- const controller=new AbortController();
-
- const timeout=setTimeout(
-  ()=>controller.abort(),
-  8000
- );
-
- try{
-
-  const response=await fetch(
-   TIME_API_URL+'&_='+Date.now(),
-   {
-    cache:'no-store',
-    signal:controller.signal
-   }
-  );
-
-  if(!response.ok){
-   throw new Error(
-    '時刻サーバー HTTP '+response.status
-   );
-  }
-
-  const data=await response.json();
-
-  const endPerf=performance.now();
-
-  const serverTime=parseServerTime(data);
-
-  const rtt=endPerf-startPerf;
-
-  return {
-   epoch:serverTime,
-   perf:(startPerf+endPerf)/2,
-   rtt
-  };
-
- }finally{
-
-  clearTimeout(timeout);
-
- }
-
-}
-
-
-/* 複数回取得して通信時間が最小の結果を採用 */
-async function syncClock(){
-
- if(timeSyncPromise){
-  return timeSyncPromise;
- }
-
- timeSyncPromise=(async()=>{
-
-  const samples=[];
-
-  for(
-   let i=0;
-   i<TIME_SYNC_SAMPLES;
-   i++
-  ){
-
-   try{
-
-    const result=await fetchServerTime();
-
-    samples.push(result);
-
-   }catch(e){
-
-    console.warn(
-     '時刻同期サンプル失敗:',
-     e
-    );
-
-   }
-
-  }
-
-  if(!samples.length){
-
-   throw new Error(
-    '時刻サーバーに接続できません'
-   );
-
-  }
-
-  samples.sort(
-   (a,b)=>a.rtt-b.rtt
-  );
-
-  const best=samples[0];
-
-  clockBaseEpoch=best.epoch;
-  clockBasePerf=best.perf;
-
-  clockSynced=true;
-
-  console.log(
-   'サーバー時刻同期完了',
-   {
-    rttMs:Math.round(best.rtt),
-    samples:samples.length
-   }
-  );
-
-  return best;
-
- })().finally(()=>{
-
-  timeSyncPromise=null;
-
- });
-
- return timeSyncPromise;
-
-}
-
-
-/* 定期的な時刻再同期 */
-async function maintainClock(){
-
- try{
-
-  await syncClock();
-
- }catch(e){
-
-  console.error(
-   '時刻再同期エラー:',
-   e
-  );
-
- }
-
- setTimeout(
-  maintainClock,
-  TIME_SYNC_INTERVAL
- );
-
-}
-
-
-/* =====================================
-   時刻表示
-===================================== */
+const p2 = n=>String(n).padStart(2,'0');
 
 function setStatus(message,isError=false){
 
@@ -490,25 +303,17 @@ function setStatus(message,isError=false){
 
 }
 
+function getSyncedNow(){
 
-/* 文字列処理 */
-function esc(v){
+ if(!clockSynced){
+  return Date.now();
+ }
 
- return String(v??'').replace(/[&<>"']/g,c=>({
-  '&':'&amp;',
-  '<':'&lt;',
-  '>':'&gt;',
-  '"':'&quot;',
-  "'":'&#39;'
- }[c]));
+ return clockBaseEpoch+
+  (performance.now()-clockBasePerf);
 
 }
 
-
-const p2=n=>String(n).padStart(2,'0');
-
-
-/* JST変換 */
 function jstParts(ms){
 
  const d=new Date(ms+9*3600e3);
@@ -524,78 +329,780 @@ function jstParts(ms){
 
 }
 
+function formatJST(ms){
 
-/* 同期時刻表示 */
-function updateSyncTime(){
+ const t=jstParts(ms);
 
- const t=jstParts(getSyncedNow());
-
- $('syncTime').textContent=
-  `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
+ return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
 
 }
 
-
-/* 画像URL生成 */
 function imageUrlFor(ms){
 
  const t=jstParts(ms);
 
  const stamp=
- `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
+  `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
 
  return {
   url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
-  label:`${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`
+  label:formatJST(ms)
  };
 
 }
 
+/* =====================================
+   Wolfx時刻同期
+===================================== */
+
+async function fetchWolfxTime(){
+
+ const start=performance.now();
+
+ const controller=new AbortController();
+
+ const timeout=setTimeout(
+  ()=>controller.abort(),
+  8000
+ );
+
+ try{
+
+  const response=await fetch(
+   NTP_URL+'?_='+Date.now(),
+   {
+    cache:'no-store',
+    signal:controller.signal
+   }
+  );
+
+  if(!response.ok){
+   throw new Error(
+    'Wolfx HTTP '+response.status
+   );
+  }
+
+  const data=await response.json();
+
+  const end=performance.now();
+
+  let epoch=Number(data.timestamp);
+
+  if(!Number.isFinite(epoch)||epoch<1000000000000){
+
+   const value=data.JST?.int;
+
+   if(value){
+
+    const s=String(value);
+
+    if(/^\d{14}$/.test(s)){
+
+     const iso=
+      `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+      `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+     epoch=Date.parse(iso);
+
+    }
+
+   }
+
+  }
+
+  if(!Number.isFinite(epoch)){
+   throw new Error('Wolfx時刻を解析できません');
+  }
+
+  return {
+   epoch,
+   perf:(start+end)/2,
+   rtt:end-start
+  };
+
+ }finally{
+
+  clearTimeout(timeout);
+
+ }
+
+}
+
+async function syncClock(){
+
+ if(timeSyncPromise){
+  return timeSyncPromise;
+ }
+
+ timeSyncPromise=(async()=>{
+
+  const samples=[];
+
+  for(let i=0;i<TIME_SYNC_SAMPLES;i++){
+
+   try{
+
+    samples.push(await fetchWolfxTime());
+
+   }catch(e){
+
+    console.warn('Wolfx同期失敗:',e);
+
+   }
+
+  }
+
+  if(!samples.length){
+   throw new Error('Wolfx時刻を取得できません');
+  }
+
+  samples.sort((a,b)=>a.rtt-b.rtt);
+
+  const best=samples[0];
+
+  clockBaseEpoch=best.epoch;
+  clockBasePerf=best.perf;
+  clockSynced=true;
+
+  console.log('Wolfx時刻同期完了',{
+   RTT:Math.round(best.rtt),
+   samples:samples.length,
+   serverTime:new Date(best.epoch).toISOString()
+  });
+
+  return best;
+
+ })().finally(()=>{
+  timeSyncPromise=null;
+ });
+
+ return timeSyncPromise;
+
+}
+
+async function maintainClock(){
+
+ try{
+
+  await syncClock();
+
+ }catch(e){
+
+  console.error('時刻再同期エラー:',e);
+
+ }
+
+ setTimeout(
+  maintainClock,
+  TIME_SYNC_INTERVAL
+ );
+
+}
 
 /* =====================================
-   観測点JSON取得
+   Wolfx時刻表示
+===================================== */
+
+function updateSyncTime(){
+
+ $('syncTime').textContent=
+  formatJST(getSyncedNow());
+
+}
+
+/* =====================================
+   Proxy取得
+===================================== */
+
+async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
+
+ let lastError=null;
+
+ for(const proxy of PROXIES){
+
+  const controller=new AbortController();
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   timeoutMs
+  );
+
+  try{
+
+   const response=await fetch(
+    proxy(url),
+    {
+     cache:'no-store',
+     signal:controller.signal
+    }
+   );
+
+   if(response.status===404){
+
+    const error=new Error('NOTFOUND');
+    error.notFound=true;
+    throw error;
+
+   }
+
+   if(!response.ok){
+    throw new Error('HTTP '+response.status);
+   }
+
+   return response;
+
+  }catch(e){
+
+   lastError=e;
+
+   if(e.notFound){
+    throw e;
+   }
+
+  }finally{
+
+   clearTimeout(timeout);
+
+  }
+
+ }
+
+ throw lastError||new Error('Proxy取得失敗');
+
+}
+
+/* =====================================
+   色テーブル読み込み
+===================================== */
+
+/*
+ * CSV形式:
+ * 先頭列,R,G,B
+ *
+ * 先頭列の数値は読み込むだけで使用しない。
+ * RGBだけを抽出して色照合に使用する。
+ */
+
+function buildColorLookup(palette){
+
+ const SIZE=32;
+ const lut=new Uint8Array(
+  SIZE*SIZE*SIZE
+ );
+
+ for(let ri=0;ri<SIZE;ri++){
+
+  for(let gi=0;gi<SIZE;gi++){
+
+   for(let bi=0;bi<SIZE;bi++){
+
+    /*
+     * 5bit単位のRGB領域の中央を代表色にする。
+     */
+    const r=ri*8+4;
+    const g=gi*8+4;
+    const b=bi*8+4;
+
+    let bestIndex=0;
+    let bestDistance=Infinity;
+
+    for(let i=0;i<palette.length;i++){
+
+     const c=palette[i];
+
+     const dr=r-c.r;
+     const dg=g-c.g;
+     const db=b-c.b;
+
+     const distance=
+      dr*dr+
+      dg*dg+
+      db*db;
+
+     if(distance<bestDistance){
+
+      bestDistance=distance;
+      bestIndex=i;
+
+     }
+
+    }
+
+    const index=
+     (ri<<10)|
+     (gi<<5)|
+     bi;
+
+    lut[index]=bestIndex;
+
+   }
+
+  }
+
+ }
+
+ return lut;
+
+}
+
+async function loadColorMap(){
+
+ if(colorMapPromise){
+  return colorMapPromise;
+ }
+
+ colorMapPromise=(async()=>{
+
+  try{
+
+   const response=await fetch(
+    COLOR_MAP_URL,
+    {
+     cache:'force-cache'
+    }
+   );
+
+   if(!response.ok){
+
+    throw new Error(
+     '色テーブル HTTP '+response.status
+    );
+
+   }
+
+   const csv=await response.text();
+
+   const lines=csv
+    .replace(/^\uFEFF/,'')
+    .split(/\r?\n/);
+
+   const palette=[];
+
+   for(const line of lines){
+
+    const trimmed=line.trim();
+
+    if(!trimmed)continue;
+
+    const columns=trimmed.split(',');
+
+    if(columns.length<4)continue;
+
+    /*
+     * 1列目は数値情報なので使用しない。
+     * RGBの3列だけを取り出す。
+     */
+    const r=Number(columns[1].trim());
+    const g=Number(columns[2].trim());
+    const b=Number(columns[3].trim());
+
+    if(
+     !Number.isInteger(r)||
+     !Number.isInteger(g)||
+     !Number.isInteger(b)||
+     r<0||r>255||
+     g<0||g>255||
+     b<0||b>255
+    ){
+     continue;
+    }
+
+    palette.push({r,g,b});
+
+   }
+
+   if(!palette.length){
+
+    throw new Error(
+     '色テーブルに有効なRGBデータがありません'
+    );
+
+   }
+
+   colorPalette=palette;
+
+   /*
+    * 画像解析中に毎回全色を比較しないよう、
+    * 初回だけ高速検索テーブルを作成する。
+    */
+   colorLookupTable=buildColorLookup(
+    colorPalette
+   );
+
+   colorMapAvailable=true;
+
+   console.log(
+    '色テーブル読み込み完了',
+    {
+     colorCount:colorPalette.length
+    }
+   );
+
+   return true;
+
+  }catch(e){
+
+   colorPalette=null;
+   colorLookupTable=null;
+   colorMapAvailable=false;
+
+   console.warn(
+    '色テーブル取得失敗。画像のRGBを使用します:',
+    e
+   );
+
+   return false;
+
+  }
+
+ })();
+
+ return colorMapPromise;
+
+}
+
+/* =====================================
+   RGB色照合
+===================================== */
+
+function matchColor(r,g,b){
+
+ /*
+  * 色テーブルが使えない場合は生RGBを返す。
+  */
+ if(
+  !colorMapAvailable||
+  !colorLookupTable||
+  !colorPalette
+ ){
+
+  return {r,g,b};
+
+ }
+
+ const index=
+  ((r>>3)<<10)|
+  ((g>>3)<<5)|
+  (b>>3);
+
+ const paletteIndex=
+  colorLookupTable[index];
+
+ return colorPalette[paletteIndex];
+
+}
+
+/* =====================================
+   最新画像時刻JSON解析
+===================================== */
+
+function parseTimeValue(value){
+
+ if(typeof value==='number'){
+
+  if(value>1000000000000){
+   return value;
+  }
+
+  if(value>1000000000){
+   return value*1000;
+  }
+
+  return null;
+
+ }
+
+ if(typeof value!=='string'){
+  return null;
+ }
+
+ const s=value.trim();
+
+ if(/^\d{14}$/.test(s)){
+
+  const iso=
+   `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+   `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+
+ }
+
+ const compact=s.match(
+  /(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
+ );
+
+ if(compact){
+
+  const iso=
+   `${compact[1]}-${compact[2]}-${compact[3]}T`+
+   `${compact[4]}:${compact[5]}:${compact[6]}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+
+ }
+
+ if(/^\d{10,13}$/.test(s)){
+
+  const n=Number(s);
+
+  if(n>1000000000000)return n;
+  if(n>1000000000)return n*1000;
+
+ }
+
+ return null;
+
+}
+
+function findLatestTime(data){
+
+ const candidates=[];
+
+ function walk(value,key=''){
+
+  if(value===null||value===undefined)return;
+
+  if(typeof value==='object'){
+
+   if(Array.isArray(value)){
+
+    for(const item of value){
+     walk(item,key);
+    }
+
+   }else{
+
+    for(const [k,v] of Object.entries(value)){
+     walk(v,k);
+    }
+
+   }
+
+   return;
+
+  }
+
+  const ms=parseTimeValue(value);
+
+  if(ms===null)return;
+
+  const name=String(key).toLowerCase();
+
+  let priority=0;
+
+  if(name.includes('latest'))priority+=10;
+  if(name.includes('time'))priority+=5;
+  if(name.includes('date'))priority+=3;
+
+  candidates.push({
+   ms,
+   priority,
+   key
+  });
+
+ }
+
+ walk(data);
+
+ if(!candidates.length){
+
+  throw new Error(
+   'latest.json内に認識可能な時刻がありません'
+  );
+
+ }
+
+ candidates.sort((a,b)=>{
+
+  if(b.priority!==a.priority){
+   return b.priority-a.priority;
+  }
+
+  return b.ms-a.ms;
+
+ });
+
+ return candidates[0].ms;
+
+}
+
+/* =====================================
+   強震モニタ最新時刻取得
+===================================== */
+
+async function fetchLatestImageTime(){
+
+ const response=await fetchViaProxy(
+  LATEST_URL,
+  8000
+ );
+
+ const raw=await response.text();
+
+ let data;
+
+ try{
+
+  data=JSON.parse(
+   raw.replace(/^\uFEFF/,'')
+  );
+
+ }catch(e){
+
+  throw new Error(
+   'latest.jsonのJSON解析に失敗しました'
+  );
+
+ }
+
+ /*
+  * 未来時刻の判定は行わない。
+  * latest.jsonの時刻をそのまま採用する。
+  */
+
+ return findLatestTime(data);
+
+}
+
+/* =====================================
+   観測点JSON解析
 ===================================== */
 
 function walkRecords(value,out=[]){
 
  if(Array.isArray(value)){
-  for(const v of value)walkRecords(v,out);
+
+  for(const v of value){
+   walkRecords(v,out);
+  }
+
   return out;
+
  }
 
- if(value && typeof value==='object'){
+ if(value&&typeof value==='object'){
 
-  if(value.location && value.point && value.point.center_point){
+  if(
+   value.location&&
+   value.point&&
+   value.point.center_point
+  ){
+
    out.push(value);
+
   }
 
-  for(const [k,v] of Object.entries(value)){
-   if(v && typeof v==='object'){
+  for(const v of Object.values(value)){
+
+   if(v&&typeof v==='object'){
     walkRecords(v,out);
    }
+
   }
+
  }
 
  return out;
 
 }
 
+/* =====================================
+   観測点の事前計算
+===================================== */
+
+function preparePoints(recs){
+
+ const result=[];
+
+ for(const item of recs){
+
+  const loc=item.location||{};
+  const point=item.point||{};
+
+  const center=point.center_point||{};
+  const offset=point.offset||{};
+
+  const lat=Number(loc.latitude);
+  const lon=Number(loc.longitude);
+
+  const x=
+   Number(center.x)+Number(offset.x||0);
+
+  const y=
+   Number(center.y)+Number(offset.y||0);
+
+  if(
+   !Number.isFinite(lat)||
+   !Number.isFinite(lon)||
+   !Number.isFinite(x)||
+   !Number.isFinite(y)
+  ){
+   continue;
+  }
+
+  if(item.is_suspended===true){
+   continue;
+  }
+
+  result.push({
+
+   lat,
+   lon,
+
+   x:Math.round(x),
+   y:Math.round(y),
+
+   name:
+    item.name||
+    item.point_name||
+    item.station_name||
+    item.code||
+    '観測点',
+
+   region:
+    item.region||
+    item.prefecture||
+    '',
+
+   code:item.code||''
+
+  });
+
+ }
+
+ return result;
+
+}
+
+/* =====================================
+   観測点JSON取得
+===================================== */
 
 function loadPoints(){
 
- if(records)return Promise.resolve(records);
-
- if(recordsPromise)return recordsPromise;
+ if(recordsPromise){
+  return recordsPromise;
+ }
 
  setStatus('観測点JSONを取得しています…');
 
  recordsPromise=(async()=>{
 
-  const response=await fetch(POINTS_URL);
+  const response=await fetch(
+   POINTS_URL,
+   {
+    cache:'force-cache'
+   }
+  );
 
   if(!response.ok){
    throw new Error(
-    `観測点JSON取得失敗：HTTP ${response.status}`
+    '観測点JSON HTTP '+response.status
    );
   }
 
@@ -611,11 +1118,33 @@ function loadPoints(){
    throw new Error('観測点データが見つかりません');
   }
 
-  return records;
+  /*
+   * 緯度経度・画像座標を
+   * 初回だけ計算する。
+   */
+
+  preparedPoints=preparePoints(records);
+
+  if(!preparedPoints.length){
+   throw new Error('有効な観測点がありません');
+  }
+
+  $('total').textContent=
+   records.length.toLocaleString();
+
+  console.log('観測点準備完了',{
+   total:records.length,
+   prepared:preparedPoints.length
+  });
+
+  return preparedPoints;
 
  })().catch(e=>{
 
   recordsPromise=null;
+  records=null;
+  preparedPoints=null;
+
   throw e;
 
  });
@@ -624,83 +1153,135 @@ function loadPoints(){
 
 }
 
-
 /* =====================================
    GIF画像取得
 ===================================== */
 
 async function fetchGifBlob(url){
 
- let lastErr=null;
+ const response=await fetchViaProxy(
+  url,
+  10000
+ );
 
- for(let k=0;k<PROXIES.length;k++){
+ const blob=await response.blob();
 
-  const i=(proxyIndex+k)%PROXIES.length;
+ if(!blob.size){
+  throw new Error('空の画像データ');
+ }
 
-  try{
+ const type=blob.type;
 
-   const res=await fetch(
-    PROXIES[i](url),
-    {cache:'no-store'}
-   );
+ if(
+  type&&
+  !type.includes('image')&&
+  !type.includes('octet-stream')
+ ){
 
-   if(res.status===404){
-
-    const e=new Error('NOTFOUND');
-    e.notFound=true;
-    throw e;
-
-   }
-
-   if(!res.ok){
-    throw new Error(`HTTP ${res.status}`);
-   }
-
-   const blob=await res.blob();
-
-   if(!blob.size){
-    throw new Error('空のレスポンス');
-   }
-
-   proxyIndex=i;
-
-   $('route').textContent='Workers';
-
-   return blob;
-
-  }catch(e){
-
-   lastErr=e;
-
-   if(e.notFound)throw e;
-
-  }
+  throw new Error(
+   '画像以外のレスポンスを受信しました'
+  );
 
  }
 
- throw lastErr||new Error('画像を取得できません');
+ return blob;
 
 }
 
+/* =====================================
+   Canvas初期化
+===================================== */
+
+function prepareCanvas(width,height){
+
+ if(
+  !analysisCanvas||
+  lastImageWidth!==width||
+  lastImageHeight!==height
+ ){
+
+  analysisCanvas=document.createElement('canvas');
+
+  analysisCanvas.width=width;
+  analysisCanvas.height=height;
+
+  analysisContext=analysisCanvas.getContext(
+   '2d',
+   {
+    willReadFrequently:true,
+    alpha:true
+   }
+  );
+
+  lastImageWidth=width;
+  lastImageHeight=height;
+
+  /*
+   * 画像サイズが変わった場合のみ
+   * GeoJSONのFeatureを再構築する。
+   */
+
+  stationFeatures=preparedPoints
+   .filter(p=>
+    p.x>=0&&
+    p.y>=0&&
+    p.x<width&&
+    p.y<height
+   )
+   .map(p=>({
+
+    type:'Feature',
+
+    geometry:{
+     type:'Point',
+     coordinates:[p.lon,p.lat]
+    },
+
+    properties:{
+
+     name:p.name,
+     region:p.region,
+     code:p.code,
+
+     x:p.x,
+     y:p.y,
+
+     r:0,
+     g:0,
+     b:0,
+
+     hex:'#000000',
+     rgb:'0, 0, 0',
+
+     valid:false
+
+    }
+
+   }));
+
+  geojson={
+   type:'FeatureCollection',
+   features:stationFeatures
+  };
+
+ }
+
+}
 
 /* =====================================
    Canvas画像解析
 ===================================== */
 
-function analyzeBitmap(bitmap,recs,label){
+function analyzeBitmap(bitmap){
 
  const w=bitmap.width;
  const h=bitmap.height;
 
- const canvas=document.createElement('canvas');
+ prepareCanvas(w,h);
 
- canvas.width=w;
- canvas.height=h;
+ const ctx=analysisContext;
 
- const ctx=canvas.getContext(
-  '2d',
-  {willReadFrequently:true}
- );
+ ctx.clearRect(0,0,w,h);
 
  ctx.drawImage(bitmap,0,0);
 
@@ -708,132 +1289,91 @@ function analyzeBitmap(bitmap,recs,label){
   0,0,w,h
  ).data;
 
- $('imageSize').textContent=`${w} × ${h}px`;
+ $('imageSize').textContent=
+  `${w} × ${h}px`;
 
- const features=[];
+ let shown=0;
 
- let skipped=0;
+ const features=stationFeatures;
 
- for(const item of recs){
+ for(let i=0;i<features.length;i++){
 
-  const loc=item.location||{};
-  const point=item.point||{};
+  const feature=features[i];
 
-  const center=point.center_point||{};
-  const offset=point.offset||{};
+  const p=feature.properties;
 
-  const lat=Number(loc.latitude);
-  const lon=Number(loc.longitude);
+  const offset=(p.y*w+p.x)*4;
 
-  const xf=
-   Number(center.x)+Number(offset.x||0);
+  const alpha=px[offset+3];
 
-  const yf=
-   Number(center.y)+Number(offset.y||0);
+  if(alpha===0){
 
-  if(
-   !Number.isFinite(lat)||
-   !Number.isFinite(lon)||
-   !Number.isFinite(xf)||
-   !Number.isFinite(yf)
-  ){
-   skipped++;
+   p.valid=false;
    continue;
+
   }
 
-  if(item.is_suspended===true){
-   skipped++;
-   continue;
-  }
+  /*
+   * 画像から取得した元のRGB
+   */
+  const rawR=px[offset];
+  const rawG=px[offset+1];
+  const rawB=px[offset+2];
 
-  const x=Math.round(xf);
-  const y=Math.round(yf);
+  /*
+   * CSVのRGBテーブルから最も近い色を取得。
+   * CSVの先頭列の数値は使用しない。
+   */
+  const matched=matchColor(
+   rawR,
+   rawG,
+   rawB
+  );
 
-  if(x<0||y<0||x>=w||y>=h){
-   skipped++;
-   continue;
-  }
+  const r=matched.r;
+  const g=matched.g;
+  const b=matched.b;
 
-  const o=(y*w+x)*4;
+  p.r=r;
+  p.g=g;
+  p.b=b;
 
-  if(px[o+3]===0){
-   skipped++;
-   continue;
-  }
+  p.hex='#'+
+   r.toString(16).padStart(2,'0')+
+   g.toString(16).padStart(2,'0')+
+   b.toString(16).padStart(2,'0');
 
-  const r=px[o];
-  const g=px[o+1];
-  const b=px[o+2];
+  p.rgb=`${r}, ${g}, ${b}`;
 
-  const props={
+  p.valid=true;
 
-   name:
-    item.name||
-    item.point_name||
-    item.station_name||
-    item.code||
-    '観測点',
-
-   region:
-    item.region||
-    item.prefecture||
-    '',
-
-   code:item.code||'',
-
-   x,y,r,g,b,
-
-   hex:'#'+[r,g,b].map(
-    v=>v.toString(16).padStart(2,'0')
-   ).join(''),
-
-   rgb:`${r}, ${g}, ${b}`
-
-  };
-
-  features.push({
-
-   type:'Feature',
-
-   geometry:{
-    type:'Point',
-    coordinates:[lon,lat]
-   },
-
-   properties:props
-
-  });
+  shown++;
 
  }
 
- allFeatures=features;
-
- geojson={
-  type:'FeatureCollection',
-  features
- };
-
- $('total').textContent=
-  recs.length.toLocaleString();
-
  $('shown').textContent=
-  features.length.toLocaleString();
+  shown.toLocaleString();
+
+ /*
+  * Featureの位置は変更せず
+  * 色情報だけを更新する。
+  */
+
+ geojson.features=features;
 
  if(map){
 
-  if(map.getSource('stations')){
-   map.getSource('stations').setData(geojson);
-  }else{
-   addSourceAndLayer();
+  const source=map.getSource('stations');
+
+  if(source){
+
+   source.setData(geojson);
+
   }
 
  }
 
- setStatus(
-  `解析完了：${features.length.toLocaleString()}地点を表示。除外 ${skipped.toLocaleString()}地点`
- );
-
- if(features.length&&firstFit){
+ if(firstFit&&shown){
 
   firstFit=false;
 
@@ -841,139 +1381,255 @@ function analyzeBitmap(bitmap,recs,label){
 
  }
 
-}
-
-
-/* =====================================
-   画像取得時刻
-===================================== */
-
-/*
- * 同期時刻は画像取得対象の決定だけに使用。
- * 画像時刻表示は実際に取得したファイル名の時刻。
- */
-
-function currentTargetMs(){
-
- return Math.floor(
-  (getSyncedNow()-DELAY_SECONDS*1000)/1000
- )*1000;
+ return shown;
 
 }
 
-
 /* =====================================
-   画像取得・解析
+   最新画像取得・解析
 ===================================== */
 
-async function run(ms){
+async function runImage(targetMs){
 
- const mySeq=++seqCounter;
+ if(imageBusy)return;
 
- const {url,label}=imageUrlFor(ms);
+ imageBusy=true;
+
+ const started=performance.now();
 
  try{
 
-  setStatus('画像を取得・解析しています…');
+  /*
+   * 画像・観測点・色テーブルを同時取得。
+   */
 
-  const [recs,blob]=await Promise.all([
+  const imageTask=(async()=>{
 
-   loadPoints(),
+   let blob=null;
+   let selectedMs=null;
+   let lastError=null;
 
-   fetchGifBlob(url)
+   for(
+    let i=0;
+    i<=FALLBACK_SECONDS;
+    i++
+   ){
 
-  ]);
+    const candidateMs=
+     targetMs-i*1000;
 
-  if(mySeq<appliedSeq)return;
+    if(
+     lastAppliedImageMs!==null&&
+     candidateMs<=lastAppliedImageMs
+    ){
 
-  const bitmap=await createImageBitmap(blob);
+     continue;
 
-  if(mySeq<appliedSeq){
-   bitmap.close();
-   return;
-  }
+    }
 
-  appliedSeq=mySeq;
+    const {url}=imageUrlFor(candidateMs);
+
+    try{
+
+     blob=await fetchGifBlob(url);
+
+     selectedMs=candidateMs;
+
+     break;
+
+    }catch(e){
+
+     lastError=e;
+
+     console.warn(
+      '画像取得失敗:',
+      formatJST(candidateMs),
+      e
+     );
+
+    }
+
+   }
+
+   if(!blob){
+
+    throw new Error(
+     '最新画像を取得できません。'+
+     (lastError?.message||'')
+    );
+
+   }
+
+   return {
+    blob,
+    selectedMs
+   };
+
+  })();
+
+  const pointsTask=loadPoints();
+
+  const colorTask=loadColorMap();
 
   /*
-   * 表示する画像時刻は、
-   * 実際に取得した画像のファイル名に対応する時刻。
-   * 同期時刻から独立している。
+   * 3つの処理を並列で待機。
+   * 色テーブル取得に失敗しても画像解析は継続する。
    */
-  $('imgTime').textContent=label;
 
-  if(currentObjectURL){
-   URL.revokeObjectURL(currentObjectURL);
-  }
+  const [
+   imageResult,
+   points
+  ]=await Promise.all([
+   imageTask,
+   pointsTask,
+   colorTask
+  ]).then(results=>[
+   results[0],
+   results[1]
+  ]);
 
-  currentObjectURL=URL.createObjectURL(blob);
+  /*
+   * GIFデコード
+   */
 
-  image.src=currentObjectURL;
+  const bitmap=await createImageBitmap(
+   imageResult.blob
+  );
 
-  analyzeBitmap(bitmap,recs,label);
+  try{
 
-  bitmap.close();
-
- }catch(e){
-
-  if(mySeq<appliedSeq)return;
-
-  if(e.notFound){
-
-   setStatus(
-    `${label} の画像はまだ公開されていません`,
-    true
+   const objectURL=URL.createObjectURL(
+    imageResult.blob
    );
 
-  }else{
+   if(currentObjectURL){
 
-   setStatus(
-    '画像取得エラー：'+
-    (e.message||e),
-    true
+    URL.revokeObjectURL(
+     currentObjectURL
+    );
+
+   }
+
+   currentObjectURL=objectURL;
+
+   image.src=objectURL;
+
+   /*
+    * 解析
+    */
+
+   const shown=analyzeBitmap(bitmap);
+
+   $('imgTime').textContent=
+    formatJST(imageResult.selectedMs);
+
+   lastAppliedImageMs=
+    imageResult.selectedMs;
+
+   if(colorMapAvailable){
+
+    setStatus(
+     'オンライン：色テーブル照合で画像を解析しています'
+    );
+
+   }else{
+
+    setStatus(
+     'オンライン：色テーブル未取得のため画像RGBで表示しています'
+    );
+
+   }
+
+   console.log(
+    '画像更新完了:',
+    formatJST(imageResult.selectedMs),
+    {
+     stations:points.length,
+     shown,
+     colorTable:colorMapAvailable,
+     processingMs:Math.round(
+      performance.now()-started
+     )
+    }
    );
+
+  }finally{
+
+   bitmap.close();
 
   }
 
-  console.error(e);
+ }finally{
+
+  imageBusy=false;
 
  }
 
 }
 
-
 /* =====================================
-   更新処理
+   最新画像監視
 ===================================== */
 
-function tick(){
+async function checkLatest(){
 
- updateSyncTime();
+ if(latestCheckBusy){
+  return;
+ }
 
- const t=currentTargetMs();
+ latestCheckBusy=true;
 
- if(t===lastTarget)return;
+ try{
 
- lastTarget=t;
+  const ms=await fetchLatestImageTime();
 
- run(t);
+  latestImageMs=ms;
+
+  if(
+   lastAppliedImageMs===null||
+   ms>lastAppliedImageMs
+  ){
+
+   setStatus(
+    '最新画像を確認。画像を取得しています…'
+   );
+
+   await runImage(ms);
+
+  }
+
+ }catch(e){
+
+  console.warn('最新画像確認:',e);
+
+  setStatus(
+   '最新画像確認中：'+e.message,
+   true
+  );
+
+ }finally{
+
+  latestCheckBusy=false;
+
+ }
 
 }
 
+/* =====================================
+   定期更新
+===================================== */
 
-/* 1秒ごとに自動更新 */
-function schedule(){
+function scheduleLatest(){
 
- setTimeout(()=>{
+ setTimeout(async()=>{
 
-  tick();
+  await checkLatest();
 
-  schedule();
+  scheduleLatest();
 
- },1000-(performance.now()%1000)+30);
+ },LATEST_CHECK_INTERVAL);
 
 }
-
 
 /* =====================================
    地図レイヤー
@@ -986,7 +1642,6 @@ function addSourceAndLayer(){
   map.addSource('stations',{
 
    type:'geojson',
-
    data:geojson
 
   });
@@ -998,10 +1653,14 @@ function addSourceAndLayer(){
   map.addLayer({
 
    id:'station-points',
-
    type:'circle',
-
    source:'stations',
+
+   filter:[
+    '==',
+    ['get','valid'],
+    true
+   ],
 
    paint:{
 
@@ -1084,32 +1743,47 @@ function addSourceAndLayer(){
 
 }
 
+/* =====================================
+   HTMLエスケープ
+===================================== */
 
-/* 全観測点表示 */
+function esc(v){
+
+ return String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ }[c]));
+
+}
+
+/* =====================================
+   全観測点表示
+===================================== */
+
 function fitAll(){
 
- if(!map||!allFeatures.length)return;
+ if(!map||!stationFeatures.length)return;
 
- const b=new maplibregl.LngLatBounds();
+ const bounds=new maplibregl.LngLatBounds();
 
- for(const f of allFeatures){
+ for(const f of stationFeatures){
 
-  b.extend(f.geometry.coordinates);
+  bounds.extend(f.geometry.coordinates);
 
  }
 
- map.fitBounds(b,{
+ map.fitBounds(bounds,{
 
   padding:45,
-
   maxZoom:7,
-
   duration:700
 
  });
 
 }
-
 
 /* =====================================
    地図初期化
@@ -1143,39 +1817,46 @@ map.addControl(
  'top-right'
 );
 
-
 /* =====================================
    起動処理
 ===================================== */
 
-map.on('load',async()=>{
+map.on('load',()=>{
 
  addSourceAndLayer();
 
- setStatus('サーバー時刻を同期しています…');
+ /*
+  * 重要：
+  * 時刻同期を待たずに画像取得を開始。
+  */
 
- try{
+ setStatus('最新画像・観測点・色テーブルを並列取得しています…');
 
-  await syncClock();
-
-  setStatus('サーバー時刻同期完了・画像取得開始');
-
- }catch(e){
-
-  console.error('初回時刻同期失敗:',e);
-
-  setStatus(
-   '時刻同期失敗：端末時刻で動作しています',
-   true
-  );
-
- }
-
- tick();
-
- schedule();
+ /*
+  * Wolfx同期はバックグラウンドで実行。
+  * 画像取得をブロックしない。
+  */
 
  maintainClock();
+
+ updateSyncTime();
+
+ setInterval(
+  updateSyncTime,
+  250
+ );
+
+ /*
+  * 初回画像取得を即座に開始。
+  */
+
+ checkLatest();
+
+ /*
+  * 500ms間隔で最新画像を監視。
+  */
+
+ scheduleLatest();
 
 });
 
