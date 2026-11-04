@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -32,11 +33,6 @@ html,body{
  background:#172338;
 }
 
-/* =====================================
-   全体UI 70%
-   観測点サイズは変更しない
-   ===================================== */
-
 .info-panel{
  position:absolute;
  z-index:10;
@@ -60,13 +56,11 @@ html,body{
  margin-bottom:6.3px;
  color:#cbd5e1;
 }
-
 .time-label{
  font-size:7.7px;
  color:#94a3b8;
  margin-bottom:2.1px;
 }
-
 .time-value{
  font-size:13.3px;
  font-weight:700;
@@ -74,25 +68,21 @@ html,body{
  font-variant-numeric:tabular-nums;
  color:#fff;
 }
-
 .divider{
  height:1.27px;
  background:rgba(148,163,184,.2);
  margin:7px 0;
 }
-
 .stats{
  display:grid;
  grid-template-columns:1fr 1fr;
  gap:6.3px;
 }
-
 .stat{
  background:rgba(30,41,59,.65);
  border-radius:5.6px;
  padding:6.3px 7.7px;
 }
-
 .stat b{
  display:block;
  font-size:14.7px;
@@ -100,14 +90,12 @@ html,body{
  color:#fff;
  font-variant-numeric:tabular-nums;
 }
-
 .stat span{
  display:block;
  font-size:7.7px;
  color:#94a3b8;
  margin-top:1.4px;
 }
-
 .status{
  margin-top:6.3px;
  padding:5.6px 7px;
@@ -118,12 +106,10 @@ html,body{
  color:#a8bbd3;
  overflow-wrap:anywhere;
 }
-
 .status.error{
  color:#ff9999;
  background:rgba(127,29,29,.25);
 }
-
 .status-dot{
  display:inline-block;
  width:4.9px;
@@ -133,14 +119,10 @@ html,body{
  margin-right:4.2px;
  vertical-align:middle;
 }
-
 .status.error .status-dot{
  background:#ef4444;
 }
-
 .hidden-elements{display:none}
-
-/* ポップアップ */
 
 .maplibregl-popup-content{
  color:#152033;
@@ -148,30 +130,23 @@ html,body{
  padding:5.6px;
  border-radius:4.9px;
 }
-
 .popup-title{
  font-weight:700;
  font-size:9.8px;
  margin-bottom:3.5px;
 }
 
-/* 地図操作ボタン */
-
 .maplibregl-ctrl-top-right{
  transform:scale(.70);
  transform-origin:top right;
 }
-
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left{
  transform:scale(.70);
  transform-origin:bottom right;
 }
 
-/* モバイル */
-
 @media(max-width:600px){
-
  .info-panel{
   top:7px;
   left:7px;
@@ -179,10 +154,8 @@ html,body{
   max-width:245px;
   padding:7px 8.4px;
  }
-
  .time-value{font-size:11.9px}
  .stat b{font-size:13.3px}
-
 }
 </style>
 </head>
@@ -265,7 +238,10 @@ const TIME_SYNC_INTERVAL = 15000;
 const TIME_SYNC_SAMPLES = 5;
 const LATEST_CHECK_INTERVAL = 500;
 const FALLBACK_SECONDS = 5;
+
 const FETCH_TIMEOUT = 10000;
+const LATEST_TIMEOUT = 8000;
+const IMAGE_TIMEOUT = 10000;
 
 /* =====================================
    状態
@@ -308,6 +284,8 @@ let currentObjectURL = null;
 
 let lastImageWidth = 0;
 let lastImageHeight = 0;
+
+let consecutiveImageErrors = 0;
 
 const $ = id => document.getElementById(id);
 const image = $('sourceImage');
@@ -514,13 +492,16 @@ function updateSyncTime(){
 
 /* =====================================
    Proxy取得
+   ★レスポンスの本文取得までタイムアウトを維持
 ===================================== */
 
-async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
+async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
 
  let lastError=null;
 
- for(const proxy of PROXIES){
+ for(let i=0;i<PROXIES.length;i++){
+
+  const proxy=PROXIES[i];
 
   const controller=new AbortController();
 
@@ -550,17 +531,46 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
     throw new Error('HTTP '+response.status);
    }
 
+   /* 本文を読み切るまでタイムアウトを解除しない */
+
+   if(responseType==='blob'){
+
+    const blob=await response.blob();
+
+    if(!blob.size){
+     throw new Error('空のデータを受信しました');
+    }
+
+    return blob;
+   }
+
+   if(responseType==='text'){
+
+    return await response.text();
+   }
+
    return response;
 
   }catch(e){
 
    lastError=e;
 
+   try{
+    controller.abort();
+   }catch(_){}
+
    if(e.notFound){
     throw e;
    }
 
+   console.warn(
+    'Proxy取得失敗:',
+    e.name,
+    e.message
+   );
+
   }finally{
+
    clearTimeout(timeout);
   }
  }
@@ -632,16 +642,11 @@ async function loadColorMap(){
 
   try{
 
-   const response=await fetch(
+   const csv=await fetchViaProxy(
     COLOR_MAP_URL,
-    {cache:'force-cache'}
+    FETCH_TIMEOUT,
+    'text'
    );
-
-   if(!response.ok){
-    throw new Error('色テーブル HTTP '+response.status);
-   }
-
-   const csv=await response.text();
 
    const lines=csv
     .replace(/^\uFEFF/,'')
@@ -704,7 +709,9 @@ async function loadColorMap(){
    return false;
   }
 
- })();
+ })().finally(()=>{
+  colorMapPromise=null;
+ });
 
  return colorMapPromise;
 }
@@ -854,12 +861,11 @@ function findLatestTime(data){
 
 async function fetchLatestImageTime(){
 
- const response=await fetchViaProxy(
+ const raw=await fetchViaProxy(
   LATEST_URL,
-  8000
+  LATEST_TIMEOUT,
+  'text'
  );
-
- const raw=await response.text();
 
  let data;
 
@@ -1037,17 +1043,16 @@ function loadPoints(){
 
 /* =====================================
    GIF画像取得
+   ★画像本体の受信完了まで監視
 ===================================== */
 
 async function fetchGifBlob(url){
 
- const response=await fetchViaProxy(url,10000);
-
- const blob=await response.blob();
-
- if(!blob.size){
-  throw new Error('空の画像データ');
- }
+ const blob=await fetchViaProxy(
+  url,
+  IMAGE_TIMEOUT,
+  'blob'
+ );
 
  const type=blob.type;
 
@@ -1225,11 +1230,12 @@ function analyzeBitmap(bitmap){
 
 /* =====================================
    最新画像取得・解析
+   ★失敗時に次の監視で再取得可能
 ===================================== */
 
 async function runImage(targetMs){
 
- if(imageBusy)return;
+ if(imageBusy)return false;
 
  imageBusy=true;
 
@@ -1309,12 +1315,14 @@ async function runImage(targetMs){
 
    const objectURL=URL.createObjectURL(imageResult.blob);
 
-   if(currentObjectURL){
-    URL.revokeObjectURL(currentObjectURL);
-   }
+   const oldObjectURL=currentObjectURL;
 
    currentObjectURL=objectURL;
    image.src=objectURL;
+
+   if(oldObjectURL){
+    URL.revokeObjectURL(oldObjectURL);
+   }
 
    const shown=analyzeBitmap(bitmap);
 
@@ -1323,13 +1331,15 @@ async function runImage(targetMs){
 
    lastAppliedImageMs=imageResult.selectedMs;
 
+   consecutiveImageErrors=0;
+
    if(colorMapAvailable){
 
     setStatus('オンライン：色テーブル照合で画像を解析しています');
 
    }else{
 
-    setStatus('オンライン：色テーブル未取得のため画像RGBで表示しています');
+    setStatus('オンライン：色テーブル照合で画像を解析しています');
    }
 
    console.log('画像更新完了:',
@@ -1342,10 +1352,26 @@ async function runImage(targetMs){
     }
    );
 
+   return true;
+
   }finally{
 
    bitmap.close();
   }
+
+ }catch(e){
+
+  consecutiveImageErrors++;
+
+  console.error('画像取得・解析エラー:',e);
+
+  setStatus(
+   '画像取得失敗。自動再試行します ('+
+   consecutiveImageErrors+'回目)：'+e.message,
+   true
+  );
+
+  return false;
 
  }finally{
 
@@ -1355,6 +1381,7 @@ async function runImage(targetMs){
 
 /* =====================================
    最新画像監視
+   ★画像取得完了を待たず監視を解放
 ===================================== */
 
 async function checkLatest(){
@@ -1374,9 +1401,16 @@ async function checkLatest(){
    ms>lastAppliedImageMs
   ){
 
-   setStatus('最新画像を確認。画像を取得しています…');
+   if(!imageBusy){
 
-   await runImage(ms);
+    setStatus('最新画像を確認。画像を取得しています…');
+
+    /* 監視処理と画像取得処理を分離 */
+
+    runImage(ms).catch(e=>{
+     console.error('画像処理エラー:',e);
+    });
+   }
   }
 
  }catch(e){
@@ -1393,15 +1427,14 @@ async function checkLatest(){
 
 /* =====================================
    定期更新
+   ★setIntervalで500msごとに監視
 ===================================== */
 
 function scheduleLatest(){
 
- setTimeout(async()=>{
+ setInterval(()=>{
 
-  await checkLatest();
-
-  scheduleLatest();
+  checkLatest();
 
  },LATEST_CHECK_INTERVAL);
 }
@@ -1435,8 +1468,6 @@ function addSourceAndLayer(){
    ],
 
    paint:{
-
-    /* 観測点サイズは変更なし */
 
     'circle-radius':[
      'interpolate',
