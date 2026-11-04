@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101827">
+<title>強震モニタ画像解析ビューア</title>
+
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+<style>
+:root{
+ color-scheme:dark;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ background:#0b1220;
+ color:#e8eef8;
+}
+*{box-sizing:border-box}
+
+html,body{
+ width:100%;
+ height:100%;
+ margin:0;
+ overflow:hidden;
+ background:#0b1220;
+}
+
+#map{
+ position:absolute;
+ inset:0;
+ width:100%;
+ height:100%;
+ background:#172338;
+}
+
+/* 上部情報パネル */
+.info-panel{
+ position:absolute;
+ z-index:10;
+ top:12px;
+ left:12px;
+ width:calc(100% - 24px);
+ max-width:390px;
+ padding:12px 14px;
+ background:rgba(11,18,32,.91);
+ border:1px solid rgba(148,163,184,.25);
+ border-radius:12px;
+ backdrop-filter:blur(12px);
+ -webkit-backdrop-filter:blur(12px);
+ box-shadow:0 5px 22px rgba(0,0,0,.25);
+ pointer-events:none;
+}
+
+.info-title{
+ font-size:13px;
+ font-weight:700;
+ margin-bottom:9px;
+ color:#cbd5e1;
+}
+
+.time-label{
+ font-size:11px;
+ color:#94a3b8;
+ margin-bottom:3px;
+}
+
+.time-value{
+ font-size:19px;
+ font-weight:700;
+ letter-spacing:.3px;
+ font-variant-numeric:tabular-nums;
+ color:#fff;
+}
+
+.divider{
+ height:1px;
+ background:rgba(148,163,184,.2);
+ margin:10px 0;
+}
+
+.stats{
+ display:grid;
+ grid-template-columns:1fr 1fr;
+ gap:9px;
+}
+
+.stat{
+ background:rgba(30,41,59,.65);
+ border-radius:8px;
+ padding:9px 11px;
+}
+
+.stat b{
+ display:block;
+ font-size:21px;
+ font-weight:700;
+ color:#fff;
+ font-variant-numeric:tabular-nums;
+}
+
+.stat span{
+ display:block;
+ font-size:11px;
+ color:#94a3b8;
+ margin-top:2px;
+}
+
+.status{
+ margin-top:9px;
+ padding:8px 10px;
+ border-radius:7px;
+ background:rgba(30,41,59,.7);
+ font-size:11px;
+ line-height:1.5;
+ color:#a8bbd3;
+ overflow-wrap:anywhere;
+}
+
+.status.error{
+ color:#ff9999;
+ background:rgba(127,29,29,.25);
+}
+
+.status-dot{
+ display:inline-block;
+ width:7px;
+ height:7px;
+ border-radius:50%;
+ background:#22c55e;
+ margin-right:6px;
+}
+
+.status.error .status-dot{
+ background:#ef4444;
+}
+
+/* 非表示の解析用画像 */
+.hidden-elements{
+ display:none;
+}
+
+.maplibregl-popup-content{
+ color:#152033;
+ font-size:12px;
+}
+
+.popup-title{
+ font-weight:700;
+ font-size:14px;
+ margin-bottom:5px;
+}
+
+@media(max-width:600px){
+ .info-panel{
+  top:10px;
+  left:10px;
+  width:calc(100% - 20px);
+  max-width:350px;
+  padding:10px 12px;
+ }
+
+ .time-value{
+  font-size:17px;
+ }
+
+ .stat b{
+  font-size:19px;
+ }
+}
+</style>
+</head>
+
+<body>
+
+<main id="map" aria-label="強震モニタ観測点マップ"></main>
+
+<!-- 地図上の情報表示 -->
+<section class="info-panel">
+
+ <div class="info-title">強震モニタ リアルタイム画像解析</div>
+
+ <div class="time-label">画像取得時刻（JST）</div>
+ <div class="time-value" id="imgTime">取得待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="stats">
+
+  <div class="stat">
+   <b id="total">—</b>
+   <span>観測点データ数</span>
+  </div>
+
+  <div class="stat">
+   <b id="shown">—</b>
+   <span>解析・表示地点数</span>
+  </div>
+
+ </div>
+
+ <div class="status" id="status">
+  <span class="status-dot"></span>
+  初期化しています…
+ </div>
+
+</section>
+
+<!-- 内部処理用 -->
+<div class="hidden-elements">
+ <img id="sourceImage" alt="">
+ <span id="imageSize"></span>
+ <span id="route"></span>
+</div>
+
+<script>
+const BASE_URL =
+'https://www.lmoni.bosai.go.jp/img_svr/data/map_img/RealTimeImg/jma_s/';
+
+const PROXY_BASE =
+'https://green-grass-374f.mirakuro5472.workers.dev/';
+
+const PROXIES = [
+ u=>PROXY_BASE+'?url='+encodeURIComponent(u)
+];
+
+const POINTS_URL =
+'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
+
+const DELAY_SECONDS = 3;
+
+const $ = id => document.getElementById(id);
+
+const image = $('sourceImage');
+
+let currentObjectURL = null;
+
+let map;
+
+let geojson = {
+ type:'FeatureCollection',
+ features:[]
+};
+
+let allFeatures = [];
+
+let records = null;
+let recordsPromise = null;
+
+let proxyIndex = 0;
+
+let seqCounter = 0;
+let appliedSeq = 0;
+let lastTarget = null;
+
+let firstFit = true;
+
+
+/* ステータス表示 */
+function setStatus(message,isError=false){
+
+ const el=$('status');
+
+ el.textContent='';
+
+ const dot=document.createElement('span');
+ dot.className='status-dot';
+
+ el.appendChild(dot);
+ el.appendChild(document.createTextNode(message));
+
+ el.classList.toggle('error',isError);
+}
+
+
+/* JSONデータ解析 */
+function walkRecords(value,out=[]){
+
+ if(Array.isArray(value)){
+  for(const v of value)walkRecords(v,out);
+  return out;
+ }
+
+ if(value && typeof value==='object'){
+
+  if(value.location && value.point && value.point.center_point){
+   out.push(value);
+  }
+
+  for(const [k,v] of Object.entries(value)){
+   if(v && typeof v==='object'){
+    walkRecords(v,out);
+   }
+  }
+ }
+
+ return out;
+}
+
+
+/* 文字列処理 */
+function esc(v){
+
+ return String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ }[c]));
+}
+
+
+const p2=n=>String(n).padStart(2,'0');
+
+
+/* JST変換 */
+function jstParts(ms){
+
+ const d=new Date(ms+9*3600e3);
+
+ return {
+  Y:d.getUTCFullYear(),
+  M:p2(d.getUTCMonth()+1),
+  D:p2(d.getUTCDate()),
+  h:p2(d.getUTCHours()),
+  m:p2(d.getUTCMinutes()),
+  s:p2(d.getUTCSeconds())
+ };
+}
+
+
+/* 画像URL生成 */
+function imageUrlFor(ms){
+
+ const t=jstParts(ms);
+
+ const stamp=
+ `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
+
+ return {
+  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
+  label:`${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`
+ };
+}
+
+
+/* 観測点JSON取得 */
+function loadPoints(){
+
+ if(records)return Promise.resolve(records);
+
+ if(recordsPromise)return recordsPromise;
+
+ setStatus('観測点JSONを取得しています…');
+
+ recordsPromise=(async()=>{
+
+  const response=await fetch(POINTS_URL);
+
+  if(!response.ok){
+   throw new Error(
+    `観測点JSON取得失敗：HTTP ${response.status}`
+   );
+  }
+
+  const raw=await response.text();
+
+  const data=JSON.parse(
+   raw.replace(/^\uFEFF/,'')
+  );
+
+  records=walkRecords(data);
+
+  if(!records.length){
+   throw new Error('観測点データが見つかりません');
+  }
+
+  return records;
+
+ })().catch(e=>{
+
+  recordsPromise=null;
+  throw e;
+
+ });
+
+ return recordsPromise;
+}
+
+
+/* GIF画像取得 */
+async function fetchGifBlob(url){
+
+ let lastErr=null;
+
+ for(let k=0;k<PROXIES.length;k++){
+
+  const i=(proxyIndex+k)%PROXIES.length;
+
+  try{
+
+   const res=await fetch(
+    PROXIES[i](url),
+    {cache:'no-store'}
+   );
+
+   if(res.status===404){
+
+    const e=new Error('NOTFOUND');
+    e.notFound=true;
+    throw e;
+   }
+
+   if(!res.ok){
+    throw new Error(`HTTP ${res.status}`);
+   }
+
+   const blob=await res.blob();
+
+   if(!blob.size){
+    throw new Error('空のレスポンス');
+   }
+
+   proxyIndex=i;
+
+   $('route').textContent='Workers';
+
+   return blob;
+
+  }catch(e){
+
+   lastErr=e;
+
+   if(e.notFound)throw e;
+
+  }
+ }
+
+ throw lastErr||new Error('画像を取得できません');
+}
+
+
+/* Canvas画像解析 */
+function analyzeBitmap(bitmap,recs,label){
+
+ const w=bitmap.width;
+ const h=bitmap.height;
+
+ const canvas=document.createElement('canvas');
+
+ canvas.width=w;
+ canvas.height=h;
+
+ const ctx=canvas.getContext(
+  '2d',
+  {willReadFrequently:true}
+ );
+
+ ctx.drawImage(bitmap,0,0);
+
+ const px=ctx.getImageData(
+  0,0,w,h
+ ).data;
+
+ $('imageSize').textContent=`${w} × ${h}px`;
+
+ const features=[];
+
+ let skipped=0;
+
+ for(const item of recs){
+
+  const loc=item.location||{};
+  const point=item.point||{};
+
+  const center=point.center_point||{};
+  const offset=point.offset||{};
+
+  const lat=Number(loc.latitude);
+  const lon=Number(loc.longitude);
+
+  const xf=
+   Number(center.x)+Number(offset.x||0);
+
+  const yf=
+   Number(center.y)+Number(offset.y||0);
+
+  if(
+   !Number.isFinite(lat)||
+   !Number.isFinite(lon)||
+   !Number.isFinite(xf)||
+   !Number.isFinite(yf)
+  ){
+   skipped++;
+   continue;
+  }
+
+  if(item.is_suspended===true){
+   skipped++;
+   continue;
+  }
+
+  const x=Math.round(xf);
+  const y=Math.round(yf);
+
+  if(x<0||y<0||x>=w||y>=h){
+   skipped++;
+   continue;
+  }
+
+  const o=(y*w+x)*4;
+
+  if(px[o+3]===0){
+   skipped++;
+   continue;
+  }
+
+  const r=px[o];
+  const g=px[o+1];
+  const b=px[o+2];
+
+  const props={
+
+   name:
+    item.name||
+    item.point_name||
+    item.station_name||
+    item.code||
+    '観測点',
+
+   region:
+    item.region||
+    item.prefecture||
+    '',
+
+   code:item.code||'',
+
+   x,y,r,g,b,
+
+   hex:'#'+[r,g,b].map(
+    v=>v.toString(16).padStart(2,'0')
+   ).join(''),
+
+   rgb:`${r}, ${g}, ${b}`
+
+  };
+
+  features.push({
+
+   type:'Feature',
+
+   geometry:{
+    type:'Point',
+    coordinates:[lon,lat]
+   },
+
+   properties:props
+
+  });
+
+ }
+
+ allFeatures=features;
+
+ geojson={
+  type:'FeatureCollection',
+  features
+ };
+
+ $('total').textContent=
+  recs.length.toLocaleString();
+
+ $('shown').textContent=
+  features.length.toLocaleString();
+
+ if(map){
+
+  if(map.getSource('stations')){
+   map.getSource('stations').setData(geojson);
+  }else{
+   addSourceAndLayer();
+  }
+
+ }
+
+ setStatus(
+  `解析完了：${features.length.toLocaleString()}地点を表示。除外 ${skipped.toLocaleString()}地点`
+ );
+
+ if(features.length&&firstFit){
+
+  firstFit=false;
+
+  fitAll();
+
+ }
+
+}
+
+
+/* 取得対象時刻 */
+function currentTargetMs(){
+
+ return Math.floor(
+  (Date.now()-DELAY_SECONDS*1000)/1000
+ )*1000;
+
+}
+
+
+/* 画像取得・解析 */
+async function run(ms){
+
+ const mySeq=++seqCounter;
+
+ const {url,label}=imageUrlFor(ms);
+
+ try{
+
+  setStatus('画像を取得・解析しています…');
+
+  const [recs,blob]=await Promise.all([
+
+   loadPoints(),
+
+   fetchGifBlob(url)
+
+  ]);
+
+  if(mySeq<appliedSeq)return;
+
+  const bitmap=await createImageBitmap(blob);
+
+  if(mySeq<appliedSeq){
+   bitmap.close();
+   return;
+  }
+
+  appliedSeq=mySeq;
+
+  $('imgTime').textContent=label;
+
+  if(currentObjectURL){
+   URL.revokeObjectURL(currentObjectURL);
+  }
+
+  currentObjectURL=URL.createObjectURL(blob);
+
+  image.src=currentObjectURL;
+
+  analyzeBitmap(bitmap,recs,label);
+
+  bitmap.close();
+
+ }catch(e){
+
+  if(mySeq<appliedSeq)return;
+
+  if(e.notFound){
+
+   setStatus(
+    `${label} の画像はまだ公開されていません`,
+    true
+   );
+
+  }else{
+
+   setStatus(
+    '画像取得エラー：'+
+    (e.message||e),
+    true
+   );
+
+  }
+
+  console.error(e);
+
+ }
+
+}
+
+
+/* 更新処理 */
+function tick(){
+
+ const t=currentTargetMs();
+
+ if(t===lastTarget)return;
+
+ lastTarget=t;
+
+ run(t);
+
+}
+
+
+/* 1秒ごとに自動更新 */
+function schedule(){
+
+ setTimeout(()=>{
+
+  tick();
+
+  schedule();
+
+ },1000-(Date.now()%1000)+30);
+
+}
+
+
+/* 地図レイヤー */
+function addSourceAndLayer(){
+
+ if(!map.getSource('stations')){
+
+  map.addSource('stations',{
+
+   type:'geojson',
+
+   data:geojson
+
+  });
+
+ }
+
+ if(!map.getLayer('station-points')){
+
+  map.addLayer({
+
+   id:'station-points',
+
+   type:'circle',
+
+   source:'stations',
+
+   paint:{
+
+    'circle-radius':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     2,2.5,
+     5,4,
+     8,6,
+     11,8
+    ],
+
+    'circle-color':['get','hex'],
+
+    'circle-stroke-color':'#ffffff',
+
+    'circle-stroke-width':1,
+
+    'circle-opacity':0.95
+
+   }
+
+  });
+
+  map.on('click','station-points',e=>{
+
+   const f=e.features&&e.features[0];
+
+   if(!f)return;
+
+   const p=f.properties;
+
+   new maplibregl.Popup({
+
+    closeButton:true,
+    offset:8
+
+   })
+
+   .setLngLat(f.geometry.coordinates)
+
+   .setHTML(`
+
+    <div class="popup-title">
+     ${esc(p.name)}
+    </div>
+
+    ${p.region?
+     `地域：${esc(p.region)}<br>`:''}
+
+    ${p.code?
+     `コード：${esc(p.code)}<br>`:''}
+
+    画像座標：(${p.x}, ${p.y})<br>
+
+    RGB：${esc(p.rgb)}<br>
+
+    HEX：${esc(p.hex)}
+
+   `)
+
+   .addTo(map);
+
+  });
+
+  map.on(
+   'mouseenter',
+   'station-points',
+   ()=>map.getCanvas().style.cursor='pointer'
+  );
+
+  map.on(
+   'mouseleave',
+   'station-points',
+   ()=>map.getCanvas().style.cursor=''
+  );
+
+ }
+
+}
+
+
+/* 全観測点表示 */
+function fitAll(){
+
+ if(!map||!allFeatures.length)return;
+
+ const b=new maplibregl.LngLatBounds();
+
+ for(const f of allFeatures){
+
+  b.extend(f.geometry.coordinates);
+
+ }
+
+ map.fitBounds(b,{
+
+  padding:45,
+
+  maxZoom:7,
+
+  duration:700
+
+ });
+
+}
+
+
+/* 地図初期化 */
+map=new maplibregl.Map({
+
+ container:'map',
+
+ style:'https://tiles.openfreemap.org/styles/liberty',
+
+ center:[138,37],
+
+ zoom:4.2,
+
+ attributionControl:true
+
+});
+
+map.on('error',e=>{
+
+ console.error(
+  'MapLibre:',
+  e.error||e
+ );
+
+});
+
+map.addControl(
+ new maplibregl.NavigationControl(),
+ 'top-right'
+);
+
+map.on('load',()=>{
+
+ addSourceAndLayer();
+
+ tick();
+
+ schedule();
+
+});
+
+</script>
+
+</body>
+</html>
