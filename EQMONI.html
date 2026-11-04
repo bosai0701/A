@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -122,6 +121,13 @@ html,body{
 .status.error .status-dot{
  background:#ef4444;
 }
+.diagnostics{
+ margin-top:5px;
+ color:#8fa3bd;
+ font-size:7px;
+ line-height:1.5;
+ font-variant-numeric:tabular-nums;
+}
 .hidden-elements{display:none}
 
 .maplibregl-popup-content{
@@ -194,6 +200,10 @@ html,body{
   初期化しています…
  </div>
 
+ <div class="diagnostics" id="diagnostics">
+  画像取得 — / 画像解析 — / 更新間隔 —
+ </div>
+
 </section>
 
 <div class="hidden-elements">
@@ -236,12 +246,18 @@ const COLOR_MAP_URL =
 
 const TIME_SYNC_INTERVAL = 15000;
 const TIME_SYNC_SAMPLES = 5;
+
 const LATEST_CHECK_INTERVAL = 500;
 const FALLBACK_SECONDS = 5;
 
 const FETCH_TIMEOUT = 10000;
 const LATEST_TIMEOUT = 8000;
-const IMAGE_TIMEOUT = 10000;
+const POINTS_TIMEOUT = 8000;
+
+const IMAGE_TIMEOUT = 4500;
+const IMAGE_TOTAL_TIMEOUT = 12000;
+
+const COLOR_MAP_RETRY_INTERVAL = 30000;
 
 /* =====================================
    状態
@@ -254,9 +270,14 @@ let timeSyncPromise = null;
 
 let latestImageMs = null;
 let lastAppliedImageMs = null;
+let lastRequestedLatestMs = null;
 
 let latestCheckBusy = false;
 let imageBusy = false;
+let imageQueueRunning = false;
+
+let pendingImageMs = null;
+let nextImageRetryPerf = 0;
 
 let records = null;
 let recordsPromise = null;
@@ -267,6 +288,7 @@ let colorPalette = null;
 let colorLookupTable = null;
 let colorMapPromise = null;
 let colorMapAvailable = false;
+let colorMapRetryAfter = 0;
 
 let geojson = {
  type:'FeatureCollection',
@@ -286,6 +308,8 @@ let lastImageWidth = 0;
 let lastImageHeight = 0;
 
 let consecutiveImageErrors = 0;
+
+let lastImageCompletedPerf = null;
 
 const $ = id => document.getElementById(id);
 const image = $('sourceImage');
@@ -352,6 +376,38 @@ function imageUrlFor(ms){
   url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
   label:formatJST(ms)
  };
+}
+
+function updateDiagnostics(fetchMs,analysisMs,intervalMs){
+
+ const fetchText=
+  Number.isFinite(fetchMs)
+   ?`${(fetchMs/1000).toFixed(2)}秒`
+   :'—';
+
+ const analysisText=
+  Number.isFinite(analysisMs)
+   ?`${(analysisMs/1000).toFixed(2)}秒`
+   :'—';
+
+ const intervalText=
+  Number.isFinite(intervalMs)
+   ?`${(intervalMs/1000).toFixed(2)}秒`
+   :'初回';
+
+ $('diagnostics').textContent=
+  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 ${intervalText}`;
+}
+
+/* =====================================
+   ブラウザー処理を一時的に譲る
+===================================== */
+
+function yieldToBrowser(){
+
+ return new Promise(resolve=>{
+  setTimeout(resolve,0);
+ });
 }
 
 /* =====================================
@@ -492,7 +548,7 @@ function updateSyncTime(){
 
 /* =====================================
    Proxy取得
-   ★レスポンスの本文取得までタイムアウトを維持
+   本文の受信完了までタイムアウトを維持
 ===================================== */
 
 async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
@@ -530,8 +586,6 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
    if(!response.ok){
     throw new Error('HTTP '+response.status);
    }
-
-   /* 本文を読み切るまでタイムアウトを解除しない */
 
    if(responseType==='blob'){
 
@@ -579,63 +633,111 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
 }
 
 /* =====================================
-   色テーブル読み込み
+   色テーブル照合用データ作成
+   ★小分けに実行して画面停止を抑制
 ===================================== */
 
-function buildColorLookup(palette){
+async function buildColorLookup(palette){
 
  const SIZE=32;
+ const TOTAL=SIZE*SIZE*SIZE;
 
- const lut=new Uint8Array(
-  SIZE*SIZE*SIZE
- );
+ const lut=new Uint8Array(TOTAL);
 
- for(let ri=0;ri<SIZE;ri++){
+ /*
+  1回に処理する色数を制限する。
+  大きな同期処理で画面が固まるのを防ぐ。
+ */
 
-  for(let gi=0;gi<SIZE;gi++){
+ const CHUNK_SIZE=128;
 
-   for(let bi=0;bi<SIZE;bi++){
+ for(
+  let start=0;
+  start<TOTAL;
+  start+=CHUNK_SIZE
+ ){
 
-    const r=ri*8+4;
-    const g=gi*8+4;
-    const b=bi*8+4;
+  const end=Math.min(
+   start+CHUNK_SIZE,
+   TOTAL
+  );
 
-    let bestIndex=0;
-    let bestDistance=Infinity;
+  for(let index=start;index<end;index++){
 
-    for(let i=0;i<palette.length;i++){
+   const ri=index>>10;
+   const gi=(index>>5)&31;
+   const bi=index&31;
 
-     const c=palette[i];
+   const r=ri*8+4;
+   const g=gi*8+4;
+   const b=bi*8+4;
 
-     const dr=r-c.r;
-     const dg=g-c.g;
-     const db=b-c.b;
+   let bestIndex=0;
+   let bestDistance=Infinity;
 
-     const distance=
-      dr*dr+dg*dg+db*db;
+   for(let i=0;i<palette.length;i++){
 
-     if(distance<bestDistance){
+    const c=palette[i];
 
-      bestDistance=distance;
-      bestIndex=i;
-     }
+    const dr=r-c.r;
+    const dg=g-c.g;
+    const db=b-c.b;
+
+    const distance=
+     dr*dr+dg*dg+db*db;
+
+    if(distance<bestDistance){
+
+     bestDistance=distance;
+     bestIndex=i;
     }
-
-    const index=
-     (ri<<10)|(gi<<5)|bi;
-
-    lut[index]=bestIndex;
    }
+
+   lut[index]=bestIndex;
   }
+
+  /*
+   次のチャンクまでブラウザーへ処理を譲る。
+   地図描画や時計表示を止めにくくする。
+  */
+
+  await yieldToBrowser();
  }
 
  return lut;
 }
 
+/* =====================================
+   色テーブル読み込み
+   ★成功後は再取得・再計算しない
+===================================== */
+
 async function loadColorMap(){
+
+ /*
+  すでに完成している場合は即座に返す。
+  以前はここがなく、画像更新のたびに
+  CSV取得とLUT作成を繰り返していた。
+ */
+
+ if(
+  colorMapAvailable&&
+  colorLookupTable&&
+  colorPalette
+ ){
+  return true;
+ }
 
  if(colorMapPromise){
   return colorMapPromise;
+ }
+
+ /*
+  失敗直後の連続アクセスを防ぐ。
+ */
+
+ if(Date.now()<colorMapRetryAfter){
+  return false;
  }
 
  colorMapPromise=(async()=>{
@@ -686,14 +788,21 @@ async function loadColorMap(){
     throw new Error('色テーブルに有効なRGBデータがありません');
    }
 
+   /*
+    完成するまで公開用の変数へ入れず、
+    作成途中のテーブルが使われないようにする。
+   */
+
+   const lookup=await buildColorLookup(palette);
+
    colorPalette=palette;
-
-   colorLookupTable=buildColorLookup(colorPalette);
-
+   colorLookupTable=lookup;
    colorMapAvailable=true;
+   colorMapRetryAfter=0;
 
-   console.log('色テーブル読み込み完了',{
-    colorCount:colorPalette.length
+   console.log('色テーブル読み込み・照合データ作成完了',{
+    colorCount:colorPalette.length,
+    lookupSize:colorLookupTable.length
    });
 
    return true;
@@ -704,7 +813,13 @@ async function loadColorMap(){
    colorLookupTable=null;
    colorMapAvailable=false;
 
-   console.warn('色テーブル取得失敗。画像のRGBを使用します:',e);
+   colorMapRetryAfter=
+    Date.now()+COLOR_MAP_RETRY_INTERVAL;
+
+   console.warn(
+    '色テーブル取得失敗。画像のRGBを使用します:',
+    e
+   );
 
    return false;
   }
@@ -982,6 +1097,7 @@ function preparePoints(recs){
 
 /* =====================================
    観測点JSON取得
+   ★通信と本文取得の両方にタイムアウト
 ===================================== */
 
 function loadPoints(){
@@ -994,40 +1110,57 @@ function loadPoints(){
 
  recordsPromise=(async()=>{
 
-  const response=await fetch(
-   POINTS_URL,
-   {cache:'force-cache'}
+  const controller=new AbortController();
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   POINTS_TIMEOUT
   );
 
-  if(!response.ok){
-   throw new Error('観測点JSON HTTP '+response.status);
+  try{
+
+   const response=await fetch(
+    POINTS_URL,
+    {
+     cache:'force-cache',
+     signal:controller.signal
+    }
+   );
+
+   if(!response.ok){
+    throw new Error('観測点JSON HTTP '+response.status);
+   }
+
+   const raw=await response.text();
+
+   const data=JSON.parse(raw.replace(/^\uFEFF/,''));
+
+   records=walkRecords(data);
+
+   if(!records.length){
+    throw new Error('観測点データが見つかりません');
+   }
+
+   preparedPoints=preparePoints(records);
+
+   if(!preparedPoints.length){
+    throw new Error('有効な観測点がありません');
+   }
+
+   $('total').textContent=
+    records.length.toLocaleString();
+
+   console.log('観測点準備完了',{
+    total:records.length,
+    prepared:preparedPoints.length
+   });
+
+   return preparedPoints;
+
+  }finally{
+
+   clearTimeout(timeout);
   }
-
-  const raw=await response.text();
-
-  const data=JSON.parse(raw.replace(/^\uFEFF/,''));
-
-  records=walkRecords(data);
-
-  if(!records.length){
-   throw new Error('観測点データが見つかりません');
-  }
-
-  preparedPoints=preparePoints(records);
-
-  if(!preparedPoints.length){
-   throw new Error('有効な観測点がありません');
-  }
-
-  $('total').textContent=
-   records.length.toLocaleString();
-
-  console.log('観測点準備完了',{
-   total:records.length,
-   prepared:preparedPoints.length
-  });
-
-  return preparedPoints;
 
  })().catch(e=>{
 
@@ -1043,14 +1176,13 @@ function loadPoints(){
 
 /* =====================================
    GIF画像取得
-   ★画像本体の受信完了まで監視
 ===================================== */
 
-async function fetchGifBlob(url){
+async function fetchGifBlob(url,timeoutMs=IMAGE_TIMEOUT){
 
  const blob=await fetchViaProxy(
   url,
-  IMAGE_TIMEOUT,
+  timeoutMs,
   'blob'
  );
 
@@ -1140,9 +1272,10 @@ function prepareCanvas(width,height){
 
 /* =====================================
    Canvas画像解析
+   ★観測点処理も小分けに実行
 ===================================== */
 
-function analyzeBitmap(bitmap){
+async function analyzeBitmap(bitmap){
 
  const w=bitmap.width;
  const h=bitmap.height;
@@ -1162,48 +1295,66 @@ function analyzeBitmap(bitmap){
 
  const features=stationFeatures;
 
- for(let i=0;i<features.length;i++){
+ const CHUNK_SIZE=1500;
 
-  const feature=features[i];
-  const p=feature.properties;
+ for(
+  let start=0;
+  start<features.length;
+  start+=CHUNK_SIZE
+ ){
 
-  const offset=(p.y*w+p.x)*4;
-
-  const alpha=px[offset+3];
-
-  if(alpha===0){
-   p.valid=false;
-   continue;
-  }
-
-  const rawR=px[offset];
-  const rawG=px[offset+1];
-  const rawB=px[offset+2];
-
-  const matched=matchColor(
-   rawR,
-   rawG,
-   rawB
+  const end=Math.min(
+   start+CHUNK_SIZE,
+   features.length
   );
 
-  const r=matched.r;
-  const g=matched.g;
-  const b=matched.b;
+  for(let i=start;i<end;i++){
 
-  p.r=r;
-  p.g=g;
-  p.b=b;
+   const feature=features[i];
+   const p=feature.properties;
 
-  p.hex='#'+
-   r.toString(16).padStart(2,'0')+
-   g.toString(16).padStart(2,'0')+
-   b.toString(16).padStart(2,'0');
+   const offset=(p.y*w+p.x)*4;
 
-  p.rgb=`${r}, ${g}, ${b}`;
+   const alpha=px[offset+3];
 
-  p.valid=true;
+   if(alpha===0){
+    p.valid=false;
+    continue;
+   }
 
-  shown++;
+   const rawR=px[offset];
+   const rawG=px[offset+1];
+   const rawB=px[offset+2];
+
+   const matched=matchColor(
+    rawR,
+    rawG,
+    rawB
+   );
+
+   const r=matched.r;
+   const g=matched.g;
+   const b=matched.b;
+
+   p.r=r;
+   p.g=g;
+   p.b=b;
+
+   p.hex='#'+
+    r.toString(16).padStart(2,'0')+
+    g.toString(16).padStart(2,'0')+
+    b.toString(16).padStart(2,'0');
+
+   p.rgb=`${r}, ${g}, ${b}`;
+
+   p.valid=true;
+
+   shown++;
+  }
+
+  if(end<features.length){
+   await yieldToBrowser();
+  }
  }
 
  $('shown').textContent=shown.toLocaleString();
@@ -1230,7 +1381,6 @@ function analyzeBitmap(bitmap){
 
 /* =====================================
    最新画像取得・解析
-   ★失敗時に次の監視で再取得可能
 ===================================== */
 
 async function runImage(targetMs){
@@ -1241,15 +1391,37 @@ async function runImage(targetMs){
 
  const started=performance.now();
 
+ let fetchDuration=0;
+ let analysisDuration=0;
+
+ let bitmap=null;
+
  try{
 
+  /*
+   画像取得・観測点取得・色テーブル取得を並列開始。
+   色テーブルは初回のみ作成し、以降はキャッシュを使用。
+  */
+
   const imageTask=(async()=>{
+
+   const imageStarted=performance.now();
 
    let blob=null;
    let selectedMs=null;
    let lastError=null;
 
+   const deadline=
+    imageStarted+IMAGE_TOTAL_TIMEOUT;
+
    for(let i=0;i<=FALLBACK_SECONDS;i++){
+
+    const remaining=
+     deadline-performance.now();
+
+    if(remaining<=0){
+     break;
+    }
 
     const candidateMs=targetMs-i*1000;
 
@@ -1264,7 +1436,15 @@ async function runImage(targetMs){
 
     try{
 
-     blob=await fetchGifBlob(url);
+     const timeoutMs=Math.max(
+      500,
+      Math.min(IMAGE_TIMEOUT,remaining)
+     );
+
+     blob=await fetchGifBlob(
+      url,
+      timeoutMs
+     );
 
      selectedMs=candidateMs;
 
@@ -1290,74 +1470,114 @@ async function runImage(targetMs){
     );
    }
 
-   return {blob,selectedMs};
+   return {
+    blob,
+    selectedMs,
+    fetchMs:performance.now()-imageStarted
+   };
 
   })();
 
   const pointsTask=loadPoints();
   const colorTask=loadColorMap();
 
-  const [
-   imageResult,
-   points
-  ]=await Promise.all([
+  const results=await Promise.all([
    imageTask,
    pointsTask,
    colorTask
-  ]).then(results=>[
-   results[0],
-   results[1]
   ]);
 
-  const bitmap=await createImageBitmap(imageResult.blob);
+  const imageResult=results[0];
+  const points=results[1];
 
-  try{
+  fetchDuration=imageResult.fetchMs;
 
-   const objectURL=URL.createObjectURL(imageResult.blob);
+  /*
+   GIFデコード
+  */
 
-   const oldObjectURL=currentObjectURL;
+  const decodeStarted=performance.now();
 
-   currentObjectURL=objectURL;
-   image.src=objectURL;
+  bitmap=await createImageBitmap(imageResult.blob);
 
-   if(oldObjectURL){
-    URL.revokeObjectURL(oldObjectURL);
-   }
+  const decodeDuration=
+   performance.now()-decodeStarted;
 
-   const shown=analyzeBitmap(bitmap);
+  /*
+   観測点解析
+  */
 
-   $('imgTime').textContent=
-    formatJST(imageResult.selectedMs);
+  const analysisStarted=performance.now();
 
-   lastAppliedImageMs=imageResult.selectedMs;
+  const shown=await analyzeBitmap(bitmap);
 
-   consecutiveImageErrors=0;
+  analysisDuration=
+   performance.now()-analysisStarted;
 
-   if(colorMapAvailable){
+  /*
+   表示画像を更新
+  */
 
-    setStatus('オンライン：色テーブル照合で画像を解析しています');
+  const objectURL=URL.createObjectURL(imageResult.blob);
 
-   }else{
+  const oldObjectURL=currentObjectURL;
 
-    setStatus('オンライン：色テーブル照合で画像を解析しています');
-   }
+  currentObjectURL=objectURL;
+  image.src=objectURL;
 
-   console.log('画像更新完了:',
-    formatJST(imageResult.selectedMs),
-    {
-     stations:points.length,
-     shown,
-     colorTable:colorMapAvailable,
-     processingMs:Math.round(performance.now()-started)
-    }
-   );
-
-   return true;
-
-  }finally{
-
-   bitmap.close();
+  if(oldObjectURL){
+   URL.revokeObjectURL(oldObjectURL);
   }
+
+  $('imgTime').textContent=
+   formatJST(imageResult.selectedMs);
+
+  lastAppliedImageMs=imageResult.selectedMs;
+
+  consecutiveImageErrors=0;
+
+  const completedPerf=performance.now();
+
+  const updateInterval=
+   lastImageCompletedPerf===null
+    ?null
+    :completedPerf-lastImageCompletedPerf;
+
+  lastImageCompletedPerf=completedPerf;
+
+  updateDiagnostics(
+   fetchDuration+decodeDuration,
+   analysisDuration,
+   updateInterval
+  );
+
+  if(colorMapAvailable){
+
+   setStatus('オンライン：色テーブル照合で画像を解析しています');
+
+  }else{
+
+   setStatus('オンライン：取得画像のRGBで解析しています');
+  }
+
+  console.log('画像更新完了:',
+   formatJST(imageResult.selectedMs),
+   {
+    stations:points.length,
+    shown,
+    fetchMs:Math.round(fetchDuration),
+    decodeMs:Math.round(decodeDuration),
+    analysisMs:Math.round(analysisDuration),
+    updateIntervalMs:
+     updateInterval===null
+      ?null
+      :Math.round(updateInterval),
+    colorTable:colorMapAvailable,
+    totalProcessingMs:Math.round(performance.now()-started)
+   }
+  );
+
+  return true;
 
  }catch(e){
 
@@ -1375,13 +1595,118 @@ async function runImage(targetMs){
 
  }finally{
 
+  if(bitmap){
+   bitmap.close();
+  }
+
   imageBusy=false;
  }
 }
 
 /* =====================================
+   画像更新キュー
+   ★処理中に届いた最新時刻を保持
+===================================== */
+
+function queueImage(ms){
+
+ if(!Number.isFinite(ms))return;
+
+ if(
+  lastAppliedImageMs!==null&&
+  ms<=lastAppliedImageMs
+ ){
+  return;
+ }
+
+ /*
+  同じ時刻を連続して取得しない。
+  失敗や5秒前画像を取得した場合は、
+  少し時間を空けて同じ時刻を再試行する。
+ */
+
+ const sameOrOlder=
+  lastRequestedLatestMs!==null&&
+  ms<=lastRequestedLatestMs;
+
+ if(
+  sameOrOlder&&
+  performance.now()<nextImageRetryPerf
+ ){
+  return;
+ }
+
+ if(
+  pendingImageMs===null||
+  ms>pendingImageMs
+ ){
+  pendingImageMs=ms;
+ }
+
+ processImageQueue();
+}
+
+async function processImageQueue(){
+
+ if(imageQueueRunning)return;
+
+ imageQueueRunning=true;
+
+ try{
+
+  while(pendingImageMs!==null){
+
+   const targetMs=pendingImageMs;
+
+   pendingImageMs=null;
+
+   if(
+    lastAppliedImageMs!==null&&
+    targetMs<=lastAppliedImageMs
+   ){
+    continue;
+   }
+
+   if(
+    lastRequestedLatestMs===null||
+    targetMs>lastRequestedLatestMs
+   ){
+    lastRequestedLatestMs=targetMs;
+   }
+
+   nextImageRetryPerf=
+    performance.now()+2500;
+
+   const success=await runImage(targetMs);
+
+   if(success){
+
+    nextImageRetryPerf=
+     performance.now()+3000;
+
+   }else{
+
+    nextImageRetryPerf=
+     performance.now()+2000;
+   }
+  }
+
+ }finally{
+
+  imageQueueRunning=false;
+
+  /*
+   キュー終了直前に新しい画像時刻が入った場合も処理する。
+  */
+
+  if(pendingImageMs!==null){
+   processImageQueue();
+  }
+ }
+}
+
+/* =====================================
    最新画像監視
-   ★画像取得完了を待たず監視を解放
 ===================================== */
 
 async function checkLatest(){
@@ -1401,16 +1726,7 @@ async function checkLatest(){
    ms>lastAppliedImageMs
   ){
 
-   if(!imageBusy){
-
-    setStatus('最新画像を確認。画像を取得しています…');
-
-    /* 監視処理と画像取得処理を分離 */
-
-    runImage(ms).catch(e=>{
-     console.error('画像処理エラー:',e);
-    });
-   }
+   queueImage(ms);
   }
 
  }catch(e){
@@ -1427,7 +1743,7 @@ async function checkLatest(){
 
 /* =====================================
    定期更新
-   ★setIntervalで500msごとに監視
+   500msごとに最新時刻を確認
 ===================================== */
 
 function scheduleLatest(){
@@ -1609,6 +1925,34 @@ map.addControl(
 );
 
 /* =====================================
+   バックグラウンド復帰時の更新
+===================================== */
+
+document.addEventListener(
+ 'visibilitychange',
+ ()=>{
+
+  if(!document.hidden){
+
+   checkLatest();
+
+   if(
+    lastImageCompletedPerf!==null
+   ){
+    console.log('ページ復帰：最新画像を再確認します');
+   }
+  }
+ }
+);
+
+window.addEventListener(
+ 'pageshow',
+ ()=>{
+  checkLatest();
+ }
+);
+
+/* =====================================
    起動処理
 ===================================== */
 
@@ -1616,7 +1960,7 @@ map.on('load',()=>{
 
  addSourceAndLayer();
 
- setStatus('最新画像・観測点・色テーブルを並列取得しています…');
+ setStatus('最新画像・観測点・色テーブルを取得しています…');
 
  maintainClock();
 
