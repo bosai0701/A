@@ -1,1063 +1,1607 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#080d18">
-<title>JMA EEW | Earthquake Monitor</title>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101827">
+<title>強震モニタ画像解析ビューア</title>
+
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
 <style>
-:root {
-  color-scheme: dark;
-  --bg: #080d18;
-  --panel: #101827;
-  --panel2: #141f31;
-  --border: #263449;
-  --text: #f1f5f9;
-  --muted: #8ea0b8;
-  --red: #ff4058;
-  --orange: #ffad42;
-  --green: #36dfaa;
-  --blue: #63b3ff;
+:root{
+ color-scheme:dark;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ background:#0b1220;
+ color:#e8eef8;
 }
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background:
-    radial-gradient(ellipse at 50% -15%, #1b3150 0, transparent 55%),
-    var(--bg);
-  color: var(--text);
-  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
-  font-size: 14px;
+*{box-sizing:border-box}
+html,body{
+ width:100%;
+ height:100%;
+ margin:0;
+ overflow:hidden;
+ background:#0b1220;
 }
-button { font: inherit; cursor: pointer; }
-button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
-.wrap { max-width: 1440px; margin: auto; padding: 20px; }
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 16px; margin-bottom: 20px;
-}
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-icon {
-  width: 46px; height: 46px; border-radius: 14px;
-  display: grid; place-items: center;
-  color: white; background: linear-gradient(135deg,#ff4058,#d51f47);
-  font-size: 24px; box-shadow: 0 5px 24px #ff405826;
-}
-.brand h1 { font-size: 19px; margin: 0; letter-spacing: .04em; }
-.brand p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
-.connection {
-  display: flex; align-items: center; gap: 8px;
-  border: 1px solid var(--border); border-radius: 99px;
-  padding: 9px 13px; background: #101827;
-  color: var(--muted); font-size: 12px;
-}
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
-.dot.online { background: var(--green); box-shadow: 0 0 12px #36dfaa80; }
-.dot.error { background: var(--red); }
-.hero {
-  border: 1px solid #ff40583b; border-radius: 18px;
-  background: linear-gradient(125deg,#281421,#171624 52%,#111b2d);
-  padding: 22px; margin-bottom: 16px; position: relative; overflow: hidden;
-}
-.hero::after {
-  content: "EEW"; position: absolute; right: 14px; top: 2px;
-  font-size: clamp(65px,12vw,145px); font-weight: 900;
-  color: #ffffff08; pointer-events: none; letter-spacing: -.08em;
-}
-.hero-top {
-  position: relative; z-index: 1;
-  display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
-}
-.tag {
-  display: inline-flex; align-items: center; gap: 6px;
-  border-radius: 6px; padding: 6px 9px; font-size: 11px;
-  font-weight: 800; letter-spacing: .03em;
-  background: #ffffff0b; border: 1px solid #ffffff14;
-}
-.tag.red { background: #ff40581b; color: #ff7888; border-color: #ff40583b; }
-.tag.green { color: var(--green); }
-.tag.orange { color: var(--orange); }
-.hero h2 { margin: 17px 0 5px; font-size: clamp(23px,4vw,36px); letter-spacing: .02em; }
-.hero-desc { color: #b7c2d3; margin: 0; font-size: 13px; }
-.metrics {
-  display: grid; grid-template-columns: repeat(4,minmax(0,1fr));
-  gap: 12px; margin-top: 23px; position: relative; z-index: 1;
-}
-.metric {
-  min-width: 0; border: 1px solid #ffffff14;
-  background: #090f1b75; border-radius: 12px; padding: 16px;
-}
-.metric .label { color: var(--muted); font-size: 11px; margin-bottom: 12px; }
-.metric .value { font-size: clamp(22px,3.4vw,38px); font-weight: 850; letter-spacing: -.04em; overflow-wrap: anywhere; }
-.metric .unit { font-size: 12px; font-weight: 500; color: #b0bfd2; margin-left: 5px; }
-.metric .sub { margin-top: 8px; color: #8ea0b8; font-size: 11px; overflow-wrap: anywhere; }
-.grid {
-  display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,.85fr);
-  gap: 16px; align-items: start;
-}
-.panel {
-  min-width: 0; background: linear-gradient(145deg,#111b2b,#0e1624);
-  border: 1px solid var(--border); border-radius: 15px; overflow: hidden;
-}
-.panel-head {
-  padding: 16px 18px; border-bottom: 1px solid var(--border);
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 10px;
-}
-.panel-head h3 { margin: 0; font-size: 14px; }
-.panel-head span { color: var(--muted); font-size: 11px; }
-.panel-body { padding: 17px 18px; }
-.kv {
-  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
-  gap: 0 22px;
-}
-.kv-item {
-  display: flex; justify-content: space-between; gap: 10px;
-  padding: 13px 0; border-bottom: 1px solid #ffffff0c;
-}
-.kv-item .k { color: var(--muted); font-size: 12px; }
-.kv-item .v { text-align: right; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
-.section { margin-top: 16px; }
-.section:first-child { margin-top: 0; }
-.pill {
-  display: inline-block; padding: 4px 8px; border-radius: 5px;
-  font-size: 10px; font-weight: 800; background: #1b2c42; color: #a9c7ed;
-}
-.pill.warning { background: #ff40581c; color: #ff8490; }
-.pill.cancel { background: #64748b26; color: #b7c2d3; }
-.pill.training { background: #ffad421b; color: var(--orange); }
-.area-list { display: grid; gap: 9px; }
-.area {
-  background: #ffffff04; border: 1px solid #ffffff10;
-  border-radius: 10px; padding: 13px;
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-}
-.area-name { font-weight: 700; font-size: 13px; overflow-wrap: anywhere; }
-.area-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
-.intensity {
-  flex-shrink: 0; min-width: 49px; text-align: center;
-  border-radius: 8px; padding: 9px 7px;
-  color: #fff; font-weight: 900; background: #334155;
-}
-.intensity.high { background: #c92743; }
-.intensity.mid { background: #a85b21; }
-.intensity.low { background: #245b91; }
-.empty { color: var(--muted); text-align: center; padding: 28px 10px; font-size: 12px; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
-.btn {
-  border: 1px solid var(--border); border-radius: 7px;
-  padding: 8px 11px; background: #172337; color: #dce7f5; font-size: 11px;
-}
-.btn:hover { background: #22334b; }
-.btn.active { border-color: #63b3ff75; color: var(--blue); }
-pre {
-  margin: 0; padding: 15px; max-height: 480px; overflow: auto;
-  white-space: pre-wrap; overflow-wrap: anywhere;
-  background: #080e19; color: #b9d7f7; font-size: 11px; line-height: 1.7;
-}
-.footer {
-  display: flex; justify-content: space-between; flex-wrap: wrap;
-  gap: 8px; color: #667890; font-size: 10px; padding: 18px 2px;
-}
-.hidden { display: none !important; }
-
-/* 波到達予想円マップ */
-.wave-map {
-  width: 100%; height: 380px; border-radius: 10px;
-  overflow: hidden; border: 1px solid #ffffff10; background: #080e19;
-}
-.wave-map .maplibregl-ctrl-attrib { font-size: 9px; }
-.wave-legend {
-  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px;
-  color: var(--muted); font-size: 11px;
-}
-.wave-legend i {
-  display: inline-block; width: 18px; height: 0; vertical-align: middle;
-  border-top: 3px solid; margin-right: 6px;
-}
-.wave-legend i.p { border-color: #63b3ff; }
-.wave-legend i.s { border-color: #ff4058; }
-.wave-msg {
-  height: 100%; display: grid; place-items: center;
-  color: var(--muted); font-size: 12px; padding: 20px; text-align: center;
+#map{
+ position:absolute;
+ inset:0;
+ width:100%;
+ height:100%;
+ background:#172338;
 }
 
-@media(max-width: 850px) {
-  .grid { grid-template-columns: minmax(0,1fr); }
-  .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+/* =====================================
+   全体UI 65%相当
+   観測点サイズは変更なし
+   ===================================== */
+
+.info-panel{
+ position:absolute;
+ z-index:10;
+ top:8.3px;
+ left:8.3px;
+ width:calc(100% - 16.6px);
+ max-width:253.5px;
+ padding:7.8px 9.1px;
+ background:rgba(11,18,32,.91);
+ border:1px solid rgba(148,163,184,.25);
+ border-radius:7.8px;
+ backdrop-filter:blur(7.8px);
+ -webkit-backdrop-filter:blur(7.8px);
+ box-shadow:0 3.25px 14.3px rgba(0,0,0,.25);
+ pointer-events:none;
 }
-@media(max-width: 460px) {
-  .wrap { padding: 12px; }
-  .hero { padding: 16px; }
-  .metric { padding: 12px; }
-  .kv { grid-template-columns: minmax(0,1fr); }
-  .panel-body { padding: 13px; }
-  .brand h1 { font-size: 16px; }
-  .wave-map { height: 300px; }
+
+.info-title{
+ font-size:8.45px;
+ font-weight:700;
+ margin-bottom:5.85px;
+ color:#cbd5e1;
+}
+
+.time-label{
+ font-size:7.15px;
+ color:#94a3b8;
+ margin-bottom:1.95px;
+}
+
+.time-value{
+ font-size:12.35px;
+ font-weight:700;
+ letter-spacing:.195px;
+ font-variant-numeric:tabular-nums;
+ color:#fff;
+}
+
+.divider{
+ height:1px;
+ background:rgba(148,163,184,.2);
+ margin:6.5px 0;
+}
+
+.stats{
+ display:grid;
+ grid-template-columns:1fr 1fr;
+ gap:5.85px;
+}
+
+.stat{
+ background:rgba(30,41,59,.65);
+ border-radius:5.2px;
+ padding:5.85px 7.15px;
+}
+
+.stat b{
+ display:block;
+ font-size:13.65px;
+ font-weight:700;
+ color:#fff;
+ font-variant-numeric:tabular-nums;
+}
+
+.stat span{
+ display:block;
+ font-size:7.15px;
+ color:#94a3b8;
+ margin-top:1.3px;
+}
+
+.status{
+ margin-top:5.85px;
+ padding:5.2px 6.5px;
+ border-radius:4.55px;
+ background:rgba(30,41,59,.7);
+ font-size:7.15px;
+ line-height:1.5;
+ color:#a8bbd3;
+ overflow-wrap:anywhere;
+}
+
+.status.error{
+ color:#ff9999;
+ background:rgba(127,29,29,.25);
+}
+
+.status-dot{
+ display:inline-block;
+ width:4.55px;
+ height:4.55px;
+ border-radius:50%;
+ background:#22c55e;
+ margin-right:3.9px;
+ vertical-align:middle;
+}
+
+.status.error .status-dot{
+ background:#ef4444;
+}
+
+.hidden-elements{display:none}
+
+/* ポップアップ */
+
+.maplibregl-popup-content{
+ color:#152033;
+ font-size:7.8px;
+ padding:5.2px;
+ border-radius:4.55px;
+}
+
+.popup-title{
+ font-weight:700;
+ font-size:9.1px;
+ margin-bottom:3.25px;
+}
+
+/* 地図操作ボタン */
+
+.maplibregl-ctrl-top-right{
+ transform:scale(.65);
+ transform-origin:top right;
+}
+
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-bottom-left{
+ transform:scale(.65);
+ transform-origin:bottom right;
+}
+
+/* モバイル */
+
+@media(max-width:600px){
+
+ .info-panel{
+  top:6.5px;
+  left:6.5px;
+  width:calc(100% - 13px);
+  max-width:227.5px;
+  padding:6.5px 7.8px;
+ }
+
+ .time-value{font-size:11.05px}
+ .stat b{font-size:12.35px}
+
 }
 </style>
 </head>
+
 <body>
-<div class="wrap">
-<header class="topbar">
-  <div class="brand">
-    <div class="brand-icon">⚡</div>
-    <div>
-      <h1>JMA EARTHQUAKE MONITOR</h1>
-      <p>緊急地震速報 リアルタイムモニター</p>
-    </div>
+
+<main id="map" aria-label="強震モニタ観測点マップ"></main>
+
+<section class="info-panel">
+
+ <div class="info-title">強震モニタ リアルタイム画像解析</div>
+
+ <div class="time-label">画像時刻（実際に取得した画像・JST）</div>
+ <div class="time-value" id="imgTime">取得待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="time-label">同期時刻（Wolfx・JST）</div>
+ <div class="time-value" id="syncTime">同期待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="stats">
+  <div class="stat">
+   <b id="total">—</b>
+   <span>観測点データ数</span>
   </div>
-  <div class="connection">
-    <span id="dot" class="dot"></span>
-    <span id="connectionText">接続準備中</span>
-    <span id="latency">未測定</span>
+  <div class="stat">
+   <b id="shown">—</b>
+   <span>解析・表示地点数</span>
   </div>
-</header>
-<section class="hero">
-  <div class="hero-top">
-    <span id="typeTag" class="tag red">EEW MONITOR</span>
-    <span id="statusTag" class="tag">速報待機中</span>
-    <span id="trainingTag" class="tag orange hidden">訓練報</span>
-    <span id="finalTag" class="tag green hidden">最終報</span>
-  </div>
-  <h2 id="headline">緊急地震速報を待機中</h2>
-  <p class="hero-desc" id="description">サーバーからデータを受信すると、ここに速報の概要が表示されます。</p>
-  <div class="metrics">
-    <div class="metric">
-      <div class="label">最大震度 / MAX INTENSITY</div>
-      <div class="value" id="maxIntensity">--</div>
-      <div class="sub" id="intensitySub">観測情報待ち</div>
-    </div>
-    <div class="metric">
-      <div class="label">マグニチュード / MAGNITUDE</div>
-      <div class="value" id="magnitude">--<span class="unit">M</span></div>
-      <div class="sub">地震の規模</div>
-    </div>
-    <div class="metric">
-      <div class="label">震源の深さ / DEPTH</div>
-      <div class="value" id="depth">--<span class="unit">km</span></div>
-      <div class="sub">震源情報に基づく値</div>
-    </div>
-    <div class="metric">
-      <div class="label">速報回数 / SERIAL</div>
-      <div class="value" id="serial">--</div>
-      <div class="sub" id="eventId">イベントID: --</div>
-    </div>
-  </div>
+ </div>
+
+ <div class="status" id="status">
+  <span class="status-dot"></span>
+  初期化しています…
+ </div>
+
 </section>
-<div class="grid">
-  <div>
-    <section class="panel">
-      <div class="panel-head">
-        <h3>地震情報</h3>
-        <span id="updateTime">受信待機中</span>
-      </div>
-      <div class="panel-body">
-        <div class="kv">
-          <div class="kv-item"><span class="k">震源地</span><span class="v" id="hypocenter">--</span></div>
-          <div class="kv-item"><span class="k">発表機関</span><span class="v" id="source">--</span></div>
-          <div class="kv-item"><span class="k">発表時刻</span><span class="v" id="announced">--</span></div>
-          <div class="kv-item"><span class="k">地震発生時刻</span><span class="v" id="origin">--</span></div>
-          <div class="kv-item"><span class="k">緯度</span><span class="v" id="latitude">--</span></div>
-          <div class="kv-item"><span class="k">経度</span><span class="v" id="longitude">--</span></div>
-          <div class="kv-item"><span class="k">発表区分</span><span class="v" id="codeType">--</span></div>
-          <div class="kv-item"><span class="k">発表ステータス</span><span class="v" id="issueStatus">--</span></div>
-          <div class="kv-item"><span class="k">震央精度</span><span class="v" id="accEpicenter">--</span></div>
-          <div class="kv-item"><span class="k">深さ精度</span><span class="v" id="accDepth">--</span></div>
-          <div class="kv-item"><span class="k">M精度</span><span class="v" id="accMagnitude">--</span></div>
-          <div class="kv-item"><span class="k">海域地震</span><span class="v" id="isSea">--</span></div>
-          <div class="kv-item"><span class="k">最終報</span><span class="v" id="isFinal">--</span></div>
-          <div class="kv-item"><span class="k">取消報</span><span class="v" id="isCancel">--</span></div>
-          <div class="kv-item"><span class="k">警報</span><span class="v" id="isWarn">--</span></div>
-          <div class="kv-item"><span class="k">仮定震源要素</span><span class="v" id="isAssumption">--</span></div>
-        </div>
-      </div>
-    </section>
-    <section class="panel section">
-      <div class="panel-head">
-        <h3>警報対象地域</h3>
-        <span id="areaCount">0 地域</span>
-      </div>
-      <div class="panel-body">
-        <div id="areas" class="area-list">
-          <div class="empty">警報対象地域のデータを待っています</div>
-        </div>
-      </div>
-    </section>
-    <section class="panel section">
-      <div class="panel-head">
-        <h3>震度変更情報</h3>
-        <span>MaxIntChange</span>
-      </div>
-      <div class="panel-body">
-        <div class="kv">
-          <div class="kv-item"><span class="k">変更内容</span><span class="v" id="changeString">--</span></div>
-          <div class="kv-item"><span class="k">変更理由</span><span class="v" id="changeReason">--</span></div>
-        </div>
-      </div>
-    </section>
-    <section class="panel section">
-      <div class="panel-head">
-        <h3>P波・S波到達予想円</h3>
-        <span id="waveTableName">走時表: 読込中</span>
-      </div>
-      <div class="panel-body">
-        <div class="wave-map" id="waveMap"></div>
-        <div class="wave-legend">
-          <span><i class="p"></i>P波</span>
-          <span><i class="s"></i>S波</span>
-          <span>半径2,000km到達後は非表示</span>
-        </div>
-        <div class="kv" style="margin-top:8px">
-          <div class="kv-item"><span class="k">P波 半径</span><span class="v" id="pRadius">--</span></div>
-          <div class="kv-item"><span class="k">S波 半径</span><span class="v" id="sRadius">--</span></div>
-          <div class="kv-item"><span class="k">発生からの経過</span><span class="v" id="waveElapsed">--</span></div>
-          <div class="kv-item"><span class="k">円の状態</span><span class="v" id="waveStatus">待機中</span></div>
-        </div>
-      </div>
-    </section>
-  </div>
-  <div>
-    <section class="panel">
-      <div class="panel-head">
-        <h3>受信モニター</h3>
-      </div>
-      <div class="panel-body">
-        <div class="kv">
-          <div class="kv-item"><span class="k">WebSocket</span><span class="v" id="wsState">未接続</span></div>
-          <div class="kv-item"><span class="k">メッセージ受信</span><span class="v" id="lastReceive">--</span></div>
-          <div class="kv-item"><span class="k">JSON解析</span><span class="v" id="parseState">待機中</span></div>
-          <div class="kv-item"><span class="k">訓練報</span><span class="v" id="isTraining">--</span></div>
-        </div>
-        <div class="toolbar" style="margin-top:16px">
-          <button class="btn" id="reconnectBtn">再接続</button>
-          <button class="btn" id="clearBtn">生データをクリア</button>
-          <button class="btn" id="rawToggle">生 JSON を表示</button>
-        </div>
-      </div>
-    </section>
-    <section class="panel section">
-      <div class="panel-head">
-        <h3>気象庁原文</h3>
-        <span>OriginalText</span>
-      </div>
-      <div class="panel-body">
-        <pre id="originalText" style="max-height:240px;white-space:pre-wrap">原文待機中...</pre>
-      </div>
-    </section>
-    <section class="panel section hidden" id="rawPanel">
-      <div class="panel-head">
-        <h3>受信 JSON</h3>
-        <span>Raw payload</span>
-      </div>
-      <pre id="rawJson">受信待機中...</pre>
-    </section>
-  </div>
-</div>
-<footer class="footer">
-  <span>DATA SOURCE: Wolfx JMA EEW WebSocket</span>
-  <span>受信データを基に表示。速報の到達時間は通信状況に依存します。</span>
-</footer>
+
+<div class="hidden-elements">
+ <img id="sourceImage" alt="">
+ <span id="imageSize"></span>
+ <span id="route"></span>
 </div>
 
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
-(() => {
-  "use strict";
-  const WS_URL = "wss://ws-api.wolfx.jp/jma_eew";
-  const COMMAND = "query_jmaeew";
-  const PING_INTERVAL = 5000;
-  const PING_TIMEOUT = 10000;
-  const SILENCE_LIMIT = 20000;   // この時間無通信なら半死状態とみなして再接続
-  const RECONNECT_MIN = 300;
-  const RECONNECT_MAX = 3000;
-  const $ = id => document.getElementById(id);
-  let socket = null;
-  let reconnectTimer = null;
-  let reconnectDelay = RECONNECT_MIN;
-  let stopped = false;
-  let lastPayload = "";
-  let lastRaw = "";
-  let lastEventKey = "";
-  let lastMessageAt = 0;
-  let pingTimer = null;
-  let pingSentAt = 0;
-  let pingPending = false;
-  let watchdogTimer = null;
-  function text(id, value) {
-    $(id).textContent =
-      value === null || value === undefined || value === ""
-        ? "--"
-        : String(value);
-  }
-  function boolText(value) {
-    if (value === true) return "はい";
-    if (value === false) return "いいえ";
-    return "--";
-  }
-  function setConnection(label, state) {
-    text("connectionText", label);
-    $("dot").className = "dot " + state;
-    text("wsState", label);
-  }
-  function formatNumber(value, digits = 2) {
-    if (typeof value !== "number" || !Number.isFinite(value)) return "--";
-    return value.toFixed(digits);
-  }
-  function intensityClass(value) {
-    const s = String(value || "");
-    if (/5強|6弱|6強|7/.test(s)) return "high";
-    if (/4|5弱/.test(s)) return "mid";
-    if (/1|2|3/.test(s)) return "low";
-    return "";
-  }
-  function setTag(id, value, visible = true) {
-    $(id).textContent = value;
-    $(id).classList.toggle("hidden", !visible);
-  }
-  function setRaw(raw) {
-    lastRaw = raw;
-    // 生JSONパネルは表示中のみ更新(描画負荷を削減)
-    if (!$("rawPanel").classList.contains("hidden")) {
-      $("rawJson").textContent = raw;
-    }
-  }
-  function stopPing() {
-    if (pingTimer !== null) {
-      clearInterval(pingTimer);
-      pingTimer = null;
-    }
-    pingPending = false;
-  }
-  function sendPing() {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    if (pingPending) {
-      if (performance.now() - pingSentAt < PING_TIMEOUT) return;
-      pingPending = false;
-      text("latency", "応答なし");
-    }
-    pingSentAt = performance.now();
-    pingPending = true;
-    try {
-      socket.send("ping");
-    } catch (error) {
-      pingPending = false;
-      text("latency", "計測失敗");
-    }
-  }
-  function startPing() {
-    stopPing();
-    text("latency", "計測中");
-    sendPing();
-    pingTimer = setInterval(sendPing, PING_INTERVAL);
-  }
-  function handlePong(data) {
-    const isPong =
-      data === "pong" ||
-      (data && typeof data === "object" &&
-       String(data.type || "").toLowerCase() === "pong");
-    if (!isPong || !pingPending) return false;
-    const rtt = performance.now() - pingSentAt;
-    text("latency", Math.round(rtt) + " ms");
-    pingPending = false;
-    return true;
+
+/* =====================================
+   URL設定
+===================================== */
+
+const BASE_URL =
+'http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/';
+
+const LATEST_URL =
+'http://www.kmoni.bosai.go.jp/webservice/server/pros/latest.json';
+
+const NTP_URL =
+'https://api.wolfx.jp/ntp.json';
+
+const PROXY_BASE =
+'https://green-grass-374f.mirakuro5472.workers.dev/';
+
+const PROXIES = [
+ u=>PROXY_BASE+'?url='+encodeURIComponent(u)
+];
+
+const POINTS_URL =
+'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
+
+const COLOR_MAP_URL =
+'https://raw.githubusercontent.com/ingen084/KyoshinShindoColorMap/refs/heads/master/KyoshinShindoColorMap.csv';
+
+/* =====================================
+   更新設定
+===================================== */
+
+const TIME_SYNC_INTERVAL = 15000;
+const TIME_SYNC_SAMPLES = 5;
+const LATEST_CHECK_INTERVAL = 500;
+const FALLBACK_SECONDS = 5;
+const FETCH_TIMEOUT = 10000;
+
+/* =====================================
+   状態
+===================================== */
+
+let clockBaseEpoch = null;
+let clockBasePerf = null;
+let clockSynced = false;
+let timeSyncPromise = null;
+
+let latestImageMs = null;
+let lastAppliedImageMs = null;
+
+let latestCheckBusy = false;
+let imageBusy = false;
+
+let records = null;
+let recordsPromise = null;
+
+let preparedPoints = null;
+
+let colorPalette = null;
+let colorLookupTable = null;
+let colorMapPromise = null;
+let colorMapAvailable = false;
+
+let geojson = {
+ type:'FeatureCollection',
+ features:[]
+};
+
+let stationFeatures = [];
+let firstFit = true;
+let map;
+
+let analysisCanvas = null;
+let analysisContext = null;
+
+let currentObjectURL = null;
+
+let lastImageWidth = 0;
+let lastImageHeight = 0;
+
+const $ = id => document.getElementById(id);
+const image = $('sourceImage');
+
+/* =====================================
+   共通処理
+===================================== */
+
+const p2 = n=>String(n).padStart(2,'0');
+
+function setStatus(message,isError=false){
+
+ const el=$('status');
+ el.textContent='';
+
+ const dot=document.createElement('span');
+ dot.className='status-dot';
+
+ el.appendChild(dot);
+ el.appendChild(document.createTextNode(message));
+
+ el.classList.toggle('error',isError);
+}
+
+function getSyncedNow(){
+
+ if(!clockSynced){
+  return Date.now();
+ }
+
+ return clockBaseEpoch+
+  (performance.now()-clockBasePerf);
+}
+
+function jstParts(ms){
+
+ const d=new Date(ms+9*3600e3);
+
+ return {
+  Y:d.getUTCFullYear(),
+  M:p2(d.getUTCMonth()+1),
+  D:p2(d.getUTCDate()),
+  h:p2(d.getUTCHours()),
+  m:p2(d.getUTCMinutes()),
+  s:p2(d.getUTCSeconds())
+ };
+}
+
+function formatJST(ms){
+
+ const t=jstParts(ms);
+
+ return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
+}
+
+function imageUrlFor(ms){
+
+ const t=jstParts(ms);
+
+ const stamp=
+  `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
+
+ return {
+  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
+  label:formatJST(ms)
+ };
+}
+
+/* =====================================
+   Wolfx時刻同期
+===================================== */
+
+async function fetchWolfxTime(){
+
+ const start=performance.now();
+
+ const controller=new AbortController();
+
+ const timeout=setTimeout(
+  ()=>controller.abort(),
+  8000
+ );
+
+ try{
+
+  const response=await fetch(
+   NTP_URL+'?_='+Date.now(),
+   {
+    cache:'no-store',
+    signal:controller.signal
+   }
+  );
+
+  if(!response.ok){
+   throw new Error('Wolfx HTTP '+response.status);
   }
 
-  /* =====================================================
-     P波・S波 到達予想円 (JMA2001走時表 tjma2001.txt / MapLibre GL)
-     tjma2001.txt の行形式: P <P走時秒> S <S走時秒> <深さkm> <震央距離km>
-     ===================================================== */
-  const TABLE_URL = "tjma2001.txt";
-  const WAVE_LIMIT_KM = 2000;       // この半径に達したら円を消す(走時表の範囲外)
-  const EARTH_R = 6371.0088;
-  const WAVE_TICK_MS = 100;
-  const FALLBACK_VP = 7.0;          // 走時表が読めない場合の簡易近似 (km/s)
-  const FALLBACK_VS = 4.0;
+  const data=await response.json();
 
-  let ttTable = null;               // {depths:[], byDepth:Map}
-  let waveMap = null;
-  let waveMapReady = false;
-  let waveState = null;             // {lat, lon, depth, originMs, eventId}
-  let lastWaveEventId = null;
-  let waveTimer = null;
+  const end=performance.now();
 
-  function parseTable(src) {
-    const byDepth = new Map();
-    for (const line of src.split(/\r?\n/)) {
-      const t = line.trim().split(/\s+/);
-      if (t.length < 6 || t[0] !== "P" || t[2] !== "S") continue;
-      const p = Number(t[1]), s = Number(t[3]);
-      const d = Number(t[4]), x = Number(t[5]);
-      if (!Number.isFinite(d) || !Number.isFinite(x)) continue;
-      let e = byDepth.get(d);
-      if (!e) { e = { depth: d, P: [], S: [] }; byDepth.set(d, e); }
-      if (Number.isFinite(p)) e.P.push([x, p]);
-      if (Number.isFinite(s)) e.S.push([x, s]);
+  let epoch=Number(data.timestamp);
+
+  if(!Number.isFinite(epoch)||epoch<1000000000000){
+
+   const value=data.JST?.int;
+
+   if(value){
+
+    const s=String(value);
+
+    if(/^\d{14}$/.test(s)){
+
+     const iso=
+      `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+      `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+     epoch=Date.parse(iso);
     }
-    if (byDepth.size === 0) return null;
-    for (const e of byDepth.values()) {
-      e.P.sort((a, b) => a[0] - b[0]);
-      e.S.sort((a, b) => a[0] - b[0]);
-    }
-    const depths = [...byDepth.keys()].sort((a, b) => a - b);
-    return { depths, byDepth };
+   }
   }
 
-  function loadTable() {
-    text("waveTableName", "走時表: 読込中");
-    fetch(TABLE_URL, { cache: "no-store" })
-      .then(r => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.text();
-      })
-      .then(src => {
-        ttTable = parseTable(src);
-        text("waveTableName", ttTable
-          ? "走時表: JMA2001"
-          : "走時表: 解析失敗(簡易近似)");
-      })
-      .catch(() => {
-        ttTable = null;
-        text("waveTableName", "走時表: 読込失敗(簡易近似)");
-      })
-      .finally(() => { if (waveState) updateWave(); });
+  if(!Number.isFinite(epoch)){
+   throw new Error('Wolfx時刻を解析できません');
   }
 
-  function rowTime(arr, x) {
-    const n = arr.length;
-    if (n === 0 || x < arr[0][0] || x > arr[n - 1][0]) return NaN;
-    let lo = 0, hi = n - 1;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (arr[mid][0] <= x) lo = mid; else hi = mid;
+  return {
+   epoch,
+   perf:(start+end)/2,
+   rtt:end-start
+  };
+
+ }finally{
+  clearTimeout(timeout);
+ }
+}
+
+async function syncClock(){
+
+ if(timeSyncPromise){
+  return timeSyncPromise;
+ }
+
+ timeSyncPromise=(async()=>{
+
+  const samples=[];
+
+  for(let i=0;i<TIME_SYNC_SAMPLES;i++){
+
+   try{
+    samples.push(await fetchWolfxTime());
+   }catch(e){
+    console.warn('Wolfx同期失敗:',e);
+   }
+  }
+
+  if(!samples.length){
+   throw new Error('Wolfx時刻を取得できません');
+  }
+
+  samples.sort((a,b)=>a.rtt-b.rtt);
+
+  const best=samples[0];
+
+  clockBaseEpoch=best.epoch;
+  clockBasePerf=best.perf;
+  clockSynced=true;
+
+  console.log('Wolfx時刻同期完了',{
+   RTT:Math.round(best.rtt),
+   samples:samples.length,
+   serverTime:new Date(best.epoch).toISOString()
+  });
+
+  return best;
+
+ })().finally(()=>{
+  timeSyncPromise=null;
+ });
+
+ return timeSyncPromise;
+}
+
+async function maintainClock(){
+
+ try{
+  await syncClock();
+ }catch(e){
+  console.error('時刻再同期エラー:',e);
+ }
+
+ setTimeout(maintainClock,TIME_SYNC_INTERVAL);
+}
+
+/* =====================================
+   Wolfx時刻表示
+===================================== */
+
+function updateSyncTime(){
+
+ $('syncTime').textContent=
+  formatJST(getSyncedNow());
+}
+
+/* =====================================
+   Proxy取得
+===================================== */
+
+async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
+
+ let lastError=null;
+
+ for(const proxy of PROXIES){
+
+  const controller=new AbortController();
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   timeoutMs
+  );
+
+  try{
+
+   const response=await fetch(
+    proxy(url),
+    {
+     cache:'no-store',
+     signal:controller.signal
     }
-    if (n === 1) return arr[0][1];
-    const [x0, t0] = arr[lo], [x1, t1] = arr[hi];
-    return x1 === x0 ? t0 : t0 + (t1 - t0) * (x - x0) / (x1 - x0);
-  }
+   );
 
-  function travelTime(kind, depth, x) {
-    const { depths, byDepth } = ttTable;
-    const d = Math.min(Math.max(depth, depths[0]), depths[depths.length - 1]);
-    let i = 0;
-    while (i < depths.length - 2 && depths[i + 1] < d) i++;
-    const d0 = depths[i];
-    const d1 = depths[Math.min(i + 1, depths.length - 1)];
-    const t0 = rowTime(byDepth.get(d0)[kind], x);
-    if (d1 === d0) return t0;
-    const t1 = rowTime(byDepth.get(d1)[kind], x);
-    if (!Number.isFinite(t0) || !Number.isFinite(t1)) return NaN;
-    return t0 + (t1 - t0) * (d - d0) / (d1 - d0);
-  }
+   if(response.status===404){
 
-  function tableMaxX(kind) {
-    let m = Infinity;
-    for (const e of ttTable.byDepth.values()) {
-      const arr = e[kind];
-      if (arr.length) m = Math.min(m, arr[arr.length - 1][0]);
+    const error=new Error('NOTFOUND');
+    error.notFound=true;
+    throw error;
+   }
+
+   if(!response.ok){
+    throw new Error('HTTP '+response.status);
+   }
+
+   return response;
+
+  }catch(e){
+
+   lastError=e;
+
+   if(e.notFound){
+    throw e;
+   }
+
+  }finally{
+   clearTimeout(timeout);
+  }
+ }
+
+ throw lastError||new Error('Proxy取得失敗');
+}
+
+/* =====================================
+   色テーブル読み込み
+===================================== */
+
+function buildColorLookup(palette){
+
+ const SIZE=32;
+
+ const lut=new Uint8Array(
+  SIZE*SIZE*SIZE
+ );
+
+ for(let ri=0;ri<SIZE;ri++){
+
+  for(let gi=0;gi<SIZE;gi++){
+
+   for(let bi=0;bi<SIZE;bi++){
+
+    const r=ri*8+4;
+    const g=gi*8+4;
+    const b=bi*8+4;
+
+    let bestIndex=0;
+    let bestDistance=Infinity;
+
+    for(let i=0;i<palette.length;i++){
+
+     const c=palette[i];
+
+     const dr=r-c.r;
+     const dg=g-c.g;
+     const db=b-c.b;
+
+     const distance=
+      dr*dr+dg*dg+db*db;
+
+     if(distance<bestDistance){
+
+      bestDistance=distance;
+      bestIndex=i;
+     }
     }
-    return m;
+
+    const index=
+     (ri<<10)|(gi<<5)|bi;
+
+    lut[index]=bestIndex;
+   }
+  }
+ }
+
+ return lut;
+}
+
+async function loadColorMap(){
+
+ if(colorMapPromise){
+  return colorMapPromise;
+ }
+
+ colorMapPromise=(async()=>{
+
+  try{
+
+   const response=await fetch(
+    COLOR_MAP_URL,
+    {cache:'force-cache'}
+   );
+
+   if(!response.ok){
+    throw new Error('色テーブル HTTP '+response.status);
+   }
+
+   const csv=await response.text();
+
+   const lines=csv
+    .replace(/^\uFEFF/,'')
+    .split(/\r?\n/);
+
+   const palette=[];
+
+   for(const line of lines){
+
+    const trimmed=line.trim();
+
+    if(!trimmed)continue;
+
+    const columns=trimmed.split(',');
+
+    if(columns.length<4)continue;
+
+    const r=Number(columns[1].trim());
+    const g=Number(columns[2].trim());
+    const b=Number(columns[3].trim());
+
+    if(
+     !Number.isInteger(r)||
+     !Number.isInteger(g)||
+     !Number.isInteger(b)||
+     r<0||r>255||
+     g<0||g>255||
+     b<0||b>255
+    ){
+     continue;
+    }
+
+    palette.push({r,g,b});
+   }
+
+   if(!palette.length){
+    throw new Error('色テーブルに有効なRGBデータがありません');
+   }
+
+   colorPalette=palette;
+
+   colorLookupTable=buildColorLookup(colorPalette);
+
+   colorMapAvailable=true;
+
+   console.log('色テーブル読み込み完了',{
+    colorCount:colorPalette.length
+   });
+
+   return true;
+
+  }catch(e){
+
+   colorPalette=null;
+   colorLookupTable=null;
+   colorMapAvailable=false;
+
+   console.warn('色テーブル取得失敗。画像のRGBを使用します:',e);
+
+   return false;
   }
 
-  // 経過時間 t(秒) における震央距離(km)。非表示にすべき場合は null
-  function waveRadius(kind, depth, t) {
-    if (t < 0) t = 0;
-    if (!ttTable) {
-      const v = kind === "P" ? FALLBACK_VP : FALLBACK_VS;
-      const slant = v * t;
-      const r2 = slant * slant - depth * depth;
-      const r = r2 > 0 ? Math.sqrt(r2) : 0;
-      return r >= WAVE_LIMIT_KM ? null : r;
+ })();
+
+ return colorMapPromise;
+}
+
+/* =====================================
+   RGB色照合
+===================================== */
+
+function matchColor(r,g,b){
+
+ if(
+  !colorMapAvailable||
+  !colorLookupTable||
+  !colorPalette
+ ){
+  return {r,g,b};
+ }
+
+ const index=
+  ((r>>3)<<10)|
+  ((g>>3)<<5)|
+  (b>>3);
+
+ const paletteIndex=
+  colorLookupTable[index];
+
+ return colorPalette[paletteIndex];
+}
+
+/* =====================================
+   最新画像時刻JSON解析
+===================================== */
+
+function parseTimeValue(value){
+
+ if(typeof value==='number'){
+
+  if(value>1000000000000)return value;
+  if(value>1000000000)return value*1000;
+
+  return null;
+ }
+
+ if(typeof value!=='string')return null;
+
+ const s=value.trim();
+
+ if(/^\d{14}$/.test(s)){
+
+  const iso=
+   `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+   `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+ }
+
+ const compact=s.match(
+  /(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
+ );
+
+ if(compact){
+
+  const iso=
+   `${compact[1]}-${compact[2]}-${compact[3]}T`+
+   `${compact[4]}:${compact[5]}:${compact[6]}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+ }
+
+ if(/^\d{10,13}$/.test(s)){
+
+  const n=Number(s);
+
+  if(n>1000000000000)return n;
+  if(n>1000000000)return n*1000;
+ }
+
+ return null;
+}
+
+function findLatestTime(data){
+
+ const candidates=[];
+
+ function walk(value,key=''){
+
+  if(value===null||value===undefined)return;
+
+  if(typeof value==='object'){
+
+   if(Array.isArray(value)){
+
+    for(const item of value){
+     walk(item,key);
     }
-    const hi = Math.min(WAVE_LIMIT_KM, tableMaxX(kind));
-    const tHi = travelTime(kind, depth, hi);
-    if (!Number.isFinite(tHi) || t >= tHi) return null;
-    const tLo = travelTime(kind, depth, 0);
-    if (!Number.isFinite(tLo) || t <= tLo) return 0;
-    let a = 0, b = hi;
-    for (let i = 0; i < 40; i++) {
-      const m = (a + b) / 2;
-      const tm = travelTime(kind, depth, m);
-      if (!Number.isFinite(tm)) { b = m; continue; }
-      if (tm < t) a = m; else b = m;
+
+   }else{
+
+    for(const [k,v] of Object.entries(value)){
+     walk(v,k);
     }
-    const r = (a + b) / 2;
-    return r >= WAVE_LIMIT_KM ? null : r;
+   }
+
+   return;
   }
 
-  function circleRing(lat, lon, rKm) {
-    const N = 180;
-    const toRad = Math.PI / 180, toDeg = 180 / Math.PI;
-    const lat1 = lat * toRad, lon1 = lon * toRad;
-    const ang = rKm / EARTH_R;
-    const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1);
-    const sinAng = Math.sin(ang), cosAng = Math.cos(ang);
-    const ring = [];
-    for (let i = 0; i <= N; i++) {
-      const brg = (2 * Math.PI * i) / N;
-      const sinLat2 = sinLat1 * cosAng + cosLat1 * sinAng * Math.cos(brg);
-      const lat2 = Math.asin(Math.max(-1, Math.min(1, sinLat2)));
-      const lon2 = lon1 + Math.atan2(
-        Math.sin(brg) * sinAng * cosLat1,
-        cosAng - sinLat1 * Math.sin(lat2)
-      );
-      let lonDeg = lon2 * toDeg;
-      lonDeg = ((lonDeg + 540) % 360) - 180;
-      ring.push([lonDeg, lat2 * toDeg]);
-    }
-    return ring;
+  const ms=parseTimeValue(value);
+
+  if(ms===null)return;
+
+  const name=String(key).toLowerCase();
+
+  let priority=0;
+
+  if(name.includes('latest'))priority+=10;
+  if(name.includes('time'))priority+=5;
+  if(name.includes('date'))priority+=3;
+
+  candidates.push({ms,priority,key});
+ }
+
+ walk(data);
+
+ if(!candidates.length){
+  throw new Error('latest.json内に認識可能な時刻がありません');
+ }
+
+ candidates.sort((a,b)=>{
+
+  if(b.priority!==a.priority){
+   return b.priority-a.priority;
   }
 
-  function parseOriginMs(str) {
-    if (!str) return NaN;
-    const m = String(str).trim().match(
-      /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[ T](\d{1,2}):(\d{2}):(\d{2})/
+  return b.ms-a.ms;
+ });
+
+ return candidates[0].ms;
+}
+
+/* =====================================
+   強震モニタ最新時刻取得
+===================================== */
+
+async function fetchLatestImageTime(){
+
+ const response=await fetchViaProxy(
+  LATEST_URL,
+  8000
+ );
+
+ const raw=await response.text();
+
+ let data;
+
+ try{
+
+  data=JSON.parse(raw.replace(/^\uFEFF/,''));
+
+ }catch(e){
+
+  throw new Error('latest.jsonのJSON解析に失敗しました');
+ }
+
+ return findLatestTime(data);
+}
+
+/* =====================================
+   観測点JSON解析
+===================================== */
+
+function walkRecords(value,out=[]){
+
+ if(Array.isArray(value)){
+
+  for(const v of value){
+   walkRecords(v,out);
+  }
+
+  return out;
+ }
+
+ if(value&&typeof value==='object'){
+
+  if(
+   value.location&&
+   value.point&&
+   value.point.center_point
+  ){
+   out.push(value);
+  }
+
+  for(const v of Object.values(value)){
+
+   if(v&&typeof v==='object'){
+    walkRecords(v,out);
+   }
+  }
+ }
+
+ return out;
+}
+
+/* =====================================
+   観測点の事前計算
+===================================== */
+
+function preparePoints(recs){
+
+ const result=[];
+
+ for(const item of recs){
+
+  const loc=item.location||{};
+  const point=item.point||{};
+
+  const center=point.center_point||{};
+  const offset=point.offset||{};
+
+  const lat=Number(loc.latitude);
+  const lon=Number(loc.longitude);
+
+  const x=
+   Number(center.x)+Number(offset.x||0);
+
+  const y=
+   Number(center.y)+Number(offset.y||0);
+
+  if(
+   !Number.isFinite(lat)||
+   !Number.isFinite(lon)||
+   !Number.isFinite(x)||
+   !Number.isFinite(y)
+  ){
+   continue;
+  }
+
+  if(item.is_suspended===true)continue;
+
+  result.push({
+
+   lat,
+   lon,
+
+   x:Math.round(x),
+   y:Math.round(y),
+
+   name:
+    item.name||
+    item.point_name||
+    item.station_name||
+    item.code||
+    '観測点',
+
+   region:
+    item.region||
+    item.prefecture||
+    '',
+
+   code:item.code||''
+  });
+ }
+
+ return result;
+}
+
+/* =====================================
+   観測点JSON取得
+===================================== */
+
+function loadPoints(){
+
+ if(recordsPromise){
+  return recordsPromise;
+ }
+
+ setStatus('観測点JSONを取得しています…');
+
+ recordsPromise=(async()=>{
+
+  const response=await fetch(
+   POINTS_URL,
+   {cache:'force-cache'}
+  );
+
+  if(!response.ok){
+   throw new Error('観測点JSON HTTP '+response.status);
+  }
+
+  const raw=await response.text();
+
+  const data=JSON.parse(raw.replace(/^\uFEFF/,''));
+
+  records=walkRecords(data);
+
+  if(!records.length){
+   throw new Error('観測点データが見つかりません');
+  }
+
+  preparedPoints=preparePoints(records);
+
+  if(!preparedPoints.length){
+   throw new Error('有効な観測点がありません');
+  }
+
+  $('total').textContent=
+   records.length.toLocaleString();
+
+  console.log('観測点準備完了',{
+   total:records.length,
+   prepared:preparedPoints.length
+  });
+
+  return preparedPoints;
+
+ })().catch(e=>{
+
+  recordsPromise=null;
+  records=null;
+  preparedPoints=null;
+
+  throw e;
+ });
+
+ return recordsPromise;
+}
+
+/* =====================================
+   GIF画像取得
+===================================== */
+
+async function fetchGifBlob(url){
+
+ const response=await fetchViaProxy(url,10000);
+
+ const blob=await response.blob();
+
+ if(!blob.size){
+  throw new Error('空の画像データ');
+ }
+
+ const type=blob.type;
+
+ if(
+  type&&
+  !type.includes('image')&&
+  !type.includes('octet-stream')
+ ){
+  throw new Error('画像以外のレスポンスを受信しました');
+ }
+
+ return blob;
+}
+
+/* =====================================
+   Canvas初期化
+===================================== */
+
+function prepareCanvas(width,height){
+
+ if(
+  !analysisCanvas||
+  lastImageWidth!==width||
+  lastImageHeight!==height
+ ){
+
+  analysisCanvas=document.createElement('canvas');
+
+  analysisCanvas.width=width;
+  analysisCanvas.height=height;
+
+  analysisContext=analysisCanvas.getContext(
+   '2d',
+   {
+    willReadFrequently:true,
+    alpha:true
+   }
+  );
+
+  lastImageWidth=width;
+  lastImageHeight=height;
+
+  stationFeatures=preparedPoints
+   .filter(p=>
+    p.x>=0&&
+    p.y>=0&&
+    p.x<width&&
+    p.y<height
+   )
+   .map(p=>({
+
+    type:'Feature',
+
+    geometry:{
+     type:'Point',
+     coordinates:[p.lon,p.lat]
+    },
+
+    properties:{
+
+     name:p.name,
+     region:p.region,
+     code:p.code,
+
+     x:p.x,
+     y:p.y,
+
+     r:0,
+     g:0,
+     b:0,
+
+     hex:'#000000',
+     rgb:'0, 0, 0',
+
+     valid:false
+    }
+   }));
+
+  geojson={
+   type:'FeatureCollection',
+   features:stationFeatures
+  };
+ }
+}
+
+/* =====================================
+   Canvas画像解析
+===================================== */
+
+function analyzeBitmap(bitmap){
+
+ const w=bitmap.width;
+ const h=bitmap.height;
+
+ prepareCanvas(w,h);
+
+ const ctx=analysisContext;
+
+ ctx.clearRect(0,0,w,h);
+ ctx.drawImage(bitmap,0,0);
+
+ const px=ctx.getImageData(0,0,w,h).data;
+
+ $('imageSize').textContent=`${w} × ${h}px`;
+
+ let shown=0;
+
+ const features=stationFeatures;
+
+ for(let i=0;i<features.length;i++){
+
+  const feature=features[i];
+  const p=feature.properties;
+
+  const offset=(p.y*w+p.x)*4;
+
+  const alpha=px[offset+3];
+
+  if(alpha===0){
+   p.valid=false;
+   continue;
+  }
+
+  const rawR=px[offset];
+  const rawG=px[offset+1];
+  const rawB=px[offset+2];
+
+  const matched=matchColor(
+   rawR,
+   rawG,
+   rawB
+  );
+
+  const r=matched.r;
+  const g=matched.g;
+  const b=matched.b;
+
+  p.r=r;
+  p.g=g;
+  p.b=b;
+
+  p.hex='#'+
+   r.toString(16).padStart(2,'0')+
+   g.toString(16).padStart(2,'0')+
+   b.toString(16).padStart(2,'0');
+
+  p.rgb=`${r}, ${g}, ${b}`;
+
+  p.valid=true;
+
+  shown++;
+ }
+
+ $('shown').textContent=shown.toLocaleString();
+
+ geojson.features=features;
+
+ if(map){
+
+  const source=map.getSource('stations');
+
+  if(source){
+   source.setData(geojson);
+  }
+ }
+
+ if(firstFit&&shown){
+
+  firstFit=false;
+  fitAll();
+ }
+
+ return shown;
+}
+
+/* =====================================
+   最新画像取得・解析
+===================================== */
+
+async function runImage(targetMs){
+
+ if(imageBusy)return;
+
+ imageBusy=true;
+
+ const started=performance.now();
+
+ try{
+
+  const imageTask=(async()=>{
+
+   let blob=null;
+   let selectedMs=null;
+   let lastError=null;
+
+   for(let i=0;i<=FALLBACK_SECONDS;i++){
+
+    const candidateMs=targetMs-i*1000;
+
+    if(
+     lastAppliedImageMs!==null&&
+     candidateMs<=lastAppliedImageMs
+    ){
+     continue;
+    }
+
+    const {url}=imageUrlFor(candidateMs);
+
+    try{
+
+     blob=await fetchGifBlob(url);
+
+     selectedMs=candidateMs;
+
+     break;
+
+    }catch(e){
+
+     lastError=e;
+
+     console.warn(
+      '画像取得失敗:',
+      formatJST(candidateMs),
+      e
+     );
+    }
+   }
+
+   if(!blob){
+
+    throw new Error(
+     '最新画像を取得できません。'+
+     (lastError?.message||'')
     );
-    if (!m) return NaN;
-    const pad = v => String(v).padStart(2, "0");
-    return Date.parse(
-      `${m[1]}-${pad(m[2])}-${pad(m[3])}T${pad(m[4])}:${m[5]}:${m[6]}+09:00`
-    );
+   }
+
+   return {blob,selectedMs};
+
+  })();
+
+  const pointsTask=loadPoints();
+  const colorTask=loadColorMap();
+
+  const [
+   imageResult,
+   points
+  ]=await Promise.all([
+   imageTask,
+   pointsTask,
+   colorTask
+  ]).then(results=>[
+   results[0],
+   results[1]
+  ]);
+
+  const bitmap=await createImageBitmap(imageResult.blob);
+
+  try{
+
+   const objectURL=URL.createObjectURL(imageResult.blob);
+
+   if(currentObjectURL){
+    URL.revokeObjectURL(currentObjectURL);
+   }
+
+   currentObjectURL=objectURL;
+   image.src=objectURL;
+
+   const shown=analyzeBitmap(bitmap);
+
+   $('imgTime').textContent=
+    formatJST(imageResult.selectedMs);
+
+   lastAppliedImageMs=imageResult.selectedMs;
+
+   if(colorMapAvailable){
+
+    setStatus('オンライン：色テーブル照合で画像を解析しています');
+
+   }else{
+
+    setStatus('オンライン：色テーブル未取得のため画像RGBで表示しています');
+   }
+
+   console.log('画像更新完了:',
+    formatJST(imageResult.selectedMs),
+    {
+     stations:points.length,
+     shown,
+     colorTable:colorMapAvailable,
+     processingMs:Math.round(performance.now()-started)
+    }
+   );
+
+  }finally{
+
+   bitmap.close();
   }
 
-  function setWaveData(features, epicenter) {
-    if (!waveMap || !waveMapReady) return;
-    const ws = waveMap.getSource("waves");
-    if (ws) ws.setData({ type: "FeatureCollection", features });
-    const es = waveMap.getSource("epicenter");
-    if (es) es.setData({
-      type: "FeatureCollection",
-      features: epicenter ? [{
-        type: "Feature",
-        properties: {},
-        geometry: { type: "Point", coordinates: epicenter }
-      }] : []
-    });
+ }finally{
+
+  imageBusy=false;
+ }
+}
+
+/* =====================================
+   最新画像監視
+===================================== */
+
+async function checkLatest(){
+
+ if(latestCheckBusy)return;
+
+ latestCheckBusy=true;
+
+ try{
+
+  const ms=await fetchLatestImageTime();
+
+  latestImageMs=ms;
+
+  if(
+   lastAppliedImageMs===null||
+   ms>lastAppliedImageMs
+  ){
+
+   setStatus('最新画像を確認。画像を取得しています…');
+
+   await runImage(ms);
   }
 
-  function updateWave() {
-    if (!waveState) {
-      text("pRadius", "--");
-      text("sRadius", "--");
-      text("waveElapsed", "--");
-      text("waveStatus", "待機中");
-      return;
-    }
-    const { lat, lon, depth, originMs } = waveState;
-    const t = Math.max(0, (Date.now() - originMs) / 1000);
-    text("waveElapsed", t.toFixed(1) + " 秒");
-    const rp = waveRadius("P", depth, t);
-    const rs = waveRadius("S", depth, t);
-    text("pRadius", rp === null ? "表示終了" : rp.toFixed(1) + " km");
-    text("sRadius", rs === null ? "表示終了" : rs.toFixed(1) + " km");
-    const features = [];
-    if (rp !== null && rp > 0.05) {
-      features.push({
-        type: "Feature", properties: { kind: "P" },
-        geometry: { type: "Polygon", coordinates: [circleRing(lat, lon, rp)] }
-      });
-    }
-    if (rs !== null && rs > 0.05) {
-      features.push({
-        type: "Feature", properties: { kind: "S" },
-        geometry: { type: "Polygon", coordinates: [circleRing(lat, lon, rs)] }
-      });
-    }
-    if (rp === null && rs === null) {
-      text("waveStatus", "2,000km超・表示終了");
-    } else if (rp === null) {
-      text("waveStatus", "S波のみ表示中");
-    } else {
-      text("waveStatus", "P波・S波 表示中");
-    }
-    setWaveData(features, [lon, lat]);
-  }
+ }catch(e){
 
-  function setWaveFromData(data, canceled) {
-    const lat = Number(data.Latitude);
-    const lon = Number(data.Longitude);
-    const depth = Number(data.Depth);
-    const originMs = parseOriginMs(data.OriginTime);
-    if (canceled || !Number.isFinite(lat) || !Number.isFinite(lon) ||
-        !Number.isFinite(originMs)) {
-      waveState = null;
-      lastWaveEventId = null;
-      setWaveData([], null);
-      text("waveStatus", canceled ? "取消報のため非表示" : "震源データ不足");
-      text("pRadius", "--");
-      text("sRadius", "--");
-      text("waveElapsed", "--");
-      return;
-    }
-    waveState = {
-      lat, lon,
-      depth: Number.isFinite(depth) ? Math.max(0, depth) : 10,
-      originMs,
-      eventId: data.EventID || ""
-    };
-    if (waveMap && waveMapReady && waveState.eventId !== lastWaveEventId) {
-      waveMap.jumpTo({ center: [lon, lat], zoom: 5 });
-    }
-    lastWaveEventId = waveState.eventId;
-    updateWave();
-  }
+  console.warn('最新画像確認:',e);
 
-  function initWaveMap() {
-    const el = $("waveMap");
-    if (typeof maplibregl === "undefined") {
-      el.innerHTML = '<div class="wave-msg">地図ライブラリを読み込めませんでした。</div>';
-      return;
-    }
-    try {
-      waveMap = new maplibregl.Map({
-        container: "waveMap",
-        center: [137.0, 37.0],
-        zoom: 4,
-        attributionControl: { compact: true },
-        style: {
-          version: 8,
-          sources: {
-            base: {
-              type: "raster",
-              tiles: [
-                "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-                "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
-                "https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png"
-              ],
-              tileSize: 256,
-              attribution: "© OpenStreetMap contributors © CARTO"
-            }
-          },
-          layers: [{ id: "base", type: "raster", source: "base" }]
-        }
-      });
-    } catch (e) {
-      el.innerHTML = '<div class="wave-msg">地図の初期化に失敗しました。</div>';
-      waveMap = null;
-      return;
-    }
-    waveMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    waveMap.on("load", () => {
-      waveMap.addSource("waves", {
-        type: "geojson", data: { type: "FeatureCollection", features: [] }
-      });
-      waveMap.addSource("epicenter", {
-        type: "geojson", data: { type: "FeatureCollection", features: [] }
-      });
-      waveMap.addLayer({
-        id: "s-fill", type: "fill", source: "waves",
-        filter: ["==", ["get", "kind"], "S"],
-        paint: { "fill-color": "#ff4058", "fill-opacity": 0.14 }
-      });
-      waveMap.addLayer({
-        id: "p-line", type: "line", source: "waves",
-        filter: ["==", ["get", "kind"], "P"],
-        paint: { "line-color": "#63b3ff", "line-width": 2.5 }
-      });
-      waveMap.addLayer({
-        id: "s-line", type: "line", source: "waves",
-        filter: ["==", ["get", "kind"], "S"],
-        paint: { "line-color": "#ff4058", "line-width": 3 }
-      });
-      waveMap.addLayer({
-        id: "epi-halo", type: "circle", source: "epicenter",
-        paint: {
-          "circle-radius": 11, "circle-color": "#ff4058",
-          "circle-opacity": 0.25
-        }
-      });
-      waveMap.addLayer({
-        id: "epi", type: "circle", source: "epicenter",
-        paint: {
-          "circle-radius": 5, "circle-color": "#ffffff",
-          "circle-stroke-color": "#ff4058", "circle-stroke-width": 2
-        }
-      });
-      waveMapReady = true;
-      if (waveState) {
-        waveMap.jumpTo({ center: [waveState.lon, waveState.lat], zoom: 5 });
-      }
-      updateWave();
-    });
-    waveTimer = setInterval(() => {
-      if (waveState) updateWave();
-    }, WAVE_TICK_MS);
-  }
+  setStatus('最新画像確認中：'+e.message,true);
 
-  function render(data, raw) {
-    const issue = data.Issue || {};
-    const accuracy = data.Accuracy || {};
-    const change = data.MaxIntChange || {};
-    const areas = Array.isArray(data.WarnArea) ? data.WarnArea : [];
-    text("headline", data.Title || "緊急地震速報");
-    text("description", data.Hypocenter
-      ? "震源: " + data.Hypocenter
-      : "震源情報は未設定、またはまだ発表されていません。");
-    const canceled = data.isCancel === true;
-    const warned = data.isWarn === true;
-    const training = data.isTraining === true;
-    const finalReport = data.isFinal === true;
-    setTag("typeTag", canceled ? "CANCEL REPORT" :
-      warned ? "WARNING" : "EEW MONITOR", true);
-    setTag("statusTag", canceled ? "取消報" :
-      warned ? "警報発表" : "速報情報", true);
-    $("statusTag").className =
-      "tag " + (canceled ? "" : warned ? "red" : "");
-    setTag("trainingTag", "訓練報", training);
-    setTag("finalTag", "最終報", finalReport);
-    text("maxIntensity", data.MaxIntensity || "--");
-    $("intensitySub").textContent =
-      data.MaxIntensity ? "発表された最大震度" : "震度情報なし";
-    const magnitude = data.Magnitude ?? data.Magunitude;
-    $("magnitude").replaceChildren();
-    const magValue = document.createElement("span");
-    magValue.textContent =
-      magnitude === null || magnitude === undefined || magnitude === ""
-        ? "--" : String(magnitude);
-    const magUnit = document.createElement("span");
-    magUnit.className = "unit";
-    magUnit.textContent = "M";
-    $("magnitude").append(magValue, magUnit);
-    $("depth").replaceChildren();
-    const depthValue = document.createElement("span");
-    depthValue.textContent =
-      data.Depth === null || data.Depth === undefined || data.Depth === ""
-        ? "--" : String(data.Depth);
-    const depthUnit = document.createElement("span");
-    depthUnit.className = "unit";
-    depthUnit.textContent = "km";
-    $("depth").append(depthValue, depthUnit);
-    text("serial", data.Serial);
-    text("eventId", "イベントID: " + (data.EventID || "--"));
-    text("hypocenter", data.Hypocenter);
-    text("source", issue.Source);
-    text("announced", data.AnnouncedTime);
-    text("origin", data.OriginTime);
-    text("latitude", formatNumber(data.Latitude, 3));
-    text("longitude", formatNumber(data.Longitude, 3));
-    text("codeType", data.CodeType);
-    text("issueStatus", issue.Status);
-    text("accEpicenter", accuracy.Epicenter);
-    text("accDepth", accuracy.Depth);
-    text("accMagnitude", accuracy.Magnitude);
-    text("isSea", boolText(data.isSea));
-    text("isFinal", boolText(data.isFinal));
-    text("isCancel", boolText(data.isCancel));
-    text("isWarn", boolText(data.isWarn));
-    text("isAssumption", boolText(data.isAssumption));
-    text("isTraining", boolText(data.isTraining));
-    text("changeString", change.String);
-    text("changeReason", change.Reason);
-    $("areas").replaceChildren();
-    text("areaCount", areas.length + " 地域");
-    if (areas.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = canceled
-        ? "取消報です。警報対象地域はありません。"
-        : "警報対象地域のデータはありません。";
-      $("areas").appendChild(empty);
-    } else {
-      const fragment = document.createDocumentFragment();
-      for (const area of areas) {
-        const row = document.createElement("div");
-        row.className = "area";
-        const left = document.createElement("div");
-        const name = document.createElement("div");
-        name.className = "area-name";
-        name.textContent = area.Chiiki || "地域名未設定";
-        const meta = document.createElement("div");
-        meta.className = "area-meta";
-        meta.textContent = [
-          area.Type || "",
-          area.Time || "",
-          area.Arrive === true ? "到達" :
-            area.Arrive === false ? "未到達" : ""
-        ].filter(Boolean).join(" ・ ") || "詳細情報なし";
-        left.append(name, meta);
-        const badge = document.createElement("div");
-        badge.className = "intensity " + intensityClass(area.Shindo1);
-        badge.textContent = area.Shindo1 || "--";
-        row.append(left, badge);
-        fragment.appendChild(row);
-      }
-      $("areas").appendChild(fragment);
-    }
-    text("originalText", data.OriginalText || "原文はありません。");
-    const now = new Date().toLocaleTimeString("ja-JP");
-    text("updateTime", "更新 " + now);
-    text("lastReceive", now);
-    text("parseState", "成功");
-    setRaw(raw);
-    setWaveFromData(data, canceled);
-  }
-  function processMessage(raw) {
-    lastMessageAt = performance.now();
-    let data;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      if (handlePong(raw)) return;
-      text("parseState", "JSON以外のデータ");
-      setRaw(raw);
-      return;
-    }
-    if (handlePong(data)) return;
-    if (data && data.type === "heartbeat") {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        pingSentAt = performance.now();
-        pingPending = true;
-        try {
-          socket.send("ping");
-        } catch (error) {
-          pingPending = false;
-        }
-      }
-      return;
-    }
-    if (data && data.type && data.type !== "jma_eew") {
-      setRaw(raw);
-      text("parseState", "別タイプ: " + data.type);
-      return;
-    }
-    const eventKey = [
-      data.EventID || "",
-      data.Serial ?? "",
-      data.AnnouncedTime || "",
-      data.isCancel === true ? "cancel" : ""
-    ].join("|");
-    if (eventKey && eventKey === lastEventKey) {
-      setRaw(raw);
-      return;
-    }
-    lastEventKey = eventKey;
-    lastPayload = raw;
-    render(data, raw);
-  }
-  function closeSocket() {
-    if (!socket) return;
-    const s = socket;
-    socket = null;
-    s.onopen = s.onmessage = s.onerror = s.onclose = null;
-    try { s.close(); } catch (e) {}
-  }
-  function connect() {
-    if (stopped) return;
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    stopPing();
-    closeSocket();
-    setConnection("接続中", "");
-    let s;
-    try {
-      s = new WebSocket(WS_URL);
-    } catch (error) {
-      setConnection("通信エラー", "error");
-      scheduleReconnect();
-      return;
-    }
-    socket = s;
-    lastMessageAt = performance.now();
-    s.onopen = () => {
-      if (socket !== s) return;
-      reconnectDelay = RECONNECT_MIN;
-      lastMessageAt = performance.now();
-      setConnection("接続済み", "online");
-      s.send(COMMAND);
-      startPing();
-    };
-    s.onmessage = event => {
-      if (socket !== s) return;
-      if (typeof event.data === "string") {
-        processMessage(event.data);
-      } else if (event.data instanceof Blob) {
-        event.data.text().then(processMessage).catch(() => {
-          text("parseState", "読み取り失敗");
-        });
-      } else if (event.data instanceof ArrayBuffer) {
-        processMessage(new TextDecoder("utf-8").decode(event.data));
-      }
-    };
-    s.onerror = () => {
-      if (socket !== s) return;
-      setConnection("通信エラー", "error");
-    };
-    s.onclose = () => {
-      if (socket !== s) return;
-      stopPing();
-      text("latency", "--");
-      setConnection("切断・再接続待ち", "error");
-      scheduleReconnect();
-    };
-  }
-  function scheduleReconnect() {
-    if (stopped || reconnectTimer !== null) return;
-    const delay = reconnectDelay;
-    reconnectDelay = Math.min(Math.ceil(reconnectDelay * 1.6), RECONNECT_MAX);
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, delay);
-  }
-  function reconnectNow() {
-    reconnectDelay = RECONNECT_MIN;
-    connect();
-  }
-  // 半死状態(接続は開いているが何も届かない)を検知して即再接続
-  function startWatchdog() {
-    if (watchdogTimer !== null) return;
-    watchdogTimer = setInterval(() => {
-      if (stopped) return;
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        if (performance.now() - lastMessageAt > SILENCE_LIMIT) {
-          setConnection("無通信・再接続", "error");
-          reconnectNow();
-        }
-      } else if (!socket && reconnectTimer === null) {
-        reconnectNow();
-      }
-    }, 3000);
-  }
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") return;
-    if (!socket || socket.readyState !== WebSocket.OPEN ||
-        performance.now() - lastMessageAt > PING_INTERVAL * 2) {
-      reconnectNow();
-    } else {
-      sendPing();
-    }
+ }finally{
+
+  latestCheckBusy=false;
+ }
+}
+
+/* =====================================
+   定期更新
+===================================== */
+
+function scheduleLatest(){
+
+ setTimeout(async()=>{
+
+  await checkLatest();
+
+  scheduleLatest();
+
+ },LATEST_CHECK_INTERVAL);
+}
+
+/* =====================================
+   地図レイヤー
+===================================== */
+
+function addSourceAndLayer(){
+
+ if(!map.getSource('stations')){
+
+  map.addSource('stations',{
+   type:'geojson',
+   data:geojson
   });
-  window.addEventListener("online", reconnectNow);
-  $("reconnectBtn").addEventListener("click", reconnectNow);
-  $("clearBtn").addEventListener("click", () => {
-    $("rawJson").textContent = "受信データをクリアしました。";
-    lastPayload = "";
-    lastRaw = "";
+ }
+
+ if(!map.getLayer('station-points')){
+
+  map.addLayer({
+
+   id:'station-points',
+   type:'circle',
+   source:'stations',
+
+   filter:[
+    '==',
+    ['get','valid'],
+    true
+   ],
+
+   paint:{
+
+    'circle-radius':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     2,1.38,
+     5,2.5,
+     8,3.5,
+     11,4.5
+    ],
+
+    'circle-color':['get','hex'],
+
+    'circle-stroke-color':'#ffffff',
+
+    'circle-stroke-width':0.35,
+
+    'circle-opacity':1
+   }
+
   });
-  $("rawToggle").addEventListener("click", () => {
-    const panel = $("rawPanel");
-    const hidden = panel.classList.toggle("hidden");
-    $("rawToggle").textContent =
-      hidden ? "生 JSON を表示" : "生 JSON を隠す";
-    $("rawToggle").classList.toggle("active", !hidden);
-    if (!hidden && lastRaw) $("rawJson").textContent = lastRaw;
+
+  map.on('click','station-points',e=>{
+
+   const f=e.features&&e.features[0];
+
+   if(!f)return;
+
+   const p=f.properties;
+
+   new maplibregl.Popup({
+    closeButton:true,
+    offset:4.4
+   })
+
+   .setLngLat(f.geometry.coordinates)
+
+   .setHTML(`
+
+    <div class="popup-title">
+     ${esc(p.name)}
+    </div>
+
+    ${p.region?
+     `地域：${esc(p.region)}<br>`:''}
+
+    ${p.code?
+     `コード：${esc(p.code)}<br>`:''}
+
+    画像座標：(${p.x}, ${p.y})<br>
+
+    RGB：${esc(p.rgb)}<br>
+
+    HEX：${esc(p.hex)}
+
+   `)
+
+   .addTo(map);
+
   });
-  window.addEventListener("beforeunload", () => {
-    stopped = true;
-    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
-    if (watchdogTimer !== null) clearInterval(watchdogTimer);
-    if (waveTimer !== null) clearInterval(waveTimer);
-    stopPing();
-    closeSocket();
-  });
-  loadTable();
-  initWaveMap();
-  connect();
-  startWatchdog();
-})();
+
+  map.on(
+   'mouseenter',
+   'station-points',
+   ()=>map.getCanvas().style.cursor='pointer'
+  );
+
+  map.on(
+   'mouseleave',
+   'station-points',
+   ()=>map.getCanvas().style.cursor=''
+  );
+ }
+}
+
+/* =====================================
+   HTMLエスケープ
+===================================== */
+
+function esc(v){
+
+ return String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ }[c]));
+}
+
+/* =====================================
+   全観測点表示
+===================================== */
+
+function fitAll(){
+
+ if(!map||!stationFeatures.length)return;
+
+ const bounds=new maplibregl.LngLatBounds();
+
+ for(const f of stationFeatures){
+  bounds.extend(f.geometry.coordinates);
+ }
+
+ map.fitBounds(bounds,{
+  padding:45,
+  maxZoom:7,
+  duration:700
+ });
+}
+
+/* =====================================
+   地図初期化
+===================================== */
+
+map=new maplibregl.Map({
+
+ container:'map',
+
+ style:'https://tiles.openfreemap.org/styles/liberty',
+
+ center:[138,37],
+
+ zoom:4.2,
+
+ attributionControl:true
+
+});
+
+map.on('error',e=>{
+
+ console.error('MapLibre:',e.error||e);
+
+});
+
+map.addControl(
+ new maplibregl.NavigationControl(),
+ 'top-right'
+);
+
+/* =====================================
+   起動処理
+===================================== */
+
+map.on('load',()=>{
+
+ addSourceAndLayer();
+
+ setStatus('最新画像・観測点・色テーブルを並列取得しています…');
+
+ maintainClock();
+
+ updateSyncTime();
+
+ setInterval(
+  updateSyncTime,
+  250
+ );
+
+ checkLatest();
+
+ scheduleLatest();
+
+});
+
 </script>
+
 </body>
 </html>
