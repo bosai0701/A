@@ -31,113 +31,157 @@ html,body{
  height:100%;
  background:#172338;
 }
+
+/* =====================================
+   全体UI 45%縮小
+   ===================================== */
+
 .info-panel{
  position:absolute;
  z-index:10;
- top:12px;
- left:12px;
- width:calc(100% - 24px);
- max-width:390px;
- padding:12px 14px;
+ top:7px;
+ left:7px;
+ width:calc(100% - 14px);
+ max-width:214.5px;
+ padding:6.6px 7.7px;
  background:rgba(11,18,32,.91);
  border:1px solid rgba(148,163,184,.25);
- border-radius:12px;
- backdrop-filter:blur(12px);
- -webkit-backdrop-filter:blur(12px);
- box-shadow:0 5px 22px rgba(0,0,0,.25);
+ border-radius:6.6px;
+ backdrop-filter:blur(6.6px);
+ -webkit-backdrop-filter:blur(6.6px);
+ box-shadow:0 2.75px 12.1px rgba(0,0,0,.25);
  pointer-events:none;
 }
+
 .info-title{
- font-size:13px;
+ font-size:7.15px;
  font-weight:700;
- margin-bottom:9px;
+ margin-bottom:4.95px;
  color:#cbd5e1;
 }
+
 .time-label{
- font-size:11px;
+ font-size:6.05px;
  color:#94a3b8;
- margin-bottom:3px;
+ margin-bottom:1.65px;
 }
+
 .time-value{
- font-size:19px;
+ font-size:10.45px;
  font-weight:700;
- letter-spacing:.3px;
+ letter-spacing:.165px;
  font-variant-numeric:tabular-nums;
  color:#fff;
 }
+
 .divider{
  height:1px;
  background:rgba(148,163,184,.2);
- margin:10px 0;
+ margin:5.5px 0;
 }
+
 .stats{
  display:grid;
  grid-template-columns:1fr 1fr;
- gap:9px;
+ gap:4.95px;
 }
+
 .stat{
  background:rgba(30,41,59,.65);
- border-radius:8px;
- padding:9px 11px;
+ border-radius:4.4px;
+ padding:4.95px 6.05px;
 }
+
 .stat b{
  display:block;
- font-size:21px;
+ font-size:11.55px;
  font-weight:700;
  color:#fff;
  font-variant-numeric:tabular-nums;
 }
+
 .stat span{
  display:block;
- font-size:11px;
+ font-size:6.05px;
  color:#94a3b8;
- margin-top:2px;
+ margin-top:1.1px;
 }
+
 .status{
- margin-top:9px;
- padding:8px 10px;
- border-radius:7px;
+ margin-top:4.95px;
+ padding:4.4px 5.5px;
+ border-radius:3.85px;
  background:rgba(30,41,59,.7);
- font-size:11px;
+ font-size:6.05px;
  line-height:1.5;
  color:#a8bbd3;
  overflow-wrap:anywhere;
 }
+
 .status.error{
  color:#ff9999;
  background:rgba(127,29,29,.25);
 }
+
 .status-dot{
  display:inline-block;
- width:7px;
- height:7px;
+ width:3.85px;
+ height:3.85px;
  border-radius:50%;
  background:#22c55e;
- margin-right:6px;
+ margin-right:3.3px;
+ vertical-align:middle;
 }
+
 .status.error .status-dot{
  background:#ef4444;
 }
+
 .hidden-elements{display:none}
+
+/* ポップアップ */
+
 .maplibregl-popup-content{
  color:#152033;
- font-size:12px;
+ font-size:6.6px;
+ padding:4.4px;
+ border-radius:3.85px;
 }
+
 .popup-title{
  font-weight:700;
- font-size:14px;
- margin-bottom:5px;
+ font-size:7.7px;
+ margin-bottom:2.75px;
 }
+
+/* 地図操作ボタン */
+
+.maplibregl-ctrl-top-right{
+ transform:scale(.55);
+ transform-origin:top right;
+}
+
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-bottom-left{
+ transform:scale(.55);
+ transform-origin:bottom right;
+}
+
+/* モバイル */
+
 @media(max-width:600px){
+
  .info-panel{
-  top:10px;
-  left:10px;
-  width:calc(100% - 20px);
-  max-width:350px;
-  padding:10px 12px;
+  top:5.5px;
+  left:5.5px;
+  width:calc(100% - 11px);
+  max-width:192.5px;
+  padding:5.5px 6.6px;
  }
- .time-value{font-size:17px}
- .stat b{font-size:19px}
+
+ .time-value{font-size:9.35px}
+ .stat b{font-size:10.45px}
+
 }
 </style>
 </head>
@@ -209,10 +253,6 @@ const PROXIES = [
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-/*
- * 強震モニタ色テーブル
- * CSVの先頭列は使用せず、RGBだけを利用する。
- */
 const COLOR_MAP_URL =
 'https://raw.githubusercontent.com/ingen084/KyoshinShindoColorMap/refs/heads/master/KyoshinShindoColorMap.csv';
 
@@ -222,11 +262,8 @@ const COLOR_MAP_URL =
 
 const TIME_SYNC_INTERVAL = 15000;
 const TIME_SYNC_SAMPLES = 5;
-
 const LATEST_CHECK_INTERVAL = 500;
-
 const FALLBACK_SECONDS = 5;
-
 const FETCH_TIMEOUT = 10000;
 
 /* =====================================
@@ -247,28 +284,22 @@ let imageBusy = false;
 let records = null;
 let recordsPromise = null;
 
-/* 事前計算済み観測点 */
 let preparedPoints = null;
 
-/* 色テーブル */
 let colorPalette = null;
 let colorLookupTable = null;
 let colorMapPromise = null;
 let colorMapAvailable = false;
 
-/* GeoJSON */
 let geojson = {
  type:'FeatureCollection',
  features:[]
 };
 
 let stationFeatures = [];
-
 let firstFit = true;
-
 let map;
 
-/* Canvas再利用 */
 let analysisCanvas = null;
 let analysisContext = null;
 
@@ -278,7 +309,6 @@ let lastImageWidth = 0;
 let lastImageHeight = 0;
 
 const $ = id => document.getElementById(id);
-
 const image = $('sourceImage');
 
 /* =====================================
@@ -290,7 +320,6 @@ const p2 = n=>String(n).padStart(2,'0');
 function setStatus(message,isError=false){
 
  const el=$('status');
-
  el.textContent='';
 
  const dot=document.createElement('span');
@@ -300,7 +329,6 @@ function setStatus(message,isError=false){
  el.appendChild(document.createTextNode(message));
 
  el.classList.toggle('error',isError);
-
 }
 
 function getSyncedNow(){
@@ -311,7 +339,6 @@ function getSyncedNow(){
 
  return clockBaseEpoch+
   (performance.now()-clockBasePerf);
-
 }
 
 function jstParts(ms){
@@ -326,7 +353,6 @@ function jstParts(ms){
   m:p2(d.getUTCMinutes()),
   s:p2(d.getUTCSeconds())
  };
-
 }
 
 function formatJST(ms){
@@ -334,7 +360,6 @@ function formatJST(ms){
  const t=jstParts(ms);
 
  return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
-
 }
 
 function imageUrlFor(ms){
@@ -348,7 +373,6 @@ function imageUrlFor(ms){
   url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
   label:formatJST(ms)
  };
-
 }
 
 /* =====================================
@@ -377,9 +401,7 @@ async function fetchWolfxTime(){
   );
 
   if(!response.ok){
-   throw new Error(
-    'Wolfx HTTP '+response.status
-   );
+   throw new Error('Wolfx HTTP '+response.status);
   }
 
   const data=await response.json();
@@ -403,11 +425,8 @@ async function fetchWolfxTime(){
       `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
 
      epoch=Date.parse(iso);
-
     }
-
    }
-
   }
 
   if(!Number.isFinite(epoch)){
@@ -421,11 +440,8 @@ async function fetchWolfxTime(){
   };
 
  }finally{
-
   clearTimeout(timeout);
-
  }
-
 }
 
 async function syncClock(){
@@ -441,15 +457,10 @@ async function syncClock(){
   for(let i=0;i<TIME_SYNC_SAMPLES;i++){
 
    try{
-
     samples.push(await fetchWolfxTime());
-
    }catch(e){
-
     console.warn('Wolfx同期失敗:',e);
-
    }
-
   }
 
   if(!samples.length){
@@ -477,26 +488,17 @@ async function syncClock(){
  });
 
  return timeSyncPromise;
-
 }
 
 async function maintainClock(){
 
  try{
-
   await syncClock();
-
  }catch(e){
-
   console.error('時刻再同期エラー:',e);
-
  }
 
- setTimeout(
-  maintainClock,
-  TIME_SYNC_INTERVAL
- );
-
+ setTimeout(maintainClock,TIME_SYNC_INTERVAL);
 }
 
 /* =====================================
@@ -507,7 +509,6 @@ function updateSyncTime(){
 
  $('syncTime').textContent=
   formatJST(getSyncedNow());
-
 }
 
 /* =====================================
@@ -542,7 +543,6 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
     const error=new Error('NOTFOUND');
     error.notFound=true;
     throw error;
-
    }
 
    if(!response.ok){
@@ -560,32 +560,21 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT){
    }
 
   }finally{
-
    clearTimeout(timeout);
-
   }
-
  }
 
  throw lastError||new Error('Proxy取得失敗');
-
 }
 
 /* =====================================
    色テーブル読み込み
 ===================================== */
 
-/*
- * CSV形式:
- * 先頭列,R,G,B
- *
- * 先頭列の数値は読み込むだけで使用しない。
- * RGBだけを抽出して色照合に使用する。
- */
-
 function buildColorLookup(palette){
 
  const SIZE=32;
+
  const lut=new Uint8Array(
   SIZE*SIZE*SIZE
  );
@@ -596,9 +585,6 @@ function buildColorLookup(palette){
 
    for(let bi=0;bi<SIZE;bi++){
 
-    /*
-     * 5bit単位のRGB領域の中央を代表色にする。
-     */
     const r=ri*8+4;
     const g=gi*8+4;
     const b=bi*8+4;
@@ -615,34 +601,24 @@ function buildColorLookup(palette){
      const db=b-c.b;
 
      const distance=
-      dr*dr+
-      dg*dg+
-      db*db;
+      dr*dr+dg*dg+db*db;
 
      if(distance<bestDistance){
 
       bestDistance=distance;
       bestIndex=i;
-
      }
-
     }
 
     const index=
-     (ri<<10)|
-     (gi<<5)|
-     bi;
+     (ri<<10)|(gi<<5)|bi;
 
     lut[index]=bestIndex;
-
    }
-
   }
-
  }
 
  return lut;
-
 }
 
 async function loadColorMap(){
@@ -657,17 +633,11 @@ async function loadColorMap(){
 
    const response=await fetch(
     COLOR_MAP_URL,
-    {
-     cache:'force-cache'
-    }
+    {cache:'force-cache'}
    );
 
    if(!response.ok){
-
-    throw new Error(
-     '色テーブル HTTP '+response.status
-    );
-
+    throw new Error('色テーブル HTTP '+response.status);
    }
 
    const csv=await response.text();
@@ -688,10 +658,6 @@ async function loadColorMap(){
 
     if(columns.length<4)continue;
 
-    /*
-     * 1列目は数値情報なので使用しない。
-     * RGBの3列だけを取り出す。
-     */
     const r=Number(columns[1].trim());
     const g=Number(columns[2].trim());
     const b=Number(columns[3].trim());
@@ -708,35 +674,21 @@ async function loadColorMap(){
     }
 
     palette.push({r,g,b});
-
    }
 
    if(!palette.length){
-
-    throw new Error(
-     '色テーブルに有効なRGBデータがありません'
-    );
-
+    throw new Error('色テーブルに有効なRGBデータがありません');
    }
 
    colorPalette=palette;
 
-   /*
-    * 画像解析中に毎回全色を比較しないよう、
-    * 初回だけ高速検索テーブルを作成する。
-    */
-   colorLookupTable=buildColorLookup(
-    colorPalette
-   );
+   colorLookupTable=buildColorLookup(colorPalette);
 
    colorMapAvailable=true;
 
-   console.log(
-    '色テーブル読み込み完了',
-    {
-     colorCount:colorPalette.length
-    }
-   );
+   console.log('色テーブル読み込み完了',{
+    colorCount:colorPalette.length
+   });
 
    return true;
 
@@ -746,19 +698,14 @@ async function loadColorMap(){
    colorLookupTable=null;
    colorMapAvailable=false;
 
-   console.warn(
-    '色テーブル取得失敗。画像のRGBを使用します:',
-    e
-   );
+   console.warn('色テーブル取得失敗。画像のRGBを使用します:',e);
 
    return false;
-
   }
 
  })();
 
  return colorMapPromise;
-
 }
 
 /* =====================================
@@ -767,17 +714,12 @@ async function loadColorMap(){
 
 function matchColor(r,g,b){
 
- /*
-  * 色テーブルが使えない場合は生RGBを返す。
-  */
  if(
   !colorMapAvailable||
   !colorLookupTable||
   !colorPalette
  ){
-
   return {r,g,b};
-
  }
 
  const index=
@@ -789,7 +731,6 @@ function matchColor(r,g,b){
   colorLookupTable[index];
 
  return colorPalette[paletteIndex];
-
 }
 
 /* =====================================
@@ -800,21 +741,13 @@ function parseTimeValue(value){
 
  if(typeof value==='number'){
 
-  if(value>1000000000000){
-   return value;
-  }
-
-  if(value>1000000000){
-   return value*1000;
-  }
+  if(value>1000000000000)return value;
+  if(value>1000000000)return value*1000;
 
   return null;
-
  }
 
- if(typeof value!=='string'){
-  return null;
- }
+ if(typeof value!=='string')return null;
 
  const s=value.trim();
 
@@ -827,7 +760,6 @@ function parseTimeValue(value){
   const ms=Date.parse(iso);
 
   return Number.isFinite(ms)?ms:null;
-
  }
 
  const compact=s.match(
@@ -843,7 +775,6 @@ function parseTimeValue(value){
   const ms=Date.parse(iso);
 
   return Number.isFinite(ms)?ms:null;
-
  }
 
  if(/^\d{10,13}$/.test(s)){
@@ -852,11 +783,9 @@ function parseTimeValue(value){
 
   if(n>1000000000000)return n;
   if(n>1000000000)return n*1000;
-
  }
 
  return null;
-
 }
 
 function findLatestTime(data){
@@ -880,11 +809,9 @@ function findLatestTime(data){
     for(const [k,v] of Object.entries(value)){
      walk(v,k);
     }
-
    }
 
    return;
-
   }
 
   const ms=parseTimeValue(value);
@@ -899,22 +826,13 @@ function findLatestTime(data){
   if(name.includes('time'))priority+=5;
   if(name.includes('date'))priority+=3;
 
-  candidates.push({
-   ms,
-   priority,
-   key
-  });
-
+  candidates.push({ms,priority,key});
  }
 
  walk(data);
 
  if(!candidates.length){
-
-  throw new Error(
-   'latest.json内に認識可能な時刻がありません'
-  );
-
+  throw new Error('latest.json内に認識可能な時刻がありません');
  }
 
  candidates.sort((a,b)=>{
@@ -924,11 +842,9 @@ function findLatestTime(data){
   }
 
   return b.ms-a.ms;
-
  });
 
  return candidates[0].ms;
-
 }
 
 /* =====================================
@@ -948,25 +864,14 @@ async function fetchLatestImageTime(){
 
  try{
 
-  data=JSON.parse(
-   raw.replace(/^\uFEFF/,'')
-  );
+  data=JSON.parse(raw.replace(/^\uFEFF/,''));
 
  }catch(e){
 
-  throw new Error(
-   'latest.jsonのJSON解析に失敗しました'
-  );
-
+  throw new Error('latest.jsonのJSON解析に失敗しました');
  }
 
- /*
-  * 未来時刻の判定は行わない。
-  * latest.jsonの時刻をそのまま採用する。
-  */
-
  return findLatestTime(data);
-
 }
 
 /* =====================================
@@ -982,7 +887,6 @@ function walkRecords(value,out=[]){
   }
 
   return out;
-
  }
 
  if(value&&typeof value==='object'){
@@ -992,9 +896,7 @@ function walkRecords(value,out=[]){
    value.point&&
    value.point.center_point
   ){
-
    out.push(value);
-
   }
 
   for(const v of Object.values(value)){
@@ -1002,13 +904,10 @@ function walkRecords(value,out=[]){
    if(v&&typeof v==='object'){
     walkRecords(v,out);
    }
-
   }
-
  }
 
  return out;
-
 }
 
 /* =====================================
@@ -1045,9 +944,7 @@ function preparePoints(recs){
    continue;
   }
 
-  if(item.is_suspended===true){
-   continue;
-  }
+  if(item.is_suspended===true)continue;
 
   result.push({
 
@@ -1070,13 +967,10 @@ function preparePoints(recs){
     '',
 
    code:item.code||''
-
   });
-
  }
 
  return result;
-
 }
 
 /* =====================================
@@ -1095,33 +989,22 @@ function loadPoints(){
 
   const response=await fetch(
    POINTS_URL,
-   {
-    cache:'force-cache'
-   }
+   {cache:'force-cache'}
   );
 
   if(!response.ok){
-   throw new Error(
-    '観測点JSON HTTP '+response.status
-   );
+   throw new Error('観測点JSON HTTP '+response.status);
   }
 
   const raw=await response.text();
 
-  const data=JSON.parse(
-   raw.replace(/^\uFEFF/,'')
-  );
+  const data=JSON.parse(raw.replace(/^\uFEFF/,''));
 
   records=walkRecords(data);
 
   if(!records.length){
    throw new Error('観測点データが見つかりません');
   }
-
-  /*
-   * 緯度経度・画像座標を
-   * 初回だけ計算する。
-   */
 
   preparedPoints=preparePoints(records);
 
@@ -1146,11 +1029,9 @@ function loadPoints(){
   preparedPoints=null;
 
   throw e;
-
  });
 
  return recordsPromise;
-
 }
 
 /* =====================================
@@ -1159,10 +1040,7 @@ function loadPoints(){
 
 async function fetchGifBlob(url){
 
- const response=await fetchViaProxy(
-  url,
-  10000
- );
+ const response=await fetchViaProxy(url,10000);
 
  const blob=await response.blob();
 
@@ -1177,15 +1055,10 @@ async function fetchGifBlob(url){
   !type.includes('image')&&
   !type.includes('octet-stream')
  ){
-
-  throw new Error(
-   '画像以外のレスポンスを受信しました'
-  );
-
+  throw new Error('画像以外のレスポンスを受信しました');
  }
 
  return blob;
-
 }
 
 /* =====================================
@@ -1215,11 +1088,6 @@ function prepareCanvas(width,height){
 
   lastImageWidth=width;
   lastImageHeight=height;
-
-  /*
-   * 画像サイズが変わった場合のみ
-   * GeoJSONのFeatureを再構築する。
-   */
 
   stationFeatures=preparedPoints
    .filter(p=>
@@ -1254,18 +1122,14 @@ function prepareCanvas(width,height){
      rgb:'0, 0, 0',
 
      valid:false
-
     }
-
    }));
 
   geojson={
    type:'FeatureCollection',
    features:stationFeatures
   };
-
  }
-
 }
 
 /* =====================================
@@ -1282,15 +1146,11 @@ function analyzeBitmap(bitmap){
  const ctx=analysisContext;
 
  ctx.clearRect(0,0,w,h);
-
  ctx.drawImage(bitmap,0,0);
 
- const px=ctx.getImageData(
-  0,0,w,h
- ).data;
+ const px=ctx.getImageData(0,0,w,h).data;
 
- $('imageSize').textContent=
-  `${w} × ${h}px`;
+ $('imageSize').textContent=`${w} × ${h}px`;
 
  let shown=0;
 
@@ -1299,7 +1159,6 @@ function analyzeBitmap(bitmap){
  for(let i=0;i<features.length;i++){
 
   const feature=features[i];
-
   const p=feature.properties;
 
   const offset=(p.y*w+p.x)*4;
@@ -1307,23 +1166,14 @@ function analyzeBitmap(bitmap){
   const alpha=px[offset+3];
 
   if(alpha===0){
-
    p.valid=false;
    continue;
-
   }
 
-  /*
-   * 画像から取得した元のRGB
-   */
   const rawR=px[offset];
   const rawG=px[offset+1];
   const rawB=px[offset+2];
 
-  /*
-   * CSVのRGBテーブルから最も近い色を取得。
-   * CSVの先頭列の数値は使用しない。
-   */
   const matched=matchColor(
    rawR,
    rawG,
@@ -1348,16 +1198,9 @@ function analyzeBitmap(bitmap){
   p.valid=true;
 
   shown++;
-
  }
 
- $('shown').textContent=
-  shown.toLocaleString();
-
- /*
-  * Featureの位置は変更せず
-  * 色情報だけを更新する。
-  */
+ $('shown').textContent=shown.toLocaleString();
 
  geojson.features=features;
 
@@ -1366,23 +1209,17 @@ function analyzeBitmap(bitmap){
   const source=map.getSource('stations');
 
   if(source){
-
    source.setData(geojson);
-
   }
-
  }
 
  if(firstFit&&shown){
 
   firstFit=false;
-
   fitAll();
-
  }
 
  return shown;
-
 }
 
 /* =====================================
@@ -1399,32 +1236,21 @@ async function runImage(targetMs){
 
  try{
 
-  /*
-   * 画像・観測点・色テーブルを同時取得。
-   */
-
   const imageTask=(async()=>{
 
    let blob=null;
    let selectedMs=null;
    let lastError=null;
 
-   for(
-    let i=0;
-    i<=FALLBACK_SECONDS;
-    i++
-   ){
+   for(let i=0;i<=FALLBACK_SECONDS;i++){
 
-    const candidateMs=
-     targetMs-i*1000;
+    const candidateMs=targetMs-i*1000;
 
     if(
      lastAppliedImageMs!==null&&
      candidateMs<=lastAppliedImageMs
     ){
-
      continue;
-
     }
 
     const {url}=imageUrlFor(candidateMs);
@@ -1446,9 +1272,7 @@ async function runImage(targetMs){
       formatJST(candidateMs),
       e
      );
-
     }
-
    }
 
    if(!blob){
@@ -1457,24 +1281,14 @@ async function runImage(targetMs){
      '最新画像を取得できません。'+
      (lastError?.message||'')
     );
-
    }
 
-   return {
-    blob,
-    selectedMs
-   };
+   return {blob,selectedMs};
 
   })();
 
   const pointsTask=loadPoints();
-
   const colorTask=loadColorMap();
-
-  /*
-   * 3つの処理を並列で待機。
-   * 色テーブル取得に失敗しても画像解析は継続する。
-   */
 
   const [
    imageResult,
@@ -1488,83 +1302,54 @@ async function runImage(targetMs){
    results[1]
   ]);
 
-  /*
-   * GIFデコード
-   */
-
-  const bitmap=await createImageBitmap(
-   imageResult.blob
-  );
+  const bitmap=await createImageBitmap(imageResult.blob);
 
   try{
 
-   const objectURL=URL.createObjectURL(
-    imageResult.blob
-   );
+   const objectURL=URL.createObjectURL(imageResult.blob);
 
    if(currentObjectURL){
-
-    URL.revokeObjectURL(
-     currentObjectURL
-    );
-
+    URL.revokeObjectURL(currentObjectURL);
    }
 
    currentObjectURL=objectURL;
-
    image.src=objectURL;
-
-   /*
-    * 解析
-    */
 
    const shown=analyzeBitmap(bitmap);
 
    $('imgTime').textContent=
     formatJST(imageResult.selectedMs);
 
-   lastAppliedImageMs=
-    imageResult.selectedMs;
+   lastAppliedImageMs=imageResult.selectedMs;
 
    if(colorMapAvailable){
 
-    setStatus(
-     'オンライン：色テーブル照合で画像を解析しています'
-    );
+    setStatus('オンライン：色テーブル照合で画像を解析しています');
 
    }else{
 
-    setStatus(
-     'オンライン：色テーブル未取得のため画像RGBで表示しています'
-    );
-
+    setStatus('オンライン：色テーブル未取得のため画像RGBで表示しています');
    }
 
-   console.log(
-    '画像更新完了:',
+   console.log('画像更新完了:',
     formatJST(imageResult.selectedMs),
     {
      stations:points.length,
      shown,
      colorTable:colorMapAvailable,
-     processingMs:Math.round(
-      performance.now()-started
-     )
+     processingMs:Math.round(performance.now()-started)
     }
    );
 
   }finally{
 
    bitmap.close();
-
   }
 
  }finally{
 
   imageBusy=false;
-
  }
-
 }
 
 /* =====================================
@@ -1573,9 +1358,7 @@ async function runImage(targetMs){
 
 async function checkLatest(){
 
- if(latestCheckBusy){
-  return;
- }
+ if(latestCheckBusy)return;
 
  latestCheckBusy=true;
 
@@ -1590,29 +1373,21 @@ async function checkLatest(){
    ms>lastAppliedImageMs
   ){
 
-   setStatus(
-    '最新画像を確認。画像を取得しています…'
-   );
+   setStatus('最新画像を確認。画像を取得しています…');
 
    await runImage(ms);
-
   }
 
  }catch(e){
 
   console.warn('最新画像確認:',e);
 
-  setStatus(
-   '最新画像確認中：'+e.message,
-   true
-  );
+  setStatus('最新画像確認中：'+e.message,true);
 
  }finally{
 
   latestCheckBusy=false;
-
  }
-
 }
 
 /* =====================================
@@ -1628,7 +1403,6 @@ function scheduleLatest(){
   scheduleLatest();
 
  },LATEST_CHECK_INTERVAL);
-
 }
 
 /* =====================================
@@ -1640,12 +1414,9 @@ function addSourceAndLayer(){
  if(!map.getSource('stations')){
 
   map.addSource('stations',{
-
    type:'geojson',
    data:geojson
-
   });
-
  }
 
  if(!map.getLayer('station-points')){
@@ -1668,20 +1439,19 @@ function addSourceAndLayer(){
      'interpolate',
      ['linear'],
      ['zoom'],
-     2,2.5,
-     5,4,
-     8,6,
-     11,8
+     2,1.38,
+     5,2.5,
+     8,3.5,
+     11,4.5
     ],
 
     'circle-color':['get','hex'],
 
     'circle-stroke-color':'#ffffff',
 
-    'circle-stroke-width':1,
+    'circle-stroke-width':0.35,
 
-    'circle-opacity':0.95
-
+    'circle-opacity':1
    }
 
   });
@@ -1695,10 +1465,8 @@ function addSourceAndLayer(){
    const p=f.properties;
 
    new maplibregl.Popup({
-
     closeButton:true,
-    offset:8
-
+    offset:4.4
    })
 
    .setLngLat(f.geometry.coordinates)
@@ -1738,9 +1506,7 @@ function addSourceAndLayer(){
    'station-points',
    ()=>map.getCanvas().style.cursor=''
   );
-
  }
-
 }
 
 /* =====================================
@@ -1756,7 +1522,6 @@ function esc(v){
   '"':'&quot;',
   "'":'&#39;'
  }[c]));
-
 }
 
 /* =====================================
@@ -1770,19 +1535,14 @@ function fitAll(){
  const bounds=new maplibregl.LngLatBounds();
 
  for(const f of stationFeatures){
-
   bounds.extend(f.geometry.coordinates);
-
  }
 
  map.fitBounds(bounds,{
-
   padding:45,
   maxZoom:7,
   duration:700
-
  });
-
 }
 
 /* =====================================
@@ -1805,10 +1565,7 @@ map=new maplibregl.Map({
 
 map.on('error',e=>{
 
- console.error(
-  'MapLibre:',
-  e.error||e
- );
+ console.error('MapLibre:',e.error||e);
 
 });
 
@@ -1825,17 +1582,7 @@ map.on('load',()=>{
 
  addSourceAndLayer();
 
- /*
-  * 重要：
-  * 時刻同期を待たずに画像取得を開始。
-  */
-
  setStatus('最新画像・観測点・色テーブルを並列取得しています…');
-
- /*
-  * Wolfx同期はバックグラウンドで実行。
-  * 画像取得をブロックしない。
-  */
 
  maintainClock();
 
@@ -1846,15 +1593,7 @@ map.on('load',()=>{
   250
  );
 
- /*
-  * 初回画像取得を即座に開始。
-  */
-
  checkLatest();
-
- /*
-  * 500ms間隔で最新画像を監視。
-  */
 
  scheduleLatest();
 
