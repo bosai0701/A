@@ -2,349 +2,2184 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>降水ナウキャスト</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="Cache-Control" content="no-store, no-cache, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<link rel="icon" href="favicon.ico">
-<link rel="apple-touch-icon" href="favicon.ico">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.css">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#101827">
+<title>強震モニタ画像解析ビューア</title>
+
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
 <style>
+:root{
+ color-scheme:dark;
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ background:#0b1220;
+ color:#e8eef8;
+}
+*{box-sizing:border-box}
 html,body{
-  width:100%;
-  height:100%;
-  margin:0;
-  padding:0;
-  overflow:hidden;
-  background:#fff;
+ width:100%;
+ height:100%;
+ margin:0;
+ overflow:hidden;
+ background:#0b1220;
 }
 #map{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  visibility:hidden;
-  background:#fff;
+ position:absolute;
+ inset:0;
+ width:100%;
+ height:100%;
+ background:#172338;
 }
-.maplibregl-canvas{
-  image-rendering:auto;
-  transform:translateZ(0);
-}
-#loading{
-  position:fixed;
-  inset:0;
-  z-index:99999;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#fff;
-  transition:opacity .25s ease;
-  font-family:Arial,sans-serif;
-}
-#loading.hide{ opacity:0; pointer-events:none; }
-.loading-box{ width:min(82vw,360px); text-align:center; }
-.loading-title{ font-size:20px; font-weight:bold; color:#222; margin-bottom:8px; }
-.loading-status{ min-height:22px; font-size:14px; color:#666; margin-bottom:18px; line-height:1.6; }
-.loading-spinner{
-  width:34px; height:34px; margin:0 auto 18px;
-  border:4px solid #e5e5e5; border-top-color:#1976d2; border-radius:50%;
-  animation:loading-spin .8s linear infinite;
-}
-@keyframes loading-spin{ to{transform:rotate(360deg)} }
-.loading-progress{ width:100%; height:5px; overflow:hidden; border-radius:10px; background:#e8e8e8; }
-.loading-progress-bar{ width:0%; height:100%; border-radius:10px; background:#1976d2; transition:width .1s ease; }
-.loading-percent{ margin-top:9px; font-size:12px; color:#888; }
-#connection-status{
-  position:fixed; top:10px; right:10px; z-index:5000; padding:6px 10px;
-  border-radius:14px; background:rgba(255,255,255,.88);
-  box-shadow:0 2px 6px rgba(0,0,0,.18); font-family:Arial,sans-serif; font-size:12px; font-weight:bold;
-  color:#16823b; pointer-events:none; display:none; white-space:nowrap;
-  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
-}
-#connection-status.unstable{ color:#d88a00; }
-#connection-status.offline{ color:#d32f2f; }
-#info-panel{
-  position:absolute; top:10px; left:10px; background:rgba(255,255,255,.85);
-  padding:10px 14px; border-radius:6px; font-size:14px; font-family:Arial,sans-serif;
-  box-shadow:0 2px 6px rgba(0,0,0,.2); z-index:1000; visibility:hidden; pointer-events:none;
-  transform:translateZ(0); line-height:1.5;
-}
-#clock{ font-weight:bold; }
-#sat-time,#nowcast-time{ margin-top:2px; }
-.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{ display:none !important; }
 
-#location-btn{
-  position:fixed; right:12px; bottom:12px; z-index:5000; width:52px; height:52px;
-  padding:0; border:0; border-radius:50%; background:rgba(255,255,255,.95);
-  box-shadow:0 2px 8px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center;
-  cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
-  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
-  transition:background .15s ease,transform .15s ease;
+.info-panel{
+ position:absolute;
+ z-index:10;
+ top:8.9px;
+ left:8.9px;
+ width:calc(100% - 17.8px);
+ max-width:273px;
+ padding:8.4px 9.8px;
+ background:rgba(11,18,32,.91);
+ border:1.27px solid rgba(148,163,184,.25);
+ border-radius:8.4px;
+ backdrop-filter:blur(8.4px);
+ -webkit-backdrop-filter:blur(8.4px);
+ box-shadow:0 3.5px 15.4px rgba(0,0,0,.25);
+ pointer-events:none;
 }
-#location-btn:active{ transform:scale(.92); }
-#location-btn.active{ background:#1976d2; }
-#location-btn svg{
-  width:25px; height:25px; display:block; fill:none; stroke:#333; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+
+.info-title{
+ font-size:9.1px;
+ font-weight:700;
+ margin-bottom:6.3px;
+ color:#cbd5e1;
 }
-#location-btn.active svg{ stroke:#fff; }
-.user-location-marker{
-  position:relative; width:18px; height:18px; border-radius:50%;
-  background:#1976d2; border:3px solid #fff;
-  box-shadow:0 0 0 2px rgba(25,118,210,.45), 0 2px 6px rgba(0,0,0,.35);
+.time-label{
+ font-size:7.7px;
+ color:#94a3b8;
+ margin-bottom:2.1px;
 }
-.user-location-marker::after{
-  content:""; position:absolute; left:50%; top:50%; width:6px; height:6px;
-  transform:translate(-50%,-50%); border-radius:50%; background:#fff;
+.time-value{
+ font-size:13.3px;
+ font-weight:700;
+ letter-spacing:.21px;
+ font-variant-numeric:tabular-nums;
+ color:#fff;
+}
+.divider{
+ height:1.27px;
+ background:rgba(148,163,184,.2);
+ margin:7px 0;
+}
+.stats{
+ display:grid;
+ grid-template-columns:1fr 1fr;
+ gap:6.3px;
+}
+.stat{
+ background:rgba(30,41,59,.65);
+ border-radius:5.6px;
+ padding:6.3px 7.7px;
+}
+.stat b{
+ display:block;
+ font-size:14.7px;
+ font-weight:700;
+ color:#fff;
+ font-variant-numeric:tabular-nums;
+}
+.stat span{
+ display:block;
+ font-size:7.7px;
+ color:#94a3b8;
+ margin-top:1.4px;
+}
+.status{
+ margin-top:6.3px;
+ padding:5.6px 7px;
+ border-radius:4.9px;
+ background:rgba(30,41,59,.7);
+ font-size:7.7px;
+ line-height:1.5;
+ color:#a8bbd3;
+ overflow-wrap:anywhere;
+}
+.status.error{
+ color:#ff9999;
+ background:rgba(127,29,29,.25);
+}
+.status-dot{
+ display:inline-block;
+ width:4.9px;
+ height:4.9px;
+ border-radius:50%;
+ background:#22c55e;
+ margin-right:4.2px;
+ vertical-align:middle;
+}
+.status.error .status-dot{
+ background:#ef4444;
+}
+.diagnostics{
+ margin-top:5px;
+ color:#8fa3bd;
+ font-size:7px;
+ line-height:1.5;
+ font-variant-numeric:tabular-nums;
+}
+.hidden-elements{display:none}
+
+.maplibregl-popup-content{
+ color:#152033;
+ font-size:8.4px;
+ padding:5.6px;
+ border-radius:4.9px;
+}
+.popup-title{
+ font-weight:700;
+ font-size:9.8px;
+ margin-bottom:3.5px;
+}
+
+.maplibregl-ctrl-top-right{
+ transform:scale(.70);
+ transform-origin:top right;
+}
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-bottom-left{
+ transform:scale(.70);
+ transform-origin:bottom right;
+}
+
+@media(max-width:600px){
+ .info-panel{
+  top:7px;
+  left:7px;
+  width:calc(100% - 14px);
+  max-width:245px;
+  padding:7px 8.4px;
+ }
+ .time-value{font-size:11.9px}
+ .stat b{font-size:13.3px}
 }
 </style>
 </head>
 
 <body>
 
-<div id="loading">
-  <div class="loading-box">
-    <div id="loading-spinner" class="loading-spinner"></div>
-    <div class="loading-title">降水ナウキャスト</div>
-    <div id="loading-status" class="loading-status">地図を準備しています…</div>
-    <div id="loading-progress" class="loading-progress">
-      <div id="loading-progress-bar" class="loading-progress-bar"></div>
-    </div>
-    <div id="loading-percent" class="loading-percent">0%</div>
+<main id="map" aria-label="強震モニタ観測点マップ"></main>
+
+<section class="info-panel">
+
+ <div class="info-title">強震モニタ GIFパレット解析</div>
+
+ <div class="time-label">画像時刻（実際に取得した画像・JST）</div>
+ <div class="time-value" id="imgTime">取得待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="time-label">同期時刻（Wolfx・JST）</div>
+ <div class="time-value" id="syncTime">同期待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="stats">
+  <div class="stat">
+   <b id="total">—</b>
+   <span>観測点データ数</span>
   </div>
+  <div class="stat">
+   <b id="shown">—</b>
+   <span>解析・表示地点数</span>
+  </div>
+ </div>
+
+ <div class="status" id="status">
+  <span class="status-dot"></span>
+  初期化しています…
+ </div>
+
+ <div class="diagnostics" id="diagnostics">
+  画像取得 — / 画像解析 — / 更新間隔 —
+ </div>
+
+</section>
+
+<div class="hidden-elements">
+ <img id="sourceImage" alt="">
+ <span id="imageSize"></span>
+ <span id="route"></span>
 </div>
-
-<div id="connection-status">● オンライン</div>
-<div id="map"></div>
-
-<div id="info-panel">
-  <div id="clock">----/--/-- --:--:--</div>
-  <div id="sat-time">衛星: --</div>
-  <div id="nowcast-time">降水: --</div>
-</div>
-
-<button id="location-btn" type="button" aria-label="現在地を表示" title="現在地">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="7"></circle>
-    <line x1="12" y1="2" x2="12" y2="5"></line>
-    <line x1="12" y1="19" x2="12" y2="22"></line>
-    <line x1="2" y1="12" x2="5" y2="12"></line>
-    <line x1="19" y1="12" x2="22" y2="12"></line>
-  </svg>
-</button>
-
-<script src="https://unpkg.com/maplibre-gl@1.14.0/dist/maplibre-gl.js"></script>
 
 <script>
-const APP_BOOT_ID =
-  Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 
-const APP_CACHE_BUSTER =
-  'fresh=' + encodeURIComponent(APP_BOOT_ID);
+/* =====================================
+   URL設定
+===================================== */
 
-let loadingError = false;
-let mapReady = false;
-let initializing = false;
-let initGeneration = 0;
+const BASE_URL =
+'http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/';
 
-let jmaConnectionTimer = null;
-let nowcastTimer = null;
-let satelliteTimer = null;
-let initialDisplayTimer = null;
+const LATEST_URL =
+'http://www.kmoni.bosai.go.jp/webservice/server/pros/latest.json';
 
-let locationMarker = null;
-let locationTimer = null;
-let locationEnabled = false;
-let locationFirstMove = true;
+const NTP_URL =
+'https://api.wolfx.jp/ntp.json';
 
-const RETURN_RELOAD_TIME = 5 * 60 * 1000;
-let hiddenAt = null;
-let returnReloadTimer = null;
+const PROXY_BASE =
+'https://green-grass-374f.mirakuro5472.workers.dev/';
 
-function startReturnReloadTimer(){
-  if(returnReloadTimer){
-    clearTimeout(returnReloadTimer);
-    returnReloadTimer = null;
+const PROXIES = [
+ u=>PROXY_BASE+'?url='+encodeURIComponent(u)
+];
+
+const POINTS_URL =
+'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
+
+/* =====================================
+   更新設定
+===================================== */
+
+const TIME_SYNC_INTERVAL = 15000;
+const TIME_SYNC_SAMPLES = 5;
+
+const LATEST_CHECK_INTERVAL = 500;
+const FALLBACK_SECONDS = 5;
+
+const FETCH_TIMEOUT = 10000;
+const LATEST_TIMEOUT = 8000;
+const POINTS_TIMEOUT = 8000;
+
+const IMAGE_TIMEOUT = 4500;
+const IMAGE_TOTAL_TIMEOUT = 12000;
+
+/* =====================================
+   状態
+===================================== */
+
+let clockBaseEpoch = null;
+let clockBasePerf = null;
+let clockSynced = false;
+let timeSyncPromise = null;
+
+let latestImageMs = null;
+let lastAppliedImageMs = null;
+let lastRequestedLatestMs = null;
+
+let latestCheckBusy = false;
+let imageBusy = false;
+let imageQueueRunning = false;
+
+let pendingImageMs = null;
+let nextImageRetryPerf = 0;
+
+let records = null;
+let recordsPromise = null;
+
+let preparedPoints = null;
+
+let lastGifWidth = 0;
+let lastGifHeight = 0;
+
+let geojson = {
+ type:'FeatureCollection',
+ features:[]
+};
+
+let stationFeatures = [];
+let firstFit = true;
+let map;
+
+let currentObjectURL = null;
+
+let consecutiveImageErrors = 0;
+
+let lastImageCompletedPerf = null;
+
+const $ = id => document.getElementById(id);
+const image = $('sourceImage');
+
+/* =====================================
+   共通処理
+===================================== */
+
+const p2 = n=>String(n).padStart(2,'0');
+
+function setStatus(message,isError=false){
+
+ const el=$('status');
+ el.textContent='';
+
+ const dot=document.createElement('span');
+ dot.className='status-dot';
+
+ el.appendChild(dot);
+ el.appendChild(document.createTextNode(message));
+
+ el.classList.toggle('error',isError);
+}
+
+function getSyncedNow(){
+
+ if(!clockSynced){
+  return Date.now();
+ }
+
+ return clockBaseEpoch+
+  (performance.now()-clockBasePerf);
+}
+
+function jstParts(ms){
+
+ const d=new Date(ms+9*3600e3);
+
+ return {
+  Y:d.getUTCFullYear(),
+  M:p2(d.getUTCMonth()+1),
+  D:p2(d.getUTCDate()),
+  h:p2(d.getUTCHours()),
+  m:p2(d.getUTCMinutes()),
+  s:p2(d.getUTCSeconds())
+ };
+}
+
+function formatJST(ms){
+
+ const t=jstParts(ms);
+
+ return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
+}
+
+function imageUrlFor(ms){
+
+ const t=jstParts(ms);
+
+ const stamp=
+  `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
+
+ return {
+  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
+  label:formatJST(ms)
+ };
+}
+
+function updateDiagnostics(fetchMs,analysisMs,intervalMs){
+
+ const fetchText=
+  Number.isFinite(fetchMs)
+   ?`${(fetchMs/1000).toFixed(2)}秒`
+   :'—';
+
+ const analysisText=
+  Number.isFinite(analysisMs)
+   ?`${(analysisMs/1000).toFixed(2)}秒`
+   :'—';
+
+ const intervalText=
+  Number.isFinite(intervalMs)
+   ?`${(intervalMs/1000).toFixed(2)}秒`
+   :'初回';
+
+ $('diagnostics').textContent=
+  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 ${intervalText}`;
+}
+
+/* =====================================
+   ブラウザー処理を一時的に譲る
+===================================== */
+
+function yieldToBrowser(){
+
+ return new Promise(resolve=>{
+  setTimeout(resolve,0);
+ });
+}
+
+/* =====================================
+   Wolfx時刻同期
+===================================== */
+
+async function fetchWolfxTime(){
+
+ const start=performance.now();
+
+ const controller=new AbortController();
+
+ const timeout=setTimeout(
+  ()=>controller.abort(),
+  8000
+ );
+
+ try{
+
+  const response=await fetch(
+   NTP_URL+'?_='+Date.now(),
+   {
+    cache:'no-store',
+    signal:controller.signal
+   }
+  );
+
+  if(!response.ok){
+   throw new Error('Wolfx HTTP '+response.status);
   }
-  hiddenAt = Date.now();
-  returnReloadTimer = setTimeout(() => {
-    returnReloadTimer = null;
-    if(document.hidden){
-      window.location.reload();
+
+  const data=await response.json();
+
+  const end=performance.now();
+
+  let epoch=Number(data.timestamp);
+
+  if(!Number.isFinite(epoch)||epoch<1000000000000){
+
+   const value=data.JST?.int;
+
+   if(value){
+
+    const s=String(value);
+
+    if(/^\d{14}$/.test(s)){
+
+     const iso=
+      `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+      `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+     epoch=Date.parse(iso);
     }
-  }, RETURN_RELOAD_TIME);
-}
-
-function cancelReturnReloadTimer(){
-  if(returnReloadTimer){
-    clearTimeout(returnReloadTimer);
-    returnReloadTimer = null;
+   }
   }
-  hiddenAt = null;
+
+  if(!Number.isFinite(epoch)){
+   throw new Error('Wolfx時刻を解析できません');
+  }
+
+  return {
+   epoch,
+   perf:(start+end)/2,
+   rtt:end-start
+  };
+
+ }finally{
+  clearTimeout(timeout);
+ }
 }
 
-// DOM
-const loading = document.getElementById('loading');
-const loadingStatus = document.getElementById('loading-status');
-const loadingProgress = document.getElementById('loading-progress');
-const loadingProgressBar = document.getElementById('loading-progress-bar');
-const loadingPercent = document.getElementById('loading-percent');
-const loadingSpinner = document.getElementById('loading-spinner');
-const connectionStatus = document.getElementById('connection-status');
-const mapElement = document.getElementById('map');
-const infoPanel = document.getElementById('info-panel');
-const locationBtn = document.getElementById('location-btn');
+async function syncClock(){
 
-function forceMapRefresh(){
-  if(!window.map) return;
+ if(timeSyncPromise){
+  return timeSyncPromise;
+ }
 
-  requestAnimationFrame(() => {
-    try{
-      if(typeof window.map.resize === 'function') window.map.resize();
-      if(typeof window.map.triggerRepaint === 'function') window.map.triggerRepaint();
-    }catch(e){}
+ timeSyncPromise=(async()=>{
+
+  const samples=[];
+
+  for(let i=0;i<TIME_SYNC_SAMPLES;i++){
+
+   try{
+    samples.push(await fetchWolfxTime());
+   }catch(e){
+    console.warn('Wolfx同期失敗:',e);
+   }
+  }
+
+  if(!samples.length){
+   throw new Error('Wolfx時刻を取得できません');
+  }
+
+  samples.sort((a,b)=>a.rtt-b.rtt);
+
+  const best=samples[0];
+
+  clockBaseEpoch=best.epoch;
+  clockBasePerf=best.perf;
+  clockSynced=true;
+
+  console.log('Wolfx時刻同期完了',{
+   RTT:Math.round(best.rtt),
+   samples:samples.length,
+   serverTime:new Date(best.epoch).toISOString()
   });
+
+  return best;
+
+ })().finally(()=>{
+  timeSyncPromise=null;
+ });
+
+ return timeSyncPromise;
 }
 
-document.addEventListener('visibilitychange', () => {
-  if(!document.hidden && window.map){
-    forceMapRefresh();
-  }
-});
+async function maintainClock(){
 
-window.addEventListener('pageshow', (event) => {
-  if(!document.hidden && window.map){
-    forceMapRefresh();
-  }
-});
+ try{
+  await syncClock();
+ }catch(e){
+  console.error('時刻再同期エラー:',e);
+ }
 
-window.addEventListener('focus', () => {
-  if(window.map){
-    forceMapRefresh();
-  }
-});
-
-function setConnectionStatus(state){
-  connectionStatus.className = '';
-
-  if(state === 'online'){
-    connectionStatus.textContent = '● オンライン';
-  }else if(state === 'unstable'){
-    connectionStatus.textContent = '● 接続不安定';
-    connectionStatus.classList.add('unstable');
-  }else{
-    connectionStatus.textContent = '● オフライン';
-    connectionStatus.classList.add('offline');
-  }
-
-  if(mapReady){
-    connectionStatus.style.display = 'block';
-  }
+ setTimeout(maintainClock,TIME_SYNC_INTERVAL);
 }
 
-function showInitialError(message){
-  loadingError = true;
-  initGeneration++;
+/* =====================================
+   Wolfx時刻表示
+===================================== */
 
-  if(initialDisplayTimer){
-    clearTimeout(initialDisplayTimer);
-    initialDisplayTimer = null;
-  }
+function updateSyncTime(){
 
-  mapElement.style.visibility = 'hidden';
-  infoPanel.style.visibility = 'hidden';
-
-  loading.style.display = 'flex';
-  loading.classList.remove('hide');
-
-  loadingSpinner.style.display = 'none';
-  loadingProgress.style.display = 'none';
-  loadingPercent.style.display = 'none';
-
-  loadingStatus.innerHTML =
-    message || '降水ナウキャストのデータがありません。<br>' +
-    'データがないか、通信に障害が発生しています。';
-
-  setConnectionStatus(navigator.onLine ? 'unstable' : 'offline');
+ $('syncTime').textContent=
+  formatJST(getSyncedNow());
 }
 
-function showLoading(){
-  loadingError = false;
-  if(initialDisplayTimer){
-    clearTimeout(initialDisplayTimer);
-    initialDisplayTimer = null;
-  }
+/* =====================================
+   Proxy取得
+   本文の受信完了までタイムアウトを維持
+===================================== */
 
-  loading.style.display = 'flex';
-  loading.classList.remove('hide');
-  loadingSpinner.style.display = 'block';
-  loadingProgress.style.display = 'block';
-  loadingPercent.style.display = 'block';
-  loadingProgressBar.style.width = '0%';
-  loadingPercent.textContent = '0%';
-}
+async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
 
-function setLoading(text, percent){
-  if(loadingError) return;
+ let lastError=null;
 
-  if(!navigator.onLine){
-    if(!mapReady){
-      showInitialError('インターネットに接続されていません。<br>接続を確認しています…');
+ for(let i=0;i<PROXIES.length;i++){
+
+  const proxy=PROXIES[i];
+
+  const controller=new AbortController();
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   timeoutMs
+  );
+
+  try{
+
+   const response=await fetch(
+    proxy(url),
+    {
+     cache:'no-store',
+     signal:controller.signal
     }
-    return;
+   );
+
+   if(response.status===404){
+
+    const error=new Error('NOTFOUND');
+    error.notFound=true;
+    throw error;
+   }
+
+   if(!response.ok){
+    throw new Error('HTTP '+response.status);
+   }
+
+   if(responseType==='blob'){
+
+    const blob=await response.blob();
+
+    if(!blob.size){
+     throw new Error('空のデータを受信しました');
+    }
+
+    return blob;
+   }
+
+   if(responseType==='text'){
+
+    return await response.text();
+   }
+
+   return response;
+
+  }catch(e){
+
+   lastError=e;
+
+   try{
+    controller.abort();
+   }catch(_){}
+
+   if(e.notFound){
+    throw e;
+   }
+
+   console.warn(
+    'Proxy取得失敗:',
+    e.name,
+    e.message
+   );
+
+  }finally{
+
+   clearTimeout(timeout);
   }
+ }
 
-  loadingStatus.textContent = text;
-
-  const value = Math.max(0, Math.min(100, percent));
-  loadingProgressBar.style.width = value + '%';
-  loadingPercent.textContent = Math.round(value) + '%';
+ throw lastError||new Error('Proxy取得失敗');
 }
 
-function showMapAfterLoading(){
-  if(loadingError || !navigator.onLine) return;
+/* =====================================
+   KyoshinMonitorLib方式：GIFパレット解析
+   GIFのインデックス画像を直接読み取り、
+   パレットごとに色→スケール変換を1回だけ行う
+===================================== */
 
-  loadingProgressBar.style.width = '100%';
-  loadingPercent.textContent = '100%';
-  loadingStatus.textContent = '地図の表示準備が完了しました';
-
-  if(initialDisplayTimer){
-    clearTimeout(initialDisplayTimer);
-    initialDisplayTimer = null;
-  }
-
-  initialDisplayTimer = setTimeout(() => {
-    initialDisplayTimer = null;
-
-    if(loadingError || !navigator.onLine) return;
-
-    mapElement.style.visibility = 'visible';
-    infoPanel.style.visibility = 'visible';
-    mapReady = true;
-    connectionStatus.style.display = 'block';
-    setConnectionStatus('online');
-
-    forceMapRefresh();
-
-    loading.classList.add('hide');
-
-    setTimeout(() => {
-      if(!loadingError && navigator.onLine){
-        loading.style.display = 'none';
-      }
-    }, 300);
-
-  }, 50);
+function readU16LE(bytes, offset){
+ return bytes[offset] | (bytes[offset + 1] << 8);
 }
 
-// ここから地図初期化の元のコードはそのまま残す
-// ただし、以前の「localStorage.clear / caches.clear / serviceWorker.unregister」を含む完全リセット処理は削除
-// 代わりに、ページ復帰時の再描画だけここで強制実行する
+function readGifColorTable(bytes, offset, count){
+ const palette = new Array(count);
 
-// 例: 地図作成後に window.map = map; を追加
-// map = new maplibregl.Map({...});
-// window.map = map;
+ for(let i=0;i<count;i++){
+  const p=offset+i*3;
+  palette[i]={
+   r:bytes[p],
+   g:bytes[p+1],
+   b:bytes[p+2],
+   a:255
+  };
+ }
+
+ return palette;
+}
+
+function readGifSubBlocks(bytes, state){
+ const chunks=[];
+ let total=0;
+
+ while(state.pos<bytes.length){
+  const size=bytes[state.pos++];
+
+  if(size===0)break;
+
+  if(state.pos+size>bytes.length){
+   throw new Error('GIFサブブロックが途中で終了しています');
+  }
+
+  const chunk=bytes.subarray(state.pos,state.pos+size);
+  chunks.push(chunk);
+  total+=size;
+  state.pos+=size;
+ }
+
+ const result=new Uint8Array(total);
+ let offset=0;
+
+ for(const chunk of chunks){
+  result.set(chunk,offset);
+  offset+=chunk.length;
+ }
+
+ return result;
+}
+
+/* GIF LZW展開。GIFの可変長コードを画素インデックス列へ戻す。 */
+function decodeGifLzw(minCodeSize,data,expectedLength){
+ if(minCodeSize<2||minCodeSize>8){
+  throw new Error('GIF LZWの最小コードサイズが不正です');
+ }
+
+ const clearCode=1<<minCodeSize;
+ const endCode=clearCode+1;
+
+ let codeSize=minCodeSize+1;
+ let nextCode=endCode+1;
+ let bitPosition=0;
+
+ const prefix=new Int16Array(4096);
+ const suffix=new Uint8Array(4096);
+ const stack=new Uint8Array(4097);
+ const output=new Uint8Array(expectedLength);
+
+ for(let i=0;i<clearCode;i++){
+  suffix[i]=i;
+ }
+
+ let outputPosition=0;
+ let oldCode=-1;
+ let firstByte=0;
+
+ function readCode(size){
+  const bytePosition=bitPosition>>3;
+  const bitOffset=bitPosition&7;
+
+  if(bytePosition>=data.length)return -1;
+
+  const b0=data[bytePosition]||0;
+  const b1=data[bytePosition+1]||0;
+  const b2=data[bytePosition+2]||0;
+
+  const packed=b0|(b1<<8)|(b2<<16);
+  const code=(packed>>bitOffset)&((1<<size)-1);
+
+  bitPosition+=size;
+  return code;
+ }
+
+ while(outputPosition<expectedLength){
+  let code=readCode(codeSize);
+
+  if(code<0)break;
+
+  if(code===clearCode){
+   codeSize=minCodeSize+1;
+   nextCode=endCode+1;
+   oldCode=-1;
+   continue;
+  }
+
+  if(code===endCode)break;
+
+  if(code>nextCode||code>=4096){
+   throw new Error('GIF LZWコードが不正です');
+  }
+
+  const inputCode=code;
+  let stackLength=0;
+
+  if(code===nextCode){
+   if(oldCode<0){
+    throw new Error('GIF LZW辞書が初期化されていません');
+   }
+
+   stack[stackLength++]=firstByte;
+   code=oldCode;
+  }
+
+  while(code>=clearCode){
+   if(code>=nextCode||stackLength>=4096){
+    throw new Error('GIF LZW辞書参照が不正です');
+   }
+
+   stack[stackLength++]=suffix[code];
+   code=prefix[code];
+  }
+
+  firstByte=suffix[code];
+  stack[stackLength++]=firstByte;
+
+  while(stackLength>0&&outputPosition<expectedLength){
+   output[outputPosition++]=stack[--stackLength];
+  }
+
+  if(oldCode>=0&&nextCode<4096){
+   prefix[nextCode]=oldCode;
+   suffix[nextCode]=firstByte;
+   nextCode++;
+
+   if(nextCode===(1<<codeSize)&&codeSize<12){
+    codeSize++;
+   }
+  }
+
+  oldCode=inputCode;
+ }
+
+ if(outputPosition!==expectedLength){
+  throw new Error(
+   `GIF LZW展開サイズが一致しません (${outputPosition}/${expectedLength})`
+  );
+ }
+
+ return output;
+}
+
+function deinterlaceGifPixels(source,width,height){
+ const result=new Uint8Array(source.length);
+ const starts=[0,4,2,1];
+ const steps=[8,8,4,2];
+
+ let sourceRow=0;
+
+ for(let pass=0;pass<4;pass++){
+  for(let y=starts[pass];y<height;y+=steps[pass]){
+   const from=sourceRow*width;
+   result.set(
+    source.subarray(from,from+width),
+    y*width
+   );
+   sourceRow++;
+  }
+ }
+
+ return result;
+}
+
+/*
+ * GIFの最初の画像フレームをインデックス形式で展開する。
+ * createImageBitmap()/Canvasを通すと失われるGIFパレット番号を保持する。
+ */
+function decodeIndexedGif(buffer){
+ const bytes=new Uint8Array(buffer);
+
+ if(bytes.length<13){
+  throw new Error('GIFデータが短すぎます');
+ }
+
+ const signature=String.fromCharCode(
+  bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5]
+ );
+
+ if(signature!=='GIF87a'&&signature!=='GIF89a'){
+  throw new Error('GIF形式ではないデータを受信しました');
+ }
+
+ const width=readU16LE(bytes,6);
+ const height=readU16LE(bytes,8);
+ const screenPacked=bytes[10];
+
+ if(!width||!height||width*height>20000000){
+  throw new Error('GIF画像サイズが不正です');
+ }
+
+ let pos=13;
+ let globalPalette=null;
+
+ if(screenPacked&0x80){
+  const count=1<<((screenPacked&0x07)+1);
+
+  if(pos+count*3>bytes.length){
+   throw new Error('GIFグローバルカラーテーブルが不完全です');
+  }
+
+  globalPalette=readGifColorTable(bytes,pos,count);
+  pos+=count*3;
+ }
+
+ let transparentIndex=-1;
+
+ while(pos<bytes.length){
+  const marker=bytes[pos++];
+
+  if(marker===0x3B){
+   break;
+  }
+
+  if(marker===0x21){
+   if(pos>=bytes.length)break;
+
+   const label=bytes[pos++];
+
+   if(label===0xF9){
+    if(pos>=bytes.length)break;
+
+    const blockSize=bytes[pos++];
+
+    if(blockSize>=4&&pos+blockSize<=bytes.length){
+     const packed=bytes[pos];
+     const candidate=bytes[pos+3];
+
+     transparentIndex=(packed&0x01)?candidate:-1;
+    }
+
+    pos+=blockSize;
+
+    if(pos<bytes.length&&bytes[pos]===0){
+     pos++;
+    }
+   }else{
+    readGifSubBlocks(bytes,{get pos(){return pos;},set pos(v){pos=v;}});
+   }
+
+   continue;
+  }
+
+  if(marker!==0x2C){
+   throw new Error('GIFブロック識別子が不正です');
+  }
+
+  if(pos+9>bytes.length){
+   throw new Error('GIF画像記述子が不完全です');
+  }
+
+  const left=readU16LE(bytes,pos);
+  const top=readU16LE(bytes,pos+2);
+  const frameWidth=readU16LE(bytes,pos+4);
+  const frameHeight=readU16LE(bytes,pos+6);
+  const imagePacked=bytes[pos+8];
+  pos+=9;
+
+  if(!frameWidth||!frameHeight||frameWidth*frameHeight>20000000){
+   throw new Error('GIFフレームサイズが不正です');
+  }
+
+  let palette=globalPalette;
+
+  if(imagePacked&0x80){
+   const count=1<<((imagePacked&0x07)+1);
+
+   if(pos+count*3>bytes.length){
+    throw new Error('GIFローカルカラーテーブルが不完全です');
+   }
+
+   palette=readGifColorTable(bytes,pos,count);
+   pos+=count*3;
+  }
+
+  if(!palette||!palette.length){
+   throw new Error('GIFカラーテーブルがありません');
+  }
+
+  if(pos>=bytes.length){
+   throw new Error('GIF LZWデータがありません');
+  }
+
+  const minCodeSize=bytes[pos++];
+  const compressed=readGifSubBlocks(bytes,{get pos(){return pos;},set pos(v){pos=v;}});
+  let framePixels=decodeGifLzw(
+   minCodeSize,
+   compressed,
+   frameWidth*frameHeight
+  );
+
+  if(imagePacked&0x40){
+   framePixels=deinterlaceGifPixels(
+    framePixels,
+    frameWidth,
+    frameHeight
+   );
+  }
+
+  const pixels=new Uint8Array(width*height);
+  const validMask=new Uint8Array(width*height);
+
+  const copyWidth=Math.max(
+   0,
+   Math.min(frameWidth,width-left)
+  );
+
+  const copyHeight=Math.max(
+   0,
+   Math.min(frameHeight,height-top)
+  );
+
+  for(let y=0;y<copyHeight;y++){
+   const sourceStart=y*frameWidth;
+   const targetStart=(top+y)*width+left;
+
+   pixels.set(
+    framePixels.subarray(sourceStart,sourceStart+copyWidth),
+    targetStart
+   );
+
+   validMask.fill(
+    1,
+    targetStart,
+    targetStart+copyWidth
+   );
+  }
+
+  return {
+   width,
+   height,
+   palette,
+   pixels,
+   validMask,
+   transparentIndex
+  };
+ }
+
+ throw new Error('GIF画像フレームが見つかりません');
+}
+
+/* KyoshinMonitorLib ColorConverter.csと同じHSV→多項式補間 */
+function convertToScaleAtPolynomialInterpolation(color){
+ const r=color.r;
+ const g=color.g;
+ const b=color.b;
+
+ const max=Math.max(r,g,b);
+ const min=Math.min(r,g,b);
+
+ let h=0;
+ let saturation=0;
+ const value=max/255;
+
+ if(min===max){
+  saturation=0;
+ }else{
+  const difference=max-min;
+
+  if(r===max){
+   h=(g-b)/difference;
+  }
+
+  if(g===max){
+   h=((b-r)/difference)+2;
+  }
+
+  if(b===max){
+   h=((r-g)/difference)+4;
+  }
+
+  h*=60;
+
+  if(h<0){
+   h+=360;
+  }
+
+  saturation=difference/max;
+ }
+
+ h/=360;
+
+ if(value<=0.1||saturation<=0.75){
+  return 0;
+ }
+
+ let scale;
+
+ if(h>0.1476){
+  scale=(
+   ((((((280.31*h-916.05)*h+1142.6)*h-709.95)*h+234.65)*h-40.27)*h)
+   +3.2217
+  );
+ }else if(h>0.001){
+  scale=(
+   ((((151.4*h-49.32)*h+6.753)*h-2.481)*h)
+   +0.9033
+  );
+ }else{
+  scale=((-0.005171*value-0.3282)*value)+1.2236;
+ }
+
+ return Math.max(0,scale);
+}
+
+/* パレットの色は最大256色なので、各色のスケールを1回だけ計算する */
+function buildPaletteScaleTable(palette,transparentIndex){
+ const table=new Array(palette.length);
+
+ for(let i=0;i<palette.length;i++){
+  const color=palette[i];
+
+  table[i]=i===transparentIndex
+   ?null
+   :convertToScaleAtPolynomialInterpolation(color);
+ }
+
+ return table;
+}
+
+/* =====================================
+   最新画像時刻JSON解析
+===================================== */
+
+function parseTimeValue(value){
+
+ if(typeof value==='number'){
+
+  if(value>1000000000000)return value;
+  if(value>1000000000)return value*1000;
+
+  return null;
+ }
+
+ if(typeof value!=='string')return null;
+
+ const s=value.trim();
+
+ if(/^\d{14}$/.test(s)){
+
+  const iso=
+   `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
+   `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+ }
+
+ const compact=s.match(
+  /(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
+ );
+
+ if(compact){
+
+  const iso=
+   `${compact[1]}-${compact[2]}-${compact[3]}T`+
+   `${compact[4]}:${compact[5]}:${compact[6]}+09:00`;
+
+  const ms=Date.parse(iso);
+
+  return Number.isFinite(ms)?ms:null;
+ }
+
+ if(/^\d{10,13}$/.test(s)){
+
+  const n=Number(s);
+
+  if(n>1000000000000)return n;
+  if(n>1000000000)return n*1000;
+ }
+
+ return null;
+}
+
+function findLatestTime(data){
+
+ const candidates=[];
+
+ function walk(value,key=''){
+
+  if(value===null||value===undefined)return;
+
+  if(typeof value==='object'){
+
+   if(Array.isArray(value)){
+
+    for(const item of value){
+     walk(item,key);
+    }
+
+   }else{
+
+    for(const [k,v] of Object.entries(value)){
+     walk(v,k);
+    }
+   }
+
+   return;
+  }
+
+  const ms=parseTimeValue(value);
+
+  if(ms===null)return;
+
+  const name=String(key).toLowerCase();
+
+  let priority=0;
+
+  if(name.includes('latest'))priority+=10;
+  if(name.includes('time'))priority+=5;
+  if(name.includes('date'))priority+=3;
+
+  candidates.push({ms,priority,key});
+ }
+
+ walk(data);
+
+ if(!candidates.length){
+  throw new Error('latest.json内に認識可能な時刻がありません');
+ }
+
+ candidates.sort((a,b)=>{
+
+  if(b.priority!==a.priority){
+   return b.priority-a.priority;
+  }
+
+  return b.ms-a.ms;
+ });
+
+ return candidates[0].ms;
+}
+
+/* =====================================
+   強震モニタ最新時刻取得
+===================================== */
+
+async function fetchLatestImageTime(){
+
+ const raw=await fetchViaProxy(
+  LATEST_URL,
+  LATEST_TIMEOUT,
+  'text'
+ );
+
+ let data;
+
+ try{
+
+  data=JSON.parse(raw.replace(/^\uFEFF/,''));
+
+ }catch(e){
+
+  throw new Error('latest.jsonのJSON解析に失敗しました');
+ }
+
+ return findLatestTime(data);
+}
+
+/* =====================================
+   観測点JSON解析
+===================================== */
+
+function walkRecords(value,out=[]){
+
+ if(Array.isArray(value)){
+
+  for(const v of value){
+   walkRecords(v,out);
+  }
+
+  return out;
+ }
+
+ if(value&&typeof value==='object'){
+
+  if(
+   value.location&&
+   value.point&&
+   value.point.center_point
+  ){
+   out.push(value);
+  }
+
+  for(const v of Object.values(value)){
+
+   if(v&&typeof v==='object'){
+    walkRecords(v,out);
+   }
+  }
+ }
+
+ return out;
+}
+
+/* =====================================
+   観測点の事前計算
+===================================== */
+
+function preparePoints(recs){
+
+ const result=[];
+
+ for(const item of recs){
+
+  const loc=item.location||{};
+  const point=item.point||{};
+
+  const center=point.center_point||{};
+  const offset=point.offset||{};
+
+  const lat=Number(loc.latitude);
+  const lon=Number(loc.longitude);
+
+  const x=
+   Number(center.x)+Number(offset.x||0);
+
+  const y=
+   Number(center.y)+Number(offset.y||0);
+
+  if(
+   !Number.isFinite(lat)||
+   !Number.isFinite(lon)||
+   !Number.isFinite(x)||
+   !Number.isFinite(y)
+  ){
+   continue;
+  }
+
+  if(item.is_suspended===true)continue;
+
+  result.push({
+
+   lat,
+   lon,
+
+   x:Math.round(x),
+   y:Math.round(y),
+
+   name:
+    item.name||
+    item.point_name||
+    item.station_name||
+    item.code||
+    '観測点',
+
+   region:
+    item.region||
+    item.prefecture||
+    '',
+
+   code:item.code||''
+  });
+ }
+
+ return result;
+}
+
+/* =====================================
+   観測点JSON取得
+   ★通信と本文取得の両方にタイムアウト
+===================================== */
+
+function loadPoints(){
+
+ if(recordsPromise){
+  return recordsPromise;
+ }
+
+ setStatus('観測点JSONを取得しています…');
+
+ recordsPromise=(async()=>{
+
+  const controller=new AbortController();
+
+  const timeout=setTimeout(
+   ()=>controller.abort(),
+   POINTS_TIMEOUT
+  );
+
+  try{
+
+   const response=await fetch(
+    POINTS_URL,
+    {
+     cache:'force-cache',
+     signal:controller.signal
+    }
+   );
+
+   if(!response.ok){
+    throw new Error('観測点JSON HTTP '+response.status);
+   }
+
+   const raw=await response.text();
+
+   const data=JSON.parse(raw.replace(/^\uFEFF/,''));
+
+   records=walkRecords(data);
+
+   if(!records.length){
+    throw new Error('観測点データが見つかりません');
+   }
+
+   preparedPoints=preparePoints(records);
+
+   if(!preparedPoints.length){
+    throw new Error('有効な観測点がありません');
+   }
+
+   $('total').textContent=
+    records.length.toLocaleString();
+
+   console.log('観測点準備完了',{
+    total:records.length,
+    prepared:preparedPoints.length
+   });
+
+   return preparedPoints;
+
+  }finally{
+
+   clearTimeout(timeout);
+  }
+
+ })().catch(e=>{
+
+  recordsPromise=null;
+  records=null;
+  preparedPoints=null;
+
+  throw e;
+ });
+
+ return recordsPromise;
+}
+
+/* =====================================
+   GIF画像取得
+===================================== */
+
+async function fetchGifBlob(url,timeoutMs=IMAGE_TIMEOUT){
+
+ const blob=await fetchViaProxy(
+  url,
+  timeoutMs,
+  'blob'
+ );
+
+ const type=blob.type;
+
+ if(
+  type&&
+  !type.includes('image')&&
+  !type.includes('octet-stream')
+ ){
+  throw new Error('画像以外のレスポンスを受信しました');
+ }
+
+ return blob;
+}
+
+/* =====================================
+   観測点Feature準備
+===================================== */
+
+function prepareStationFeatures(width,height){
+
+ if(
+  lastGifWidth===width&&
+  lastGifHeight===height&&
+  stationFeatures.length
+ ){
+  return;
+ }
+
+ lastGifWidth=width;
+ lastGifHeight=height;
+
+ stationFeatures=preparedPoints
+  .filter(p=>
+   p.x>=0&&
+   p.y>=0&&
+   p.x<width&&
+   p.y<height
+  )
+  .map(p=>({
+
+   type:'Feature',
+
+   geometry:{
+    type:'Point',
+    coordinates:[p.lon,p.lat]
+   },
+
+   properties:{
+
+    name:p.name,
+    region:p.region,
+    code:p.code,
+
+    x:p.x,
+    y:p.y,
+
+    r:0,
+    g:0,
+    b:0,
+
+    hex:'#000000',
+    rgb:'0, 0, 0',
+
+    scale:null,
+    intensity:null,
+    valid:false
+   }
+  }));
+
+ geojson={
+  type:'FeatureCollection',
+  features:stationFeatures
+ };
+}
+
+/* =====================================
+   KyoshinMonitorLib方式のGIF画像解析
+   ・GIFのパレットインデックスを直接取得
+   ・パレットごとにスケール変換を一度だけ計算
+   ・観測点ではインデックス参照だけを行う
+===================================== */
+
+async function analyzeGifBlob(blob){
+
+ const decodeStarted=performance.now();
+
+ const buffer=await blob.arrayBuffer();
+ const decoded=decodeIndexedGif(buffer);
+
+ const decodeDuration=performance.now()-decodeStarted;
+
+ const w=decoded.width;
+ const h=decoded.height;
+
+ prepareStationFeatures(w,h);
+
+ const scaleTable=buildPaletteScaleTable(
+  decoded.palette,
+  decoded.transparentIndex
+ );
+
+ let shown=0;
+
+ const features=stationFeatures;
+ const pixels=decoded.pixels;
+ const validMask=decoded.validMask;
+ const palette=decoded.palette;
+ const CHUNK_SIZE=1500;
+
+ for(
+  let start=0;
+  start<features.length;
+  start+=CHUNK_SIZE
+ ){
+
+  const end=Math.min(
+   start+CHUNK_SIZE,
+   features.length
+  );
+
+  for(let i=start;i<end;i++){
+
+   const feature=features[i];
+   const p=feature.properties;
+
+   const pixelOffset=p.y*w+p.x;
+
+   if(!validMask[pixelOffset]){
+    p.valid=false;
+    p.scale=null;
+    p.intensity=null;
+    continue;
+   }
+
+   const paletteIndex=pixels[pixelOffset];
+
+   if(
+    paletteIndex>=palette.length||
+    paletteIndex===decoded.transparentIndex
+   ){
+    p.valid=false;
+    p.scale=null;
+    p.intensity=null;
+    continue;
+   }
+
+   const color=palette[paletteIndex];
+   const scale=scaleTable[paletteIndex];
+
+   if(!color||scale===null||scale===undefined){
+    p.valid=false;
+    p.scale=null;
+    p.intensity=null;
+    continue;
+   }
+
+   const r=color.r;
+   const g=color.g;
+   const b=color.b;
+
+   p.r=r;
+   p.g=g;
+   p.b=b;
+
+   p.hex='#'+
+    r.toString(16).padStart(2,'0')+
+    g.toString(16).padStart(2,'0')+
+    b.toString(16).padStart(2,'0');
+
+   p.rgb=`${r}, ${g}, ${b}`;
+
+   p.scale=scale;
+   p.intensity=scale*10-3;
+   p.valid=true;
+
+   shown++;
+  }
+
+  if(end<features.length){
+   await yieldToBrowser();
+  }
+ }
+
+ $('imageSize').textContent=`${w} × ${h}px`;
+ $('shown').textContent=shown.toLocaleString();
+
+ geojson.features=features;
+
+ if(map){
+  const source=map.getSource('stations');
+
+  if(source){
+   source.setData(geojson);
+  }
+ }
+
+ if(firstFit&&shown){
+  firstFit=false;
+  fitAll();
+ }
+
+ return {
+  shown,
+  decodeMs:decodeDuration,
+  paletteSize:palette.length
+ };
+}
+
+/* =====================================
+   最新画像取得・解析
+===================================== */
+
+async function runImage(targetMs){
+
+ if(imageBusy)return false;
+
+ imageBusy=true;
+
+ const started=performance.now();
+
+ let fetchDuration=0;
+ let analysisDuration=0;
+
+ try{
+
+  /*
+   画像取得と観測点取得を並列開始。
+   GIFパレットと画素インデックスは受信したGIFから直接解析する。
+  */
+
+  const imageTask=(async()=>{
+
+   const imageStarted=performance.now();
+
+   let blob=null;
+   let selectedMs=null;
+   let lastError=null;
+
+   const deadline=
+    imageStarted+IMAGE_TOTAL_TIMEOUT;
+
+   for(let i=0;i<=FALLBACK_SECONDS;i++){
+
+    const remaining=
+     deadline-performance.now();
+
+    if(remaining<=0){
+     break;
+    }
+
+    const candidateMs=targetMs-i*1000;
+
+    if(
+     lastAppliedImageMs!==null&&
+     candidateMs<=lastAppliedImageMs
+    ){
+     continue;
+    }
+
+    const {url}=imageUrlFor(candidateMs);
+
+    try{
+
+     const timeoutMs=Math.max(
+      500,
+      Math.min(IMAGE_TIMEOUT,remaining)
+     );
+
+     blob=await fetchGifBlob(
+      url,
+      timeoutMs
+     );
+
+     selectedMs=candidateMs;
+
+     break;
+
+    }catch(e){
+
+     lastError=e;
+
+     console.warn(
+      '画像取得失敗:',
+      formatJST(candidateMs),
+      e
+     );
+    }
+   }
+
+   if(!blob){
+
+    throw new Error(
+     '最新画像を取得できません。'+
+     (lastError?.message||'')
+    );
+   }
+
+   return {
+    blob,
+    selectedMs,
+    fetchMs:performance.now()-imageStarted
+   };
+
+  })();
+
+  const pointsTask=loadPoints();
+
+  const results=await Promise.all([
+   imageTask,
+   pointsTask
+  ]);
+
+  const imageResult=results[0];
+  const points=results[1];
+
+  fetchDuration=imageResult.fetchMs;
+
+  /*
+   GIFパレット・画素インデックス解析と観測点照合
+  */
+
+  const analysisStarted=performance.now();
+
+  const analysisResult=await analyzeGifBlob(imageResult.blob);
+
+  analysisDuration=
+   performance.now()-analysisStarted;
+
+  const shown=analysisResult.shown;
+  const decodeDuration=analysisResult.decodeMs;
+
+  /*
+   表示画像を更新
+  */
+
+  const objectURL=URL.createObjectURL(imageResult.blob);
+
+  const oldObjectURL=currentObjectURL;
+
+  currentObjectURL=objectURL;
+  image.src=objectURL;
+
+  if(oldObjectURL){
+   URL.revokeObjectURL(oldObjectURL);
+  }
+
+  $('imgTime').textContent=
+   formatJST(imageResult.selectedMs);
+
+  lastAppliedImageMs=imageResult.selectedMs;
+
+  consecutiveImageErrors=0;
+
+  const completedPerf=performance.now();
+
+  const updateInterval=
+   lastImageCompletedPerf===null
+    ?null
+    :completedPerf-lastImageCompletedPerf;
+
+  lastImageCompletedPerf=completedPerf;
+
+  updateDiagnostics(
+   fetchDuration+decodeDuration,
+   analysisDuration,
+   updateInterval
+  );
+
+  setStatus(
+   'オンライン：GIFパレット解析・多項式補間で表示しています'
+  );
+
+  console.log('画像更新完了:',
+   formatJST(imageResult.selectedMs),
+   {
+    stations:points.length,
+    shown,
+    fetchMs:Math.round(fetchDuration),
+    decodeMs:Math.round(decodeDuration),
+    analysisMs:Math.round(analysisDuration),
+    updateIntervalMs:
+     updateInterval===null
+      ?null
+      :Math.round(updateInterval),
+    paletteSize:analysisResult.paletteSize,
+    analysisMethod:'GIF palette index + HSV polynomial interpolation',
+    totalProcessingMs:Math.round(performance.now()-started)
+   }
+  );
+
+  return true;
+
+ }catch(e){
+
+  consecutiveImageErrors++;
+
+  console.error('画像取得・解析エラー:',e);
+
+  setStatus(
+   '画像取得失敗。自動再試行します ('+
+   consecutiveImageErrors+'回目)：'+e.message,
+   true
+  );
+
+  return false;
+
+ }finally{
+
+  imageBusy=false;
+ }
+}
+
+/* =====================================
+   画像更新キュー
+   ★処理中に届いた最新時刻を保持
+===================================== */
+
+function queueImage(ms){
+
+ if(!Number.isFinite(ms))return;
+
+ if(
+  lastAppliedImageMs!==null&&
+  ms<=lastAppliedImageMs
+ ){
+  return;
+ }
+
+ /*
+  同じ時刻を連続して取得しない。
+  失敗や5秒前画像を取得した場合は、
+  少し時間を空けて同じ時刻を再試行する。
+ */
+
+ const sameOrOlder=
+  lastRequestedLatestMs!==null&&
+  ms<=lastRequestedLatestMs;
+
+ if(
+  sameOrOlder&&
+  performance.now()<nextImageRetryPerf
+ ){
+  return;
+ }
+
+ if(
+  pendingImageMs===null||
+  ms>pendingImageMs
+ ){
+  pendingImageMs=ms;
+ }
+
+ processImageQueue();
+}
+
+async function processImageQueue(){
+
+ if(imageQueueRunning)return;
+
+ imageQueueRunning=true;
+
+ try{
+
+  while(pendingImageMs!==null){
+
+   const targetMs=pendingImageMs;
+
+   pendingImageMs=null;
+
+   if(
+    lastAppliedImageMs!==null&&
+    targetMs<=lastAppliedImageMs
+   ){
+    continue;
+   }
+
+   if(
+    lastRequestedLatestMs===null||
+    targetMs>lastRequestedLatestMs
+   ){
+    lastRequestedLatestMs=targetMs;
+   }
+
+   nextImageRetryPerf=
+    performance.now()+2500;
+
+   const success=await runImage(targetMs);
+
+   if(success){
+
+    nextImageRetryPerf=
+     performance.now()+3000;
+
+   }else{
+
+    nextImageRetryPerf=
+     performance.now()+2000;
+   }
+  }
+
+ }finally{
+
+  imageQueueRunning=false;
+
+  /*
+   キュー終了直前に新しい画像時刻が入った場合も処理する。
+  */
+
+  if(pendingImageMs!==null){
+   processImageQueue();
+  }
+ }
+}
+
+/* =====================================
+   最新画像監視
+===================================== */
+
+async function checkLatest(){
+
+ if(latestCheckBusy)return;
+
+ latestCheckBusy=true;
+
+ try{
+
+  const ms=await fetchLatestImageTime();
+
+  latestImageMs=ms;
+
+  if(
+   lastAppliedImageMs===null||
+   ms>lastAppliedImageMs
+  ){
+
+   queueImage(ms);
+  }
+
+ }catch(e){
+
+  console.warn('最新画像確認:',e);
+
+  setStatus('最新画像確認中：'+e.message,true);
+
+ }finally{
+
+  latestCheckBusy=false;
+ }
+}
+
+/* =====================================
+   定期更新
+   500msごとに最新時刻を確認
+===================================== */
+
+function scheduleLatest(){
+
+ setInterval(()=>{
+
+  checkLatest();
+
+ },LATEST_CHECK_INTERVAL);
+}
+
+/* =====================================
+   地図レイヤー
+===================================== */
+
+function addSourceAndLayer(){
+
+ if(!map.getSource('stations')){
+
+  map.addSource('stations',{
+   type:'geojson',
+   data:geojson
+  });
+ }
+
+ if(!map.getLayer('station-points')){
+
+  map.addLayer({
+
+   id:'station-points',
+   type:'circle',
+   source:'stations',
+
+   filter:[
+    '==',
+    ['get','valid'],
+    true
+   ],
+
+   paint:{
+
+    'circle-radius':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     2,1.5,
+     5,2.9,
+     8,3.8,
+     11,4.7
+    ],
+
+    'circle-color':['get','hex'],
+
+    'circle-stroke-color':'#ffffff',
+
+    'circle-stroke-width':0.35,
+
+    'circle-opacity':1
+   }
+
+  });
+
+  map.on('click','station-points',e=>{
+
+   const f=e.features&&e.features[0];
+
+   if(!f)return;
+
+   const p=f.properties;
+
+   new maplibregl.Popup({
+    closeButton:true,
+    offset:4.4
+   })
+
+   .setLngLat(f.geometry.coordinates)
+
+   .setHTML(`
+
+    <div class="popup-title">
+     ${esc(p.name)}
+    </div>
+
+    ${p.region?
+     `地域：${esc(p.region)}<br>`:''}
+
+    ${p.code?
+     `コード：${esc(p.code)}<br>`:''}
+
+    画像座標：(${p.x}, ${p.y})<br>
+
+    RGB：${esc(p.rgb)}<br>
+
+    HEX：${esc(p.hex)}<br>
+
+    スケール：${Number(p.scale).toFixed(4)}<br>
+
+    リアルタイム震度換算：${Number(p.intensity).toFixed(2)}
+
+   `)
+
+   .addTo(map);
+
+  });
+
+  map.on(
+   'mouseenter',
+   'station-points',
+   ()=>map.getCanvas().style.cursor='pointer'
+  );
+
+  map.on(
+   'mouseleave',
+   'station-points',
+   ()=>map.getCanvas().style.cursor=''
+  );
+ }
+}
+
+/* =====================================
+   HTMLエスケープ
+===================================== */
+
+function esc(v){
+
+ return String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ }[c]));
+}
+
+/* =====================================
+   全観測点表示
+===================================== */
+
+function fitAll(){
+
+ if(!map||!stationFeatures.length)return;
+
+ const bounds=new maplibregl.LngLatBounds();
+
+ for(const f of stationFeatures){
+  bounds.extend(f.geometry.coordinates);
+ }
+
+ map.fitBounds(bounds,{
+  padding:45,
+  maxZoom:7,
+  duration:700
+ });
+}
+
+/* =====================================
+   地図初期化
+===================================== */
+
+map=new maplibregl.Map({
+
+ container:'map',
+
+ style:'https://tiles.openfreemap.org/styles/liberty',
+
+ center:[138,37],
+
+ zoom:4.2,
+
+ attributionControl:true
+
+});
+
+map.on('error',e=>{
+
+ console.error('MapLibre:',e.error||e);
+
+});
+
+map.addControl(
+ new maplibregl.NavigationControl(),
+ 'top-right'
+);
+
+/* =====================================
+   バックグラウンド復帰時の更新
+===================================== */
+
+document.addEventListener(
+ 'visibilitychange',
+ ()=>{
+
+  if(!document.hidden){
+
+   checkLatest();
+
+   if(
+    lastImageCompletedPerf!==null
+   ){
+    console.log('ページ復帰：最新画像を再確認します');
+   }
+  }
+ }
+);
+
+window.addEventListener(
+ 'pageshow',
+ ()=>{
+  checkLatest();
+ }
+);
+
+/* =====================================
+   起動処理
+===================================== */
+
+map.on('load',()=>{
+
+ addSourceAndLayer();
+
+ setStatus('最新画像・観測点データを取得しています…');
+
+ maintainClock();
+
+ updateSyncTime();
+
+ setInterval(
+  updateSyncTime,
+  250
+ );
+
+ checkLatest();
+
+ scheduleLatest();
+
+});
 
 </script>
 
