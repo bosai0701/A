@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -180,8 +181,13 @@ html,body{
 
  <div class="info-title">強震モニタ リアルタイム画像解析</div>
 
- <div class="time-label">画像取得時刻（JST）</div>
+ <div class="time-label">画像時刻（画像ファイル基準・JST）</div>
  <div class="time-value" id="imgTime">取得待機中</div>
+
+ <div class="divider"></div>
+
+ <div class="time-label">同期時刻（サーバー時刻・JST）</div>
+ <div class="time-value" id="syncTime">同期待機中</div>
 
  <div class="divider"></div>
 
@@ -227,7 +233,20 @@ const PROXIES = [
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-const DELAY_SECONDS = 3;
+/* 画像遅延 */
+const DELAY_SECONDS = 1;
+
+/* 時刻同期設定 */
+const TIME_API_URL =
+'https://www.timeapi.io/api/Time/current/zone?timeZone=UTC';
+
+const TIME_SYNC_INTERVAL = 60000;
+const TIME_SYNC_SAMPLES = 3;
+
+let clockBaseEpoch = null;
+let clockBasePerf = null;
+let clockSynced = false;
+let timeSyncPromise = null;
 
 const $ = id => document.getElementById(id);
 
@@ -256,7 +275,205 @@ let lastTarget = null;
 let firstFit = true;
 
 
-/* ステータス表示 */
+/* =====================================
+   サーバー時刻同期
+===================================== */
+
+function getSyncedNow(){
+
+ if(!clockSynced){
+  return Date.now();
+ }
+
+ return clockBaseEpoch+
+  (performance.now()-clockBasePerf);
+
+}
+
+
+/* UTC時刻の解析 */
+function parseServerTime(data){
+
+ if(data.dateTime){
+
+  let value=String(data.dateTime);
+
+  if(!/(Z|[+-]\d{2}:\d{2})$/i.test(value)){
+   value+='Z';
+  }
+
+  const ms=Date.parse(value);
+
+  if(Number.isFinite(ms)){
+   return ms;
+  }
+
+ }
+
+ if(Number.isFinite(Number(data.unixtime))){
+
+  return Number(data.unixtime)*1000;
+
+ }
+
+ throw new Error('サーバー時刻を解析できません');
+
+}
+
+
+/* 1回の時刻同期 */
+async function fetchServerTime(){
+
+ const startPerf=performance.now();
+
+ const controller=new AbortController();
+
+ const timeout=setTimeout(
+  ()=>controller.abort(),
+  8000
+ );
+
+ try{
+
+  const response=await fetch(
+   TIME_API_URL+'&_='+Date.now(),
+   {
+    cache:'no-store',
+    signal:controller.signal
+   }
+  );
+
+  if(!response.ok){
+   throw new Error(
+    '時刻サーバー HTTP '+response.status
+   );
+  }
+
+  const data=await response.json();
+
+  const endPerf=performance.now();
+
+  const serverTime=parseServerTime(data);
+
+  const rtt=endPerf-startPerf;
+
+  return {
+   epoch:serverTime,
+   perf:(startPerf+endPerf)/2,
+   rtt
+  };
+
+ }finally{
+
+  clearTimeout(timeout);
+
+ }
+
+}
+
+
+/* 複数回取得して通信時間が最小の結果を採用 */
+async function syncClock(){
+
+ if(timeSyncPromise){
+  return timeSyncPromise;
+ }
+
+ timeSyncPromise=(async()=>{
+
+  const samples=[];
+
+  for(
+   let i=0;
+   i<TIME_SYNC_SAMPLES;
+   i++
+  ){
+
+   try{
+
+    const result=await fetchServerTime();
+
+    samples.push(result);
+
+   }catch(e){
+
+    console.warn(
+     '時刻同期サンプル失敗:',
+     e
+    );
+
+   }
+
+  }
+
+  if(!samples.length){
+
+   throw new Error(
+    '時刻サーバーに接続できません'
+   );
+
+  }
+
+  samples.sort(
+   (a,b)=>a.rtt-b.rtt
+  );
+
+  const best=samples[0];
+
+  clockBaseEpoch=best.epoch;
+  clockBasePerf=best.perf;
+
+  clockSynced=true;
+
+  console.log(
+   'サーバー時刻同期完了',
+   {
+    rttMs:Math.round(best.rtt),
+    samples:samples.length
+   }
+  );
+
+  return best;
+
+ })().finally(()=>{
+
+  timeSyncPromise=null;
+
+ });
+
+ return timeSyncPromise;
+
+}
+
+
+/* 定期的な時刻再同期 */
+async function maintainClock(){
+
+ try{
+
+  await syncClock();
+
+ }catch(e){
+
+  console.error(
+   '時刻再同期エラー:',
+   e
+  );
+
+ }
+
+ setTimeout(
+  maintainClock,
+  TIME_SYNC_INTERVAL
+ );
+
+}
+
+
+/* =====================================
+   時刻表示
+===================================== */
+
 function setStatus(message,isError=false){
 
  const el=$('status');
@@ -270,10 +487,75 @@ function setStatus(message,isError=false){
  el.appendChild(document.createTextNode(message));
 
  el.classList.toggle('error',isError);
+
 }
 
 
-/* JSONデータ解析 */
+/* 文字列処理 */
+function esc(v){
+
+ return String(v??'').replace(/[&<>"']/g,c=>({
+  '&':'&amp;',
+  '<':'&lt;',
+  '>':'&gt;',
+  '"':'&quot;',
+  "'":'&#39;'
+ }[c]));
+
+}
+
+
+const p2=n=>String(n).padStart(2,'0');
+
+
+/* JST変換 */
+function jstParts(ms){
+
+ const d=new Date(ms+9*3600e3);
+
+ return {
+  Y:d.getUTCFullYear(),
+  M:p2(d.getUTCMonth()+1),
+  D:p2(d.getUTCDate()),
+  h:p2(d.getUTCHours()),
+  m:p2(d.getUTCMinutes()),
+  s:p2(d.getUTCSeconds())
+ };
+
+}
+
+
+/* 同期時刻表示 */
+function updateSyncTime(){
+
+ const t=jstParts(getSyncedNow());
+
+ $('syncTime').textContent=
+  `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
+
+}
+
+
+/* 画像URL生成 */
+function imageUrlFor(ms){
+
+ const t=jstParts(ms);
+
+ const stamp=
+ `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
+
+ return {
+  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
+  label:`${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`
+ };
+
+}
+
+
+/* =====================================
+   観測点JSON取得
+===================================== */
+
 function walkRecords(value,out=[]){
 
  if(Array.isArray(value)){
@@ -295,57 +577,10 @@ function walkRecords(value,out=[]){
  }
 
  return out;
+
 }
 
 
-/* 文字列処理 */
-function esc(v){
-
- return String(v??'').replace(/[&<>"']/g,c=>({
-  '&':'&amp;',
-  '<':'&lt;',
-  '>':'&gt;',
-  '"':'&quot;',
-  "'":'&#39;'
- }[c]));
-}
-
-
-const p2=n=>String(n).padStart(2,'0');
-
-
-/* JST変換 */
-function jstParts(ms){
-
- const d=new Date(ms+9*3600e3);
-
- return {
-  Y:d.getUTCFullYear(),
-  M:p2(d.getUTCMonth()+1),
-  D:p2(d.getUTCDate()),
-  h:p2(d.getUTCHours()),
-  m:p2(d.getUTCMinutes()),
-  s:p2(d.getUTCSeconds())
- };
-}
-
-
-/* 画像URL生成 */
-function imageUrlFor(ms){
-
- const t=jstParts(ms);
-
- const stamp=
- `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
-
- return {
-  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
-  label:`${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`
- };
-}
-
-
-/* 観測点JSON取得 */
 function loadPoints(){
 
  if(records)return Promise.resolve(records);
@@ -386,10 +621,14 @@ function loadPoints(){
  });
 
  return recordsPromise;
+
 }
 
 
-/* GIF画像取得 */
+/* =====================================
+   GIF画像取得
+===================================== */
+
 async function fetchGifBlob(url){
 
  let lastErr=null;
@@ -410,6 +649,7 @@ async function fetchGifBlob(url){
     const e=new Error('NOTFOUND');
     e.notFound=true;
     throw e;
+
    }
 
    if(!res.ok){
@@ -435,13 +675,18 @@ async function fetchGifBlob(url){
    if(e.notFound)throw e;
 
   }
+
  }
 
  throw lastErr||new Error('画像を取得できません');
+
 }
 
 
-/* Canvas画像解析 */
+/* =====================================
+   Canvas画像解析
+===================================== */
+
 function analyzeBitmap(bitmap,recs,label){
 
  const w=bitmap.width;
@@ -599,17 +844,28 @@ function analyzeBitmap(bitmap,recs,label){
 }
 
 
-/* 取得対象時刻 */
+/* =====================================
+   画像取得時刻
+===================================== */
+
+/*
+ * 同期時刻は画像取得対象の決定だけに使用。
+ * 画像時刻表示は実際に取得したファイル名の時刻。
+ */
+
 function currentTargetMs(){
 
  return Math.floor(
-  (Date.now()-DELAY_SECONDS*1000)/1000
+  (getSyncedNow()-DELAY_SECONDS*1000)/1000
  )*1000;
 
 }
 
 
-/* 画像取得・解析 */
+/* =====================================
+   画像取得・解析
+===================================== */
+
 async function run(ms){
 
  const mySeq=++seqCounter;
@@ -639,6 +895,11 @@ async function run(ms){
 
   appliedSeq=mySeq;
 
+  /*
+   * 表示する画像時刻は、
+   * 実際に取得した画像のファイル名に対応する時刻。
+   * 同期時刻から独立している。
+   */
   $('imgTime').textContent=label;
 
   if(currentObjectURL){
@@ -681,8 +942,13 @@ async function run(ms){
 }
 
 
-/* 更新処理 */
+/* =====================================
+   更新処理
+===================================== */
+
 function tick(){
+
+ updateSyncTime();
 
  const t=currentTargetMs();
 
@@ -704,12 +970,15 @@ function schedule(){
 
   schedule();
 
- },1000-(Date.now()%1000)+30);
+ },1000-(performance.now()%1000)+30);
 
 }
 
 
-/* 地図レイヤー */
+/* =====================================
+   地図レイヤー
+===================================== */
+
 function addSourceAndLayer(){
 
  if(!map.getSource('stations')){
@@ -842,7 +1111,10 @@ function fitAll(){
 }
 
 
-/* 地図初期化 */
+/* =====================================
+   地図初期化
+===================================== */
+
 map=new maplibregl.Map({
 
  container:'map',
@@ -871,13 +1143,39 @@ map.addControl(
  'top-right'
 );
 
-map.on('load',()=>{
+
+/* =====================================
+   起動処理
+===================================== */
+
+map.on('load',async()=>{
 
  addSourceAndLayer();
+
+ setStatus('サーバー時刻を同期しています…');
+
+ try{
+
+  await syncClock();
+
+  setStatus('サーバー時刻同期完了・画像取得開始');
+
+ }catch(e){
+
+  console.error('初回時刻同期失敗:',e);
+
+  setStatus(
+   '時刻同期失敗：端末時刻で動作しています',
+   true
+  );
+
+ }
 
  tick();
 
  schedule();
+
+ maintainClock();
 
 });
 
