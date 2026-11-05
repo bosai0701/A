@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -208,7 +207,6 @@ html,body{
 </section>
 
 <div class="hidden-elements">
- <img id="sourceImage" alt="">
  <span id="imageSize"></span>
  <span id="route"></span>
 </div>
@@ -242,7 +240,7 @@ const POINTS_URL =
    更新設定
 ===================================== */
 
-const TIME_SYNC_INTERVAL = 15000;
+const TIME_SYNC_INTERVAL = 60000;
 const TIME_SYNC_SAMPLES = 5;
 
 const LATEST_CHECK_INTERVAL = 500;
@@ -280,19 +278,16 @@ let recordsPromise = null;
 
 let preparedPoints = null;
 
-let geojson = {
- type:'FeatureCollection',
- features:[]
-};
+/* 観測点（静的情報＋解析結果）。地図には色とindexだけを渡す */
+let stations = [];
+let prevKeys = new Uint32Array(0);
+let forceUpdate = true;
 
-let stationFeatures = [];
 let firstFit = true;
 let map;
 
 let analysisCanvas = null;
 let analysisContext = null;
-
-let currentObjectURL = null;
 
 let lastImageWidth = 0;
 let lastImageHeight = 0;
@@ -302,7 +297,8 @@ let consecutiveImageErrors = 0;
 let lastImageCompletedPerf = null;
 
 const $ = id => document.getElementById(id);
-const image = $('sourceImage');
+
+const HEX = Array.from({length:256},(_,i)=>i.toString(16).padStart(2,'0'));
 
 /* =====================================
    共通処理
@@ -310,7 +306,24 @@ const image = $('sourceImage');
 
 const p2 = n=>String(n).padStart(2,'0');
 
+/* 値が変わらない時はDOMに触らない */
+function setText(el,text){
+
+ if(el._t===text)return;
+
+ el._t=text;
+ el.textContent=text;
+}
+
+let lastStatusKey=null;
+
 function setStatus(message,isError=false){
+
+ const key=(isError?'E':'N')+message;
+
+ if(key===lastStatusKey)return;
+
+ lastStatusKey=key;
 
  const el=$('status');
  el.textContent='';
@@ -380,19 +393,10 @@ function updateDiagnostics(fetchMs,analysisMs,intervalMs){
    ?`${(analysisMs/1000).toFixed(2)}秒`
    :'—';
 
- $('diagnostics').textContent=
-  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 1.00秒`;
-}
-
-/* =====================================
-   ブラウザー処理を一時的に譲る
-===================================== */
-
-function yieldToBrowser(){
-
- return new Promise(resolve=>{
-  setTimeout(resolve,0);
- });
+ setText(
+  $('diagnostics'),
+  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 1.00秒`
+ );
 }
 
 /* =====================================
@@ -523,12 +527,19 @@ async function maintainClock(){
 
 /* =====================================
    Wolfx時刻表示
+   秒が変わるタイミングでのみ更新
 ===================================== */
 
-function updateSyncTime(){
+function tickSyncTime(){
 
- $('syncTime').textContent=
-  formatJST(getSyncedNow());
+ const now=getSyncedNow();
+
+ setText($('syncTime'),formatJST(now));
+
+ setTimeout(
+  tickSyncTime,
+  1000-(now%1000)+15
+ );
 }
 
 /* =====================================
@@ -679,28 +690,38 @@ function colorToPosition(hsv){
 
  if(h>0.1476){
 
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+  const h5=h4*h;
+  const h6=h5*h;
+
   p=
-   280.31*Math.pow(h,6)
-   -916.05*Math.pow(h,5)
-   +1142.6*Math.pow(h,4)
-   -709.95*Math.pow(h,3)
-   +234.65*Math.pow(h,2)
+   280.31*h6
+   -916.05*h5
+   +1142.6*h4
+   -709.95*h3
+   +234.65*h2
    -40.27*h
    +3.2217;
 
  }else if(h>0.001){
 
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+
   p=
-   151.4*Math.pow(h,4)
-   -49.32*Math.pow(h,3)
-   +6.753*Math.pow(h,2)
+   151.4*h4
+   -49.32*h3
+   +6.753*h2
    -2.481*h
    +0.9033;
 
  }else{
 
   p=
-   -0.005171*Math.pow(v,2)
+   -0.005171*v*v
    -0.3282*v
    +1.2236;
  }
@@ -1006,8 +1027,7 @@ function loadPoints(){
     throw new Error('有効な観測点がありません');
    }
 
-   $('total').textContent=
-    records.length.toLocaleString();
+   setText($('total'),records.length.toLocaleString());
 
    console.log('観測点準備完了',{
     total:records.length,
@@ -1086,49 +1106,41 @@ function prepareCanvas(width,height){
   lastImageWidth=width;
   lastImageHeight=height;
 
-  stationFeatures=preparedPoints
+  stations=preparedPoints
    .filter(p=>
     p.x>=0&&
     p.y>=0&&
     p.x<width&&
     p.y<height
    )
-   .map(p=>({
+   .map((p,i)=>({
 
-    type:'Feature',
+    i,
 
-    geometry:{
+    geom:{
      type:'Point',
      coordinates:[p.lon,p.lat]
     },
 
-    properties:{
+    name:p.name,
+    region:p.region,
+    code:p.code,
 
-     name:p.name,
-     region:p.region,
-     code:p.code,
+    x:p.x,
+    y:p.y,
 
-     x:p.x,
-     y:p.y,
+    r:0,
+    g:0,
+    b:0,
 
-     r:0,
-     g:0,
-     b:0,
+    hex:'#000000',
+    position:null,
 
-     hex:'#000000',
-     rgb:'0, 0, 0',
-
-     hsv:'',
-     position:null,
-
-     valid:false
-    }
+    valid:false
    }));
 
-  geojson={
-   type:'FeatureCollection',
-   features:stationFeatures
-  };
+  prevKeys=new Uint32Array(stations.length);
+  forceUpdate=true;
  }
 }
 
@@ -1136,9 +1148,12 @@ function prepareCanvas(width,height){
    Canvas画像解析
    HSV・多項式補間
    推定震度は計算しない
+   ・色が前回と同じ観測点は再計算しない
+   ・変化がなければ地図データを更新しない
+   ・地図へは有効地点の index と色だけを渡す
 ===================================== */
 
-async function analyzeBitmap(bitmap){
+function analyzeBitmap(bitmap){
 
  const w=bitmap.width;
  const h=bitmap.height;
@@ -1152,115 +1167,101 @@ async function analyzeBitmap(bitmap){
 
  const px=ctx.getImageData(0,0,w,h).data;
 
- $('imageSize').textContent=`${w} × ${h}px`;
+ setText($('imageSize'),`${w} × ${h}px`);
 
  let shown=0;
+ let changed=forceUpdate;
 
- const features=stationFeatures;
+ const n=stations.length;
 
- const CHUNK_SIZE=1500;
+ for(let i=0;i<n;i++){
 
- for(
-  let start=0;
-  start<features.length;
-  start+=CHUNK_SIZE
- ){
+  const st=stations[i];
 
-  const end=Math.min(
-   start+CHUNK_SIZE,
-   features.length
-  );
+  const offset=(st.y*w+st.x)*4;
 
-  for(let i=start;i<end;i++){
+  let key=0;
+  let r=0,g=0,b=0;
 
-   const feature=features[i];
-   const p=feature.properties;
+  if(px[offset+3]!==0){
 
-   const offset=(p.y*w+p.x)*4;
+   r=px[offset];
+   g=px[offset+1];
+   b=px[offset+2];
 
-   const alpha=px[offset+3];
-
-   if(alpha===0){
-
-    p.valid=false;
-    p.position=null;
-    p.hsv='';
-
-    continue;
-   }
-
-   /*
-    CanvasからRGBを直接取得
-   */
-
-   const r=px[offset];
-   const g=px[offset+1];
-   const b=px[offset+2];
-
-   p.r=r;
-   p.g=g;
-   p.b=b;
-
-   p.hex='#'+
-    r.toString(16).padStart(2,'0')+
-    g.toString(16).padStart(2,'0')+
-    b.toString(16).padStart(2,'0');
-
-   p.rgb=`${r}, ${g}, ${b}`;
-
-   /*
-    RGB → HSV
-   */
-
-   const hsv=rgbToHSV(r,g,b);
-
-   /*
-    HSV → 多項式補間による色位置
-   */
-
-   const position=colorToPosition(hsv);
-
-   if(position===null){
-
-    p.valid=false;
-    p.position=null;
-    p.hsv='';
-
-    continue;
-   }
-
-   p.hsv=
-    `${hsv.h.toFixed(5)}, `+
-    `${hsv.s.toFixed(5)}, `+
-    `${hsv.v.toFixed(5)}`;
-
-   /*
-    色位置のみ保存
-    震度への変換は行わない
-   */
-
-   p.position=position;
-
-   p.valid=true;
-
-   shown++;
+   key=((1<<24)|(r<<16)|(g<<8)|b)>>>0;
   }
 
-  if(end<features.length){
-   await yieldToBrowser();
+  if(key===prevKeys[i]){
+
+   if(st.valid)shown++;
+
+   continue;
   }
+
+  prevKeys[i]=key;
+  changed=true;
+
+  if(key===0){
+
+   st.valid=false;
+   st.position=null;
+
+   continue;
+  }
+
+  st.r=r;
+  st.g=g;
+  st.b=b;
+
+  const position=colorToPosition(rgbToHSV(r,g,b));
+
+  if(position===null){
+
+   st.valid=false;
+   st.position=null;
+
+   continue;
+  }
+
+  st.hex='#'+HEX[r]+HEX[g]+HEX[b];
+  st.position=position;
+  st.valid=true;
+
+  shown++;
  }
 
- $('shown').textContent=shown.toLocaleString();
+ setText($('shown'),shown.toLocaleString());
 
- geojson.features=features;
+ if(changed){
 
- if(map){
+  forceUpdate=false;
 
-  const source=map.getSource('stations');
+  const features=[];
 
-  if(source){
-   source.setData(geojson);
+  for(let i=0;i<n;i++){
+
+   const st=stations[i];
+
+   if(!st.valid)continue;
+
+   features.push({
+    type:'Feature',
+    geometry:st.geom,
+    properties:{i:st.i,hex:st.hex}
+   });
+  }
+
+  if(map){
+
+   const source=map.getSource('stations');
+
+   if(source){
+    source.setData({
+     type:'FeatureCollection',
+     features
+    });
+   }
   }
  }
 
@@ -1396,28 +1397,15 @@ async function runImage(targetMs){
 
   const analysisStarted=performance.now();
 
-  const shown=await analyzeBitmap(bitmap);
+  const shown=analyzeBitmap(bitmap);
 
   analysisDuration=
    performance.now()-analysisStarted;
 
-  /*
-   表示画像を更新
-  */
-
-  const objectURL=URL.createObjectURL(imageResult.blob);
-
-  const oldObjectURL=currentObjectURL;
-
-  currentObjectURL=objectURL;
-  image.src=objectURL;
-
-  if(oldObjectURL){
-   URL.revokeObjectURL(oldObjectURL);
-  }
-
-  $('imgTime').textContent=
-   formatJST(imageResult.selectedMs);
+  setText(
+   $('imgTime'),
+   formatJST(imageResult.selectedMs)
+  );
 
   lastAppliedImageMs=imageResult.selectedMs;
 
@@ -1613,11 +1601,14 @@ async function checkLatest(){
 /* =====================================
    定期更新
    500msごとに最新時刻を確認
+   非表示タブでは停止
 ===================================== */
 
 function scheduleLatest(){
 
  setInterval(()=>{
+
+  if(document.hidden)return;
 
   checkLatest();
 
@@ -1634,7 +1625,7 @@ function addSourceAndLayer(){
 
   map.addSource('stations',{
    type:'geojson',
-   data:geojson
+   data:{type:'FeatureCollection',features:[]}
   });
  }
 
@@ -1645,12 +1636,6 @@ function addSourceAndLayer(){
    id:'station-points',
    type:'circle',
    source:'stations',
-
-   filter:[
-    '==',
-    ['get','valid'],
-    true
-   ],
 
    paint:{
 
@@ -1681,36 +1666,45 @@ function addSourceAndLayer(){
 
    if(!f)return;
 
-   const p=f.properties;
+   const st=stations[f.properties.i];
+
+   if(!st)return;
+
+   const hsv=rgbToHSV(st.r,st.g,st.b);
+
+   const hsvText=
+    `${hsv.h.toFixed(5)}, `+
+    `${hsv.s.toFixed(5)}, `+
+    `${hsv.v.toFixed(5)}`;
 
    new maplibregl.Popup({
     closeButton:true,
     offset:4.4
    })
 
-   .setLngLat(f.geometry.coordinates)
+   .setLngLat(st.geom.coordinates)
 
    .setHTML(`
 
     <div class="popup-title">
-     ${esc(p.name)}
+     ${esc(st.name)}
     </div>
 
-    ${p.region?
-     `地域：${esc(p.region)}<br>`:''}
+    ${st.region?
+     `地域：${esc(st.region)}<br>`:''}
 
-    ${p.code?
-     `コード：${esc(p.code)}<br>`:''}
+    ${st.code?
+     `コード：${esc(st.code)}<br>`:''}
 
-    画像座標：(${p.x}, ${p.y})<br>
+    画像座標：(${st.x}, ${st.y})<br>
 
-    RGB：${esc(p.rgb)}<br>
+    RGB：${st.r}, ${st.g}, ${st.b}<br>
 
-    HEX：${esc(p.hex)}<br>
+    HEX：${esc(st.hex)}<br>
 
-    HSV：${esc(p.hsv)}<br>
+    HSV：${esc(hsvText)}<br>
 
-    色位置：${Number(p.position).toFixed(5)}
+    色位置：${Number(st.position).toFixed(5)}
 
    `)
 
@@ -1753,12 +1747,12 @@ function esc(v){
 
 function fitAll(){
 
- if(!map||!stationFeatures.length)return;
+ if(!map||!stations.length)return;
 
  const bounds=new maplibregl.LngLatBounds();
 
- for(const f of stationFeatures){
-  bounds.extend(f.geometry.coordinates);
+ for(const st of stations){
+  bounds.extend(st.geom.coordinates);
  }
 
  map.fitBounds(bounds,{
@@ -1837,12 +1831,7 @@ map.on('load',()=>{
 
  maintainClock();
 
- updateSyncTime();
-
- setInterval(
-  updateSyncTime,
-  250
- );
+ tickSyncTime();
 
  checkLatest();
 
