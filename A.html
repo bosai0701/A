@@ -128,6 +128,7 @@ html,body{
  line-height:1.5;
  font-variant-numeric:tabular-nums;
 }
+.wsinfo{white-space:pre-line}
 .hidden-elements{display:none}
 
 .maplibregl-popup-content{
@@ -172,7 +173,7 @@ html,body{
 
 <section class="info-panel">
 
- <div class="info-title">強震モニタ GIFパレット解析</div>
+ <div class="info-title">強震モニタ リアルタイム画像解析</div>
 
  <div class="time-label">画像時刻（実際に取得した画像・JST）</div>
  <div class="time-value" id="imgTime">取得待機中</div>
@@ -201,13 +202,14 @@ html,body{
  </div>
 
  <div class="diagnostics" id="diagnostics">
-  画像取得 — / 画像解析 — / 更新間隔 —
+  画像取得 — / 画像解析 — / 更新間隔 1.00秒
  </div>
+
+ <div class="diagnostics wsinfo" id="wsInfo">WSS 未接続</div>
 
 </section>
 
 <div class="hidden-elements">
- <img id="sourceImage" alt="">
  <span id="imageSize"></span>
  <span id="route"></span>
 </div>
@@ -227,12 +229,9 @@ const LATEST_URL =
 const NTP_URL =
 'https://api.wolfx.jp/ntp.json';
 
-const PROXY_BASE =
-'https://green-grass-374f.mirakuro5472.workers.dev/';
-
-const PROXIES = [
- u=>PROXY_BASE+'?url='+encodeURIComponent(u)
-];
+/* Worker への接続は wss のみ */
+const WS_URL =
+'wss://green-grass-374f.mirakuro5472.workers.dev/';
 
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
@@ -241,7 +240,7 @@ const POINTS_URL =
    更新設定
 ===================================== */
 
-const TIME_SYNC_INTERVAL = 15000;
+const TIME_SYNC_INTERVAL = 60000;
 const TIME_SYNC_SAMPLES = 5;
 
 const LATEST_CHECK_INTERVAL = 500;
@@ -279,26 +278,27 @@ let recordsPromise = null;
 
 let preparedPoints = null;
 
-let lastGifWidth = 0;
-let lastGifHeight = 0;
+/* 観測点（静的情報＋解析結果）。地図には色とindexだけを渡す */
+let stations = [];
+let prevKeys = new Uint32Array(0);
+let forceUpdate = true;
 
-let geojson = {
- type:'FeatureCollection',
- features:[]
-};
-
-let stationFeatures = [];
 let firstFit = true;
 let map;
 
-let currentObjectURL = null;
+let analysisCanvas = null;
+let analysisContext = null;
+
+let lastImageWidth = 0;
+let lastImageHeight = 0;
 
 let consecutiveImageErrors = 0;
 
 let lastImageCompletedPerf = null;
 
 const $ = id => document.getElementById(id);
-const image = $('sourceImage');
+
+const HEX = Array.from({length:256},(_,i)=>i.toString(16).padStart(2,'0'));
 
 /* =====================================
    共通処理
@@ -306,7 +306,24 @@ const image = $('sourceImage');
 
 const p2 = n=>String(n).padStart(2,'0');
 
+/* 値が変わらない時はDOMに触らない */
+function setText(el,text){
+
+ if(el._t===text)return;
+
+ el._t=text;
+ el.textContent=text;
+}
+
+let lastStatusKey=null;
+
 function setStatus(message,isError=false){
+
+ const key=(isError?'E':'N')+message;
+
+ if(key===lastStatusKey)return;
+
+ lastStatusKey=key;
 
  const el=$('status');
  el.textContent='';
@@ -376,24 +393,10 @@ function updateDiagnostics(fetchMs,analysisMs,intervalMs){
    ?`${(analysisMs/1000).toFixed(2)}秒`
    :'—';
 
- const intervalText=
-  Number.isFinite(intervalMs)
-   ?`${(intervalMs/1000).toFixed(2)}秒`
-   :'初回';
-
- $('diagnostics').textContent=
-  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 ${intervalText}`;
-}
-
-/* =====================================
-   ブラウザー処理を一時的に譲る
-===================================== */
-
-function yieldToBrowser(){
-
- return new Promise(resolve=>{
-  setTimeout(resolve,0);
- });
+ setText(
+  $('diagnostics'),
+  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 1.00秒`
+ );
 }
 
 /* =====================================
@@ -524,542 +527,443 @@ async function maintainClock(){
 
 /* =====================================
    Wolfx時刻表示
+   秒が変わるタイミングでのみ更新
 ===================================== */
 
-function updateSyncTime(){
+function tickSyncTime(){
 
- $('syncTime').textContent=
-  formatJST(getSyncedNow());
+ const now=getSyncedNow();
+
+ setText($('syncTime'),formatJST(now));
+
+ setTimeout(
+  tickSyncTime,
+  1000-(now%1000)+15
+ );
 }
 
 /* =====================================
-   Proxy取得
-   本文の受信完了までタイムアウトを維持
+   WSS取得（Worker経由）
+   送信: JSON {id,url}
+   受信: バイナリ [id:4byte][status:2byte][本文]
 ===================================== */
+
+const wsStats={
+ state:'未接続',
+ connects:0,
+ total:0,
+ errors:0,
+ rtt:null
+};
+
+function updateWsInfo(){
+
+ const cur=(ws&&ws.readyState===WebSocket.OPEN)?ws.sent:0;
+
+ const rtt=
+  wsStats.rtt===null
+   ?'—'
+   :Math.round(wsStats.rtt)+'ms';
+
+ setText(
+  $('wsInfo'),
+  `WSS ${wsStats.state} / 接続回数 ${wsStats.connects}\n`+
+  `この接続 ${cur}/${WS_MAX_REQUESTS} / 累計 ${wsStats.total} / 失敗 ${wsStats.errors} / 応答 ${rtt}`
+ );
+}
+
+let ws=null;
+let wsOpenPromise=null;
+let wsSeq=1;
+
+/* Cloudflare Workerは1接続=1実行のため、サブリクエスト数に上限がある。
+   上限前に新しい接続へ切り替える */
+const WS_MAX_REQUESTS=35;
+
+const wsPending=new Map();
+
+function wsFail(sock,error){
+
+ for(const [id,p] of wsPending){
+
+  if(p.sock===sock){
+   wsPending.delete(id);
+   p.reject(error);
+  }
+ }
+}
+
+function wsRetire(sock){
+
+ if(ws===sock){
+  ws=null;
+ }
+
+ sock.retired=true;
+
+ let busy=false;
+
+ for(const p of wsPending.values()){
+
+  if(p.sock===sock){
+   busy=true;
+   break;
+  }
+ }
+
+ if(!busy){
+
+  try{
+   sock.close(1000,'rotate');
+  }catch(_){}
+ }
+}
+
+function wsConnect(){
+
+ if(ws&&ws.readyState===WebSocket.OPEN&&!ws.retired){
+
+  if(ws.sent<WS_MAX_REQUESTS){
+   return Promise.resolve(ws);
+  }
+
+  wsRetire(ws);
+ }
+
+ if(wsOpenPromise){
+  return wsOpenPromise;
+ }
+
+ wsOpenPromise=new Promise((resolve,reject)=>{
+
+  wsStats.state='接続処理中';
+  updateWsInfo();
+
+  const s=new WebSocket(WS_URL);
+
+  s.binaryType='arraybuffer';
+  s.sent=0;
+  s.retired=false;
+
+  s.onopen=()=>{
+   ws=s;
+   wsOpenPromise=null;
+   wsStats.connects++;
+   wsStats.state='接続中';
+   updateWsInfo();
+   resolve(s);
+  };
+
+  s.onmessage=ev=>{
+
+   if(!(ev.data instanceof ArrayBuffer)||ev.data.byteLength<6){
+    return;
+   }
+
+   const dv=new DataView(ev.data);
+
+   const id=dv.getUint32(0);
+   const status=dv.getUint16(4);
+
+   const p=wsPending.get(id);
+
+   if(!p)return;
+
+   wsPending.delete(id);
+
+   wsStats.rtt=performance.now()-p.t0;
+
+   if(status>=500){
+    wsStats.errors++;
+   }
+
+   updateWsInfo();
+
+   /* Worker側の取得失敗(502等)が出たらこの接続を捨てる */
+   if(status>=500){
+    wsRetire(s);
+   }
+
+   p.resolve({
+    status,
+    body:ev.data.slice(6)
+   });
+
+   if(s.retired){
+
+    let busy=false;
+
+    for(const q of wsPending.values()){
+
+     if(q.sock===s){
+      busy=true;
+      break;
+     }
+    }
+
+    if(!busy){
+
+     try{
+      s.close(1000,'rotate');
+     }catch(_){}
+    }
+   }
+  };
+
+  s.onerror=()=>{};
+
+  s.onclose=()=>{
+
+   if(ws===s){
+    ws=null;
+   }
+
+   wsOpenPromise=null;
+
+   wsStats.state=ws?'接続中':'切断';
+   updateWsInfo();
+
+   const error=new Error('WebSocket切断');
+
+   reject(error);
+   wsFail(s,error);
+  };
+ });
+
+ return wsOpenPromise;
+}
+
+function withTimeout(promise,ms,message){
+
+ return new Promise((resolve,reject)=>{
+
+  const timer=setTimeout(
+   ()=>reject(new Error(message)),
+   ms
+  );
+
+  promise.then(
+   v=>{clearTimeout(timer);resolve(v);},
+   e=>{clearTimeout(timer);reject(e);}
+  );
+ });
+}
 
 async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
 
  let lastError=null;
 
- for(let i=0;i<PROXIES.length;i++){
+ /* 接続切断・5xxは新しい接続で1回だけ再試行 */
+ for(let attempt=0;attempt<2;attempt++){
 
-  const proxy=PROXIES[i];
+  const id=wsSeq++;
 
-  const controller=new AbortController();
-
-  const timeout=setTimeout(
-   ()=>controller.abort(),
-   timeoutMs
-  );
+  if(wsSeq>0xFFFFFFFF){
+   wsSeq=1;
+  }
 
   try{
 
-   const response=await fetch(
-    proxy(url),
-    {
-     cache:'no-store',
-     signal:controller.signal
-    }
+   const socket=await withTimeout(
+    wsConnect(),
+    timeoutMs,
+    'WebSocket接続タイムアウト'
    );
 
-   if(response.status===404){
+   const result=await withTimeout(
+    new Promise((resolve,reject)=>{
+
+     wsPending.set(id,{resolve,reject,sock:socket,t0:performance.now()});
+
+     try{
+      socket.sent++;
+      wsStats.total++;
+      updateWsInfo();
+      socket.send(JSON.stringify({id,url}));
+     }catch(e){
+      wsPending.delete(id);
+      reject(e);
+     }
+    }),
+    timeoutMs,
+    'タイムアウト'
+   );
+
+   if(result.status===404){
 
     const error=new Error('NOTFOUND');
     error.notFound=true;
     throw error;
    }
 
-   if(!response.ok){
-    throw new Error('HTTP '+response.status);
+   if(result.status>=500){
+
+    const error=new Error('HTTP '+result.status);
+    error.retry=true;
+    throw error;
+   }
+
+   if(result.status<200||result.status>=300){
+    throw new Error('HTTP '+result.status);
    }
 
    if(responseType==='blob'){
 
-    const blob=await response.blob();
-
-    if(!blob.size){
+    if(!result.body.byteLength){
      throw new Error('空のデータを受信しました');
     }
 
-    return blob;
+    return new Blob(
+     [result.body],
+     {type:'image/gif'}
+    );
    }
 
    if(responseType==='text'){
-
-    return await response.text();
+    return new TextDecoder().decode(result.body);
    }
 
-   return response;
+   return result;
 
   }catch(e){
 
-   lastError=e;
+   wsPending.delete(id);
 
-   try{
-    controller.abort();
-   }catch(_){}
+   if(!e.notFound&&!e.retry){
+    wsStats.errors++;
+    updateWsInfo();
+   }
+
+   lastError=e;
 
    if(e.notFound){
     throw e;
    }
 
    console.warn(
-    'Proxy取得失敗:',
+    'WSS取得失敗:',
     e.name,
     e.message
    );
 
-  }finally{
-
-   clearTimeout(timeout);
+   if(e.message==='タイムアウト'||e.message==='WebSocket接続タイムアウト'){
+    break;
+   }
   }
  }
 
- throw lastError||new Error('Proxy取得失敗');
+ throw lastError||new Error('WSS取得失敗');
 }
 
 /* =====================================
-   KyoshinMonitorLib方式：GIFパレット解析
-   GIFのインデックス画像を直接読み取り、
-   パレットごとに色→スケール変換を1回だけ行う
+   RGB → HSV変換
 ===================================== */
 
-function readU16LE(bytes, offset){
- return bytes[offset] | (bytes[offset + 1] << 8);
-}
-
-function readGifColorTable(bytes, offset, count){
- const palette = new Array(count);
-
- for(let i=0;i<count;i++){
-  const p=offset+i*3;
-  palette[i]={
-   r:bytes[p],
-   g:bytes[p+1],
-   b:bytes[p+2],
-   a:255
-  };
- }
-
- return palette;
-}
-
-function readGifSubBlocks(bytes, state){
- const chunks=[];
- let total=0;
-
- while(state.pos<bytes.length){
-  const size=bytes[state.pos++];
-
-  if(size===0)break;
-
-  if(state.pos+size>bytes.length){
-   throw new Error('GIFサブブロックが途中で終了しています');
-  }
-
-  const chunk=bytes.subarray(state.pos,state.pos+size);
-  chunks.push(chunk);
-  total+=size;
-  state.pos+=size;
- }
-
- const result=new Uint8Array(total);
- let offset=0;
-
- for(const chunk of chunks){
-  result.set(chunk,offset);
-  offset+=chunk.length;
- }
-
- return result;
-}
-
-/* GIF LZW展開。GIFの可変長コードを画素インデックス列へ戻す。 */
-function decodeGifLzw(minCodeSize,data,expectedLength){
- if(minCodeSize<2||minCodeSize>8){
-  throw new Error('GIF LZWの最小コードサイズが不正です');
- }
-
- const clearCode=1<<minCodeSize;
- const endCode=clearCode+1;
-
- let codeSize=minCodeSize+1;
- let nextCode=endCode+1;
- let bitPosition=0;
-
- const prefix=new Int16Array(4096);
- const suffix=new Uint8Array(4096);
- const stack=new Uint8Array(4097);
- const output=new Uint8Array(expectedLength);
-
- for(let i=0;i<clearCode;i++){
-  suffix[i]=i;
- }
-
- let outputPosition=0;
- let oldCode=-1;
- let firstByte=0;
-
- function readCode(size){
-  const bytePosition=bitPosition>>3;
-  const bitOffset=bitPosition&7;
-
-  if(bytePosition>=data.length)return -1;
-
-  const b0=data[bytePosition]||0;
-  const b1=data[bytePosition+1]||0;
-  const b2=data[bytePosition+2]||0;
-
-  const packed=b0|(b1<<8)|(b2<<16);
-  const code=(packed>>bitOffset)&((1<<size)-1);
-
-  bitPosition+=size;
-  return code;
- }
-
- while(outputPosition<expectedLength){
-  let code=readCode(codeSize);
-
-  if(code<0)break;
-
-  if(code===clearCode){
-   codeSize=minCodeSize+1;
-   nextCode=endCode+1;
-   oldCode=-1;
-   continue;
-  }
-
-  if(code===endCode)break;
-
-  if(code>nextCode||code>=4096){
-   throw new Error('GIF LZWコードが不正です');
-  }
-
-  const inputCode=code;
-  let stackLength=0;
-
-  if(code===nextCode){
-   if(oldCode<0){
-    throw new Error('GIF LZW辞書が初期化されていません');
-   }
-
-   stack[stackLength++]=firstByte;
-   code=oldCode;
-  }
-
-  while(code>=clearCode){
-   if(code>=nextCode||stackLength>=4096){
-    throw new Error('GIF LZW辞書参照が不正です');
-   }
-
-   stack[stackLength++]=suffix[code];
-   code=prefix[code];
-  }
-
-  firstByte=suffix[code];
-  stack[stackLength++]=firstByte;
-
-  while(stackLength>0&&outputPosition<expectedLength){
-   output[outputPosition++]=stack[--stackLength];
-  }
-
-  if(oldCode>=0&&nextCode<4096){
-   prefix[nextCode]=oldCode;
-   suffix[nextCode]=firstByte;
-   nextCode++;
-
-   if(nextCode===(1<<codeSize)&&codeSize<12){
-    codeSize++;
-   }
-  }
-
-  oldCode=inputCode;
- }
-
- if(outputPosition!==expectedLength){
-  throw new Error(
-   `GIF LZW展開サイズが一致しません (${outputPosition}/${expectedLength})`
-  );
- }
-
- return output;
-}
-
-function deinterlaceGifPixels(source,width,height){
- const result=new Uint8Array(source.length);
- const starts=[0,4,2,1];
- const steps=[8,8,4,2];
-
- let sourceRow=0;
-
- for(let pass=0;pass<4;pass++){
-  for(let y=starts[pass];y<height;y+=steps[pass]){
-   const from=sourceRow*width;
-   result.set(
-    source.subarray(from,from+width),
-    y*width
-   );
-   sourceRow++;
-  }
- }
-
- return result;
-}
-
-/*
- * GIFの最初の画像フレームをインデックス形式で展開する。
- * createImageBitmap()/Canvasを通すと失われるGIFパレット番号を保持する。
- */
-function decodeIndexedGif(buffer){
- const bytes=new Uint8Array(buffer);
-
- if(bytes.length<13){
-  throw new Error('GIFデータが短すぎます');
- }
-
- const signature=String.fromCharCode(
-  bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5]
- );
-
- if(signature!=='GIF87a'&&signature!=='GIF89a'){
-  throw new Error('GIF形式ではないデータを受信しました');
- }
-
- const width=readU16LE(bytes,6);
- const height=readU16LE(bytes,8);
- const screenPacked=bytes[10];
-
- if(!width||!height||width*height>20000000){
-  throw new Error('GIF画像サイズが不正です');
- }
-
- let pos=13;
- let globalPalette=null;
-
- if(screenPacked&0x80){
-  const count=1<<((screenPacked&0x07)+1);
-
-  if(pos+count*3>bytes.length){
-   throw new Error('GIFグローバルカラーテーブルが不完全です');
-  }
-
-  globalPalette=readGifColorTable(bytes,pos,count);
-  pos+=count*3;
- }
-
- let transparentIndex=-1;
-
- while(pos<bytes.length){
-  const marker=bytes[pos++];
-
-  if(marker===0x3B){
-   break;
-  }
-
-  if(marker===0x21){
-   if(pos>=bytes.length)break;
-
-   const label=bytes[pos++];
-
-   if(label===0xF9){
-    if(pos>=bytes.length)break;
-
-    const blockSize=bytes[pos++];
-
-    if(blockSize>=4&&pos+blockSize<=bytes.length){
-     const packed=bytes[pos];
-     const candidate=bytes[pos+3];
-
-     transparentIndex=(packed&0x01)?candidate:-1;
-    }
-
-    pos+=blockSize;
-
-    if(pos<bytes.length&&bytes[pos]===0){
-     pos++;
-    }
-   }else{
-    readGifSubBlocks(bytes,{get pos(){return pos;},set pos(v){pos=v;}});
-   }
-
-   continue;
-  }
-
-  if(marker!==0x2C){
-   throw new Error('GIFブロック識別子が不正です');
-  }
-
-  if(pos+9>bytes.length){
-   throw new Error('GIF画像記述子が不完全です');
-  }
-
-  const left=readU16LE(bytes,pos);
-  const top=readU16LE(bytes,pos+2);
-  const frameWidth=readU16LE(bytes,pos+4);
-  const frameHeight=readU16LE(bytes,pos+6);
-  const imagePacked=bytes[pos+8];
-  pos+=9;
-
-  if(!frameWidth||!frameHeight||frameWidth*frameHeight>20000000){
-   throw new Error('GIFフレームサイズが不正です');
-  }
-
-  let palette=globalPalette;
-
-  if(imagePacked&0x80){
-   const count=1<<((imagePacked&0x07)+1);
-
-   if(pos+count*3>bytes.length){
-    throw new Error('GIFローカルカラーテーブルが不完全です');
-   }
-
-   palette=readGifColorTable(bytes,pos,count);
-   pos+=count*3;
-  }
-
-  if(!palette||!palette.length){
-   throw new Error('GIFカラーテーブルがありません');
-  }
-
-  if(pos>=bytes.length){
-   throw new Error('GIF LZWデータがありません');
-  }
-
-  const minCodeSize=bytes[pos++];
-  const compressed=readGifSubBlocks(bytes,{get pos(){return pos;},set pos(v){pos=v;}});
-  let framePixels=decodeGifLzw(
-   minCodeSize,
-   compressed,
-   frameWidth*frameHeight
-  );
-
-  if(imagePacked&0x40){
-   framePixels=deinterlaceGifPixels(
-    framePixels,
-    frameWidth,
-    frameHeight
-   );
-  }
-
-  const pixels=new Uint8Array(width*height);
-  const validMask=new Uint8Array(width*height);
-
-  const copyWidth=Math.max(
-   0,
-   Math.min(frameWidth,width-left)
-  );
-
-  const copyHeight=Math.max(
-   0,
-   Math.min(frameHeight,height-top)
-  );
-
-  for(let y=0;y<copyHeight;y++){
-   const sourceStart=y*frameWidth;
-   const targetStart=(top+y)*width+left;
-
-   pixels.set(
-    framePixels.subarray(sourceStart,sourceStart+copyWidth),
-    targetStart
-   );
-
-   validMask.fill(
-    1,
-    targetStart,
-    targetStart+copyWidth
-   );
-  }
-
-  return {
-   width,
-   height,
-   palette,
-   pixels,
-   validMask,
-   transparentIndex
-  };
- }
-
- throw new Error('GIF画像フレームが見つかりません');
-}
-
-/* KyoshinMonitorLib ColorConverter.csと同じHSV→多項式補間 */
-function convertToScaleAtPolynomialInterpolation(color){
- const r=color.r;
- const g=color.g;
- const b=color.b;
+function rgbToHSV(r,g,b){
+
+ r/=255;
+ g/=255;
+ b/=255;
 
  const max=Math.max(r,g,b);
  const min=Math.min(r,g,b);
 
+ const delta=max-min;
+
  let h=0;
- let saturation=0;
- const value=max/255;
+ const v=max;
 
- if(min===max){
-  saturation=0;
- }else{
-  const difference=max-min;
+ const s=max===0?0:delta/max;
 
-  if(r===max){
-   h=(g-b)/difference;
+ if(delta!==0){
+
+  if(max===r){
+
+   h=(g-b)/delta;
+
+   if(g<b){
+    h+=6;
+   }
+
+  }else if(max===g){
+
+   h=(b-r)/delta+2;
+
+  }else{
+
+   h=(r-g)/delta+4;
   }
 
-  if(g===max){
-   h=((b-r)/difference)+2;
-  }
-
-  if(b===max){
-   h=((r-g)/difference)+4;
-  }
-
-  h*=60;
-
-  if(h<0){
-   h+=360;
-  }
-
-  saturation=difference/max;
+  h/=6;
  }
 
- h/=360;
-
- if(value<=0.1||saturation<=0.75){
-  return 0;
- }
-
- let scale;
-
- if(h>0.1476){
-  scale=(
-   ((((((280.31*h-916.05)*h+1142.6)*h-709.95)*h+234.65)*h-40.27)*h)
-   +3.2217
-  );
- }else if(h>0.001){
-  scale=(
-   ((((151.4*h-49.32)*h+6.753)*h-2.481)*h)
-   +0.9033
-  );
- }else{
-  scale=((-0.005171*value-0.3282)*value)+1.2236;
- }
-
- return Math.max(0,scale);
+ return {h,s,v};
 }
 
-/* パレットの色は最大256色なので、各色のスケールを1回だけ計算する */
-function buildPaletteScaleTable(palette,transparentIndex){
- const table=new Array(palette.length);
+/* =====================================
+   HSV → 色の位置
+   区分的多項式補間
+===================================== */
 
- for(let i=0;i<palette.length;i++){
-  const color=palette[i];
+function colorToPosition(hsv){
 
-  table[i]=i===transparentIndex
-   ?null
-   :convertToScaleAtPolynomialInterpolation(color);
+ const h=hsv.h;
+ const s=hsv.s;
+ const v=hsv.v;
+
+ if(!(v>0.1&&s>0.75)){
+  return null;
  }
 
- return table;
+ let p=0;
+
+ if(h>0.1476){
+
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+  const h5=h4*h;
+  const h6=h5*h;
+
+  p=
+   280.31*h6
+   -916.05*h5
+   +1142.6*h4
+   -709.95*h3
+   +234.65*h2
+   -40.27*h
+   +3.2217;
+
+ }else if(h>0.001){
+
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+
+  p=
+   151.4*h4
+   -49.32*h3
+   +6.753*h2
+   -2.481*h
+   +0.9033;
+
+ }else{
+
+  p=
+   -0.005171*v*v
+   -0.3282*v
+   +1.2236;
+ }
+
+ if(p<0){
+  p=0;
+ }
+
+ if(!Number.isFinite(p)){
+  return null;
+ }
+
+ return p;
 }
 
 /* =====================================
@@ -1303,7 +1207,6 @@ function preparePoints(recs){
 
 /* =====================================
    観測点JSON取得
-   ★通信と本文取得の両方にタイムアウト
 ===================================== */
 
 function loadPoints(){
@@ -1353,8 +1256,7 @@ function loadPoints(){
     throw new Error('有効な観測点がありません');
    }
 
-   $('total').textContent=
-    records.length.toLocaleString();
+   setText($('total'),records.length.toLocaleString());
 
    console.log('観測点準備完了',{
     total:records.length,
@@ -1406,39 +1308,48 @@ async function fetchGifBlob(url,timeoutMs=IMAGE_TIMEOUT){
 }
 
 /* =====================================
-   観測点Feature準備
+   Canvas初期化
 ===================================== */
 
-function prepareStationFeatures(width,height){
+function prepareCanvas(width,height){
 
  if(
-  lastGifWidth===width&&
-  lastGifHeight===height&&
-  stationFeatures.length
+  !analysisCanvas||
+  lastImageWidth!==width||
+  lastImageHeight!==height
  ){
-  return;
- }
 
- lastGifWidth=width;
- lastGifHeight=height;
+  analysisCanvas=document.createElement('canvas');
 
- stationFeatures=preparedPoints
-  .filter(p=>
-   p.x>=0&&
-   p.y>=0&&
-   p.x<width&&
-   p.y<height
-  )
-  .map(p=>({
+  analysisCanvas.width=width;
+  analysisCanvas.height=height;
 
-   type:'Feature',
+  analysisContext=analysisCanvas.getContext(
+   '2d',
+   {
+    willReadFrequently:true,
+    alpha:true
+   }
+  );
 
-   geometry:{
-    type:'Point',
-    coordinates:[p.lon,p.lat]
-   },
+  lastImageWidth=width;
+  lastImageHeight=height;
 
-   properties:{
+  stations=preparedPoints
+   .filter(p=>
+    p.x>=0&&
+    p.y>=0&&
+    p.x<width&&
+    p.y<height
+   )
+   .map((p,i)=>({
+
+    i,
+
+    geom:{
+     type:'Point',
+     coordinates:[p.lon,p.lat]
+    },
 
     name:p.name,
     region:p.region,
@@ -1452,151 +1363,144 @@ function prepareStationFeatures(width,height){
     b:0,
 
     hex:'#000000',
-    rgb:'0, 0, 0',
+    position:null,
 
-    scale:null,
-    intensity:null,
     valid:false
-   }
-  }));
+   }));
 
- geojson={
-  type:'FeatureCollection',
-  features:stationFeatures
- };
+  prevKeys=new Uint32Array(stations.length);
+  forceUpdate=true;
+ }
 }
 
 /* =====================================
-   KyoshinMonitorLib方式のGIF画像解析
-   ・GIFのパレットインデックスを直接取得
-   ・パレットごとにスケール変換を一度だけ計算
-   ・観測点ではインデックス参照だけを行う
+   Canvas画像解析
+   HSV・多項式補間
+   推定震度は計算しない
+   ・色が前回と同じ観測点は再計算しない
+   ・変化がなければ地図データを更新しない
+   ・地図へは有効地点の index と色だけを渡す
 ===================================== */
 
-async function analyzeGifBlob(blob){
+function analyzeBitmap(bitmap){
 
- const decodeStarted=performance.now();
+ const w=bitmap.width;
+ const h=bitmap.height;
 
- const buffer=await blob.arrayBuffer();
- const decoded=decodeIndexedGif(buffer);
+ prepareCanvas(w,h);
 
- const decodeDuration=performance.now()-decodeStarted;
+ const ctx=analysisContext;
 
- const w=decoded.width;
- const h=decoded.height;
+ ctx.clearRect(0,0,w,h);
+ ctx.drawImage(bitmap,0,0);
 
- prepareStationFeatures(w,h);
+ const px=ctx.getImageData(0,0,w,h).data;
 
- const scaleTable=buildPaletteScaleTable(
-  decoded.palette,
-  decoded.transparentIndex
- );
+ setText($('imageSize'),`${w} × ${h}px`);
 
  let shown=0;
+ let changed=forceUpdate;
 
- const features=stationFeatures;
- const pixels=decoded.pixels;
- const validMask=decoded.validMask;
- const palette=decoded.palette;
- const CHUNK_SIZE=1500;
+ const n=stations.length;
 
- for(
-  let start=0;
-  start<features.length;
-  start+=CHUNK_SIZE
- ){
+ for(let i=0;i<n;i++){
 
-  const end=Math.min(
-   start+CHUNK_SIZE,
-   features.length
-  );
+  const st=stations[i];
 
-  for(let i=start;i<end;i++){
+  const offset=(st.y*w+st.x)*4;
 
-   const feature=features[i];
-   const p=feature.properties;
+  let key=0;
+  let r=0,g=0,b=0;
 
-   const pixelOffset=p.y*w+p.x;
+  if(px[offset+3]!==0){
 
-   if(!validMask[pixelOffset]){
-    p.valid=false;
-    p.scale=null;
-    p.intensity=null;
-    continue;
-   }
+   r=px[offset];
+   g=px[offset+1];
+   b=px[offset+2];
 
-   const paletteIndex=pixels[pixelOffset];
-
-   if(
-    paletteIndex>=palette.length||
-    paletteIndex===decoded.transparentIndex
-   ){
-    p.valid=false;
-    p.scale=null;
-    p.intensity=null;
-    continue;
-   }
-
-   const color=palette[paletteIndex];
-   const scale=scaleTable[paletteIndex];
-
-   if(!color||scale===null||scale===undefined){
-    p.valid=false;
-    p.scale=null;
-    p.intensity=null;
-    continue;
-   }
-
-   const r=color.r;
-   const g=color.g;
-   const b=color.b;
-
-   p.r=r;
-   p.g=g;
-   p.b=b;
-
-   p.hex='#'+
-    r.toString(16).padStart(2,'0')+
-    g.toString(16).padStart(2,'0')+
-    b.toString(16).padStart(2,'0');
-
-   p.rgb=`${r}, ${g}, ${b}`;
-
-   p.scale=scale;
-   p.intensity=scale*10-3;
-   p.valid=true;
-
-   shown++;
+   key=((1<<24)|(r<<16)|(g<<8)|b)>>>0;
   }
 
-  if(end<features.length){
-   await yieldToBrowser();
+  if(key===prevKeys[i]){
+
+   if(st.valid)shown++;
+
+   continue;
   }
+
+  prevKeys[i]=key;
+  changed=true;
+
+  if(key===0){
+
+   st.valid=false;
+   st.position=null;
+
+   continue;
+  }
+
+  st.r=r;
+  st.g=g;
+  st.b=b;
+
+  const position=colorToPosition(rgbToHSV(r,g,b));
+
+  if(position===null){
+
+   st.valid=false;
+   st.position=null;
+
+   continue;
+  }
+
+  st.hex='#'+HEX[r]+HEX[g]+HEX[b];
+  st.position=position;
+  st.valid=true;
+
+  shown++;
  }
 
- $('imageSize').textContent=`${w} × ${h}px`;
- $('shown').textContent=shown.toLocaleString();
+ setText($('shown'),shown.toLocaleString());
 
- geojson.features=features;
+ if(changed){
 
- if(map){
-  const source=map.getSource('stations');
+  forceUpdate=false;
 
-  if(source){
-   source.setData(geojson);
+  const features=[];
+
+  for(let i=0;i<n;i++){
+
+   const st=stations[i];
+
+   if(!st.valid)continue;
+
+   features.push({
+    type:'Feature',
+    geometry:st.geom,
+    properties:{i:st.i,hex:st.hex}
+   });
+  }
+
+  if(map){
+
+   const source=map.getSource('stations');
+
+   if(source){
+    source.setData({
+     type:'FeatureCollection',
+     features
+    });
+   }
   }
  }
 
  if(firstFit&&shown){
+
   firstFit=false;
   fitAll();
  }
 
- return {
-  shown,
-  decodeMs:decodeDuration,
-  paletteSize:palette.length
- };
+ return shown;
 }
 
 /* =====================================
@@ -1614,12 +1518,9 @@ async function runImage(targetMs){
  let fetchDuration=0;
  let analysisDuration=0;
 
- try{
+ let bitmap=null;
 
-  /*
-   画像取得と観測点取得を並列開始。
-   GIFパレットと画素インデックスは受信したGIFから直接解析する。
-  */
+ try{
 
   const imageTask=(async()=>{
 
@@ -1709,36 +1610,31 @@ async function runImage(targetMs){
   fetchDuration=imageResult.fetchMs;
 
   /*
-   GIFパレット・画素インデックス解析と観測点照合
+   GIFデコード
+  */
+
+  const decodeStarted=performance.now();
+
+  bitmap=await createImageBitmap(imageResult.blob);
+
+  const decodeDuration=
+   performance.now()-decodeStarted;
+
+  /*
+   観測点解析
   */
 
   const analysisStarted=performance.now();
 
-  const analysisResult=await analyzeGifBlob(imageResult.blob);
+  const shown=analyzeBitmap(bitmap);
 
   analysisDuration=
    performance.now()-analysisStarted;
 
-  const shown=analysisResult.shown;
-  const decodeDuration=analysisResult.decodeMs;
-
-  /*
-   表示画像を更新
-  */
-
-  const objectURL=URL.createObjectURL(imageResult.blob);
-
-  const oldObjectURL=currentObjectURL;
-
-  currentObjectURL=objectURL;
-  image.src=objectURL;
-
-  if(oldObjectURL){
-   URL.revokeObjectURL(oldObjectURL);
-  }
-
-  $('imgTime').textContent=
-   formatJST(imageResult.selectedMs);
+  setText(
+   $('imgTime'),
+   formatJST(imageResult.selectedMs)
+  );
 
   lastAppliedImageMs=imageResult.selectedMs;
 
@@ -1759,9 +1655,7 @@ async function runImage(targetMs){
    updateInterval
   );
 
-  setStatus(
-   'オンライン：GIFパレット解析・多項式補間で表示しています'
-  );
+  setStatus('オンライン：HSV・多項式補間で画像を解析しています');
 
   console.log('画像更新完了:',
    formatJST(imageResult.selectedMs),
@@ -1775,8 +1669,7 @@ async function runImage(targetMs){
      updateInterval===null
       ?null
       :Math.round(updateInterval),
-    paletteSize:analysisResult.paletteSize,
-    analysisMethod:'GIF palette index + HSV polynomial interpolation',
+    analysisMethod:'HSV Piecewise Polynomial Interpolation',
     totalProcessingMs:Math.round(performance.now()-started)
    }
   );
@@ -1799,13 +1692,16 @@ async function runImage(targetMs){
 
  }finally{
 
+  if(bitmap){
+   bitmap.close();
+  }
+
   imageBusy=false;
  }
 }
 
 /* =====================================
    画像更新キュー
-   ★処理中に届いた最新時刻を保持
 ===================================== */
 
 function queueImage(ms){
@@ -1818,12 +1714,6 @@ function queueImage(ms){
  ){
   return;
  }
-
- /*
-  同じ時刻を連続して取得しない。
-  失敗や5秒前画像を取得した場合は、
-  少し時間を空けて同じ時刻を再試行する。
- */
 
  const sameOrOlder=
   lastRequestedLatestMs!==null&&
@@ -1895,10 +1785,6 @@ async function processImageQueue(){
 
   imageQueueRunning=false;
 
-  /*
-   キュー終了直前に新しい画像時刻が入った場合も処理する。
-  */
-
   if(pendingImageMs!==null){
    processImageQueue();
   }
@@ -1944,11 +1830,14 @@ async function checkLatest(){
 /* =====================================
    定期更新
    500msごとに最新時刻を確認
+   非表示タブでは停止
 ===================================== */
 
 function scheduleLatest(){
 
  setInterval(()=>{
+
+  if(document.hidden)return;
 
   checkLatest();
 
@@ -1965,7 +1854,7 @@ function addSourceAndLayer(){
 
   map.addSource('stations',{
    type:'geojson',
-   data:geojson
+   data:{type:'FeatureCollection',features:[]}
   });
  }
 
@@ -1976,12 +1865,6 @@ function addSourceAndLayer(){
    id:'station-points',
    type:'circle',
    source:'stations',
-
-   filter:[
-    '==',
-    ['get','valid'],
-    true
-   ],
 
    paint:{
 
@@ -2012,36 +1895,45 @@ function addSourceAndLayer(){
 
    if(!f)return;
 
-   const p=f.properties;
+   const st=stations[f.properties.i];
+
+   if(!st)return;
+
+   const hsv=rgbToHSV(st.r,st.g,st.b);
+
+   const hsvText=
+    `${hsv.h.toFixed(5)}, `+
+    `${hsv.s.toFixed(5)}, `+
+    `${hsv.v.toFixed(5)}`;
 
    new maplibregl.Popup({
     closeButton:true,
     offset:4.4
    })
 
-   .setLngLat(f.geometry.coordinates)
+   .setLngLat(st.geom.coordinates)
 
    .setHTML(`
 
     <div class="popup-title">
-     ${esc(p.name)}
+     ${esc(st.name)}
     </div>
 
-    ${p.region?
-     `地域：${esc(p.region)}<br>`:''}
+    ${st.region?
+     `地域：${esc(st.region)}<br>`:''}
 
-    ${p.code?
-     `コード：${esc(p.code)}<br>`:''}
+    ${st.code?
+     `コード：${esc(st.code)}<br>`:''}
 
-    画像座標：(${p.x}, ${p.y})<br>
+    画像座標：(${st.x}, ${st.y})<br>
 
-    RGB：${esc(p.rgb)}<br>
+    RGB：${st.r}, ${st.g}, ${st.b}<br>
 
-    HEX：${esc(p.hex)}<br>
+    HEX：${esc(st.hex)}<br>
 
-    スケール：${Number(p.scale).toFixed(4)}<br>
+    HSV：${esc(hsvText)}<br>
 
-    リアルタイム震度換算：${Number(p.intensity).toFixed(2)}
+    色位置：${Number(st.position).toFixed(5)}
 
    `)
 
@@ -2084,12 +1976,12 @@ function esc(v){
 
 function fitAll(){
 
- if(!map||!stationFeatures.length)return;
+ if(!map||!stations.length)return;
 
  const bounds=new maplibregl.LngLatBounds();
 
- for(const f of stationFeatures){
-  bounds.extend(f.geometry.coordinates);
+ for(const st of stations){
+  bounds.extend(st.geom.coordinates);
  }
 
  map.fitBounds(bounds,{
@@ -2164,16 +2056,11 @@ map.on('load',()=>{
 
  addSourceAndLayer();
 
- setStatus('最新画像・観測点データを取得しています…');
+ setStatus('最新画像・観測点を取得しています…');
 
  maintainClock();
 
- updateSyncTime();
-
- setInterval(
-  updateSyncTime,
-  250
- );
+ tickSyncTime();
 
  checkLatest();
 
