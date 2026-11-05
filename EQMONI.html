@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -201,7 +202,7 @@ html,body{
  </div>
 
  <div class="diagnostics" id="diagnostics">
-  画像取得 — / 画像解析 — / 更新間隔 —
+  画像取得 — / 画像解析 — / 更新間隔 1.00秒
  </div>
 
 </section>
@@ -237,9 +238,6 @@ const PROXIES = [
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-const COLOR_MAP_URL =
-'https://raw.githubusercontent.com/ingen084/KyoshinShindoColorMap/refs/heads/master/KyoshinShindoColorMap.csv';
-
 /* =====================================
    更新設定
 ===================================== */
@@ -256,8 +254,6 @@ const POINTS_TIMEOUT = 8000;
 
 const IMAGE_TIMEOUT = 4500;
 const IMAGE_TOTAL_TIMEOUT = 12000;
-
-const COLOR_MAP_RETRY_INTERVAL = 30000;
 
 /* =====================================
    状態
@@ -283,12 +279,6 @@ let records = null;
 let recordsPromise = null;
 
 let preparedPoints = null;
-
-let colorPalette = null;
-let colorLookupTable = null;
-let colorMapPromise = null;
-let colorMapAvailable = false;
-let colorMapRetryAfter = 0;
 
 let geojson = {
  type:'FeatureCollection',
@@ -390,13 +380,8 @@ function updateDiagnostics(fetchMs,analysisMs,intervalMs){
    ?`${(analysisMs/1000).toFixed(2)}秒`
    :'—';
 
- const intervalText=
-  Number.isFinite(intervalMs)
-   ?`${(intervalMs/1000).toFixed(2)}秒`
-   :'初回';
-
  $('diagnostics').textContent=
-  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 ${intervalText}`;
+  `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 1.00秒`;
 }
 
 /* =====================================
@@ -548,7 +533,6 @@ function updateSyncTime(){
 
 /* =====================================
    Proxy取得
-   本文の受信完了までタイムアウトを維持
 ===================================== */
 
 async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
@@ -599,7 +583,6 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
    }
 
    if(responseType==='text'){
-
     return await response.text();
    }
 
@@ -633,227 +616,104 @@ async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
 }
 
 /* =====================================
-   色テーブル照合用データ作成
-   ★小分けに実行して画面停止を抑制
+   RGB → HSV変換
 ===================================== */
 
-async function buildColorLookup(palette){
+function rgbToHSV(r,g,b){
 
- const SIZE=32;
- const TOTAL=SIZE*SIZE*SIZE;
+ r/=255;
+ g/=255;
+ b/=255;
 
- const lut=new Uint8Array(TOTAL);
+ const max=Math.max(r,g,b);
+ const min=Math.min(r,g,b);
 
- /*
-  1回に処理する色数を制限する。
-  大きな同期処理で画面が固まるのを防ぐ。
- */
+ const delta=max-min;
 
- const CHUNK_SIZE=128;
+ let h=0;
+ const v=max;
 
- for(
-  let start=0;
-  start<TOTAL;
-  start+=CHUNK_SIZE
- ){
+ const s=max===0?0:delta/max;
 
-  const end=Math.min(
-   start+CHUNK_SIZE,
-   TOTAL
-  );
+ if(delta!==0){
 
-  for(let index=start;index<end;index++){
+  if(max===r){
 
-   const ri=index>>10;
-   const gi=(index>>5)&31;
-   const bi=index&31;
+   h=(g-b)/delta;
 
-   const r=ri*8+4;
-   const g=gi*8+4;
-   const b=bi*8+4;
-
-   let bestIndex=0;
-   let bestDistance=Infinity;
-
-   for(let i=0;i<palette.length;i++){
-
-    const c=palette[i];
-
-    const dr=r-c.r;
-    const dg=g-c.g;
-    const db=b-c.b;
-
-    const distance=
-     dr*dr+dg*dg+db*db;
-
-    if(distance<bestDistance){
-
-     bestDistance=distance;
-     bestIndex=i;
-    }
+   if(g<b){
+    h+=6;
    }
 
-   lut[index]=bestIndex;
+  }else if(max===g){
+
+   h=(b-r)/delta+2;
+
+  }else{
+
+   h=(r-g)/delta+4;
   }
 
-  /*
-   次のチャンクまでブラウザーへ処理を譲る。
-   地図描画や時計表示を止めにくくする。
-  */
-
-  await yieldToBrowser();
+  h/=6;
  }
 
- return lut;
+ return {h,s,v};
 }
 
 /* =====================================
-   色テーブル読み込み
-   ★成功後は再取得・再計算しない
+   HSV → 色の位置
+   区分的多項式補間
 ===================================== */
 
-async function loadColorMap(){
+function colorToPosition(hsv){
 
- /*
-  すでに完成している場合は即座に返す。
-  以前はここがなく、画像更新のたびに
-  CSV取得とLUT作成を繰り返していた。
- */
+ const h=hsv.h;
+ const s=hsv.s;
+ const v=hsv.v;
 
- if(
-  colorMapAvailable&&
-  colorLookupTable&&
-  colorPalette
- ){
-  return true;
+ if(!(v>0.1&&s>0.75)){
+  return null;
  }
 
- if(colorMapPromise){
-  return colorMapPromise;
+ let p=0;
+
+ if(h>0.1476){
+
+  p=
+   280.31*Math.pow(h,6)
+   -916.05*Math.pow(h,5)
+   +1142.6*Math.pow(h,4)
+   -709.95*Math.pow(h,3)
+   +234.65*Math.pow(h,2)
+   -40.27*h
+   +3.2217;
+
+ }else if(h>0.001){
+
+  p=
+   151.4*Math.pow(h,4)
+   -49.32*Math.pow(h,3)
+   +6.753*Math.pow(h,2)
+   -2.481*h
+   +0.9033;
+
+ }else{
+
+  p=
+   -0.005171*Math.pow(v,2)
+   -0.3282*v
+   +1.2236;
  }
 
- /*
-  失敗直後の連続アクセスを防ぐ。
- */
-
- if(Date.now()<colorMapRetryAfter){
-  return false;
+ if(p<0){
+  p=0;
  }
 
- colorMapPromise=(async()=>{
-
-  try{
-
-   const csv=await fetchViaProxy(
-    COLOR_MAP_URL,
-    FETCH_TIMEOUT,
-    'text'
-   );
-
-   const lines=csv
-    .replace(/^\uFEFF/,'')
-    .split(/\r?\n/);
-
-   const palette=[];
-
-   for(const line of lines){
-
-    const trimmed=line.trim();
-
-    if(!trimmed)continue;
-
-    const columns=trimmed.split(',');
-
-    if(columns.length<4)continue;
-
-    const r=Number(columns[1].trim());
-    const g=Number(columns[2].trim());
-    const b=Number(columns[3].trim());
-
-    if(
-     !Number.isInteger(r)||
-     !Number.isInteger(g)||
-     !Number.isInteger(b)||
-     r<0||r>255||
-     g<0||g>255||
-     b<0||b>255
-    ){
-     continue;
-    }
-
-    palette.push({r,g,b});
-   }
-
-   if(!palette.length){
-    throw new Error('色テーブルに有効なRGBデータがありません');
-   }
-
-   /*
-    完成するまで公開用の変数へ入れず、
-    作成途中のテーブルが使われないようにする。
-   */
-
-   const lookup=await buildColorLookup(palette);
-
-   colorPalette=palette;
-   colorLookupTable=lookup;
-   colorMapAvailable=true;
-   colorMapRetryAfter=0;
-
-   console.log('色テーブル読み込み・照合データ作成完了',{
-    colorCount:colorPalette.length,
-    lookupSize:colorLookupTable.length
-   });
-
-   return true;
-
-  }catch(e){
-
-   colorPalette=null;
-   colorLookupTable=null;
-   colorMapAvailable=false;
-
-   colorMapRetryAfter=
-    Date.now()+COLOR_MAP_RETRY_INTERVAL;
-
-   console.warn(
-    '色テーブル取得失敗。画像のRGBを使用します:',
-    e
-   );
-
-   return false;
-  }
-
- })().finally(()=>{
-  colorMapPromise=null;
- });
-
- return colorMapPromise;
-}
-
-/* =====================================
-   RGB色照合
-===================================== */
-
-function matchColor(r,g,b){
-
- if(
-  !colorMapAvailable||
-  !colorLookupTable||
-  !colorPalette
- ){
-  return {r,g,b};
+ if(!Number.isFinite(p)){
+  return null;
  }
 
- const index=
-  ((r>>3)<<10)|
-  ((g>>3)<<5)|
-  (b>>3);
-
- const paletteIndex=
-  colorLookupTable[index];
-
- return colorPalette[paletteIndex];
+ return p;
 }
 
 /* =====================================
@@ -1097,7 +957,6 @@ function preparePoints(recs){
 
 /* =====================================
    観測点JSON取得
-   ★通信と本文取得の両方にタイムアウト
 ===================================== */
 
 function loadPoints(){
@@ -1259,6 +1118,9 @@ function prepareCanvas(width,height){
      hex:'#000000',
      rgb:'0, 0, 0',
 
+     hsv:'',
+     position:null,
+
      valid:false
     }
    }));
@@ -1272,7 +1134,8 @@ function prepareCanvas(width,height){
 
 /* =====================================
    Canvas画像解析
-   ★観測点処理も小分けに実行
+   HSV・多項式補間
+   推定震度は計算しない
 ===================================== */
 
 async function analyzeBitmap(bitmap){
@@ -1318,23 +1181,21 @@ async function analyzeBitmap(bitmap){
    const alpha=px[offset+3];
 
    if(alpha===0){
+
     p.valid=false;
+    p.position=null;
+    p.hsv='';
+
     continue;
    }
 
-   const rawR=px[offset];
-   const rawG=px[offset+1];
-   const rawB=px[offset+2];
+   /*
+    CanvasからRGBを直接取得
+   */
 
-   const matched=matchColor(
-    rawR,
-    rawG,
-    rawB
-   );
-
-   const r=matched.r;
-   const g=matched.g;
-   const b=matched.b;
+   const r=px[offset];
+   const g=px[offset+1];
+   const b=px[offset+2];
 
    p.r=r;
    p.g=g;
@@ -1346,6 +1207,39 @@ async function analyzeBitmap(bitmap){
     b.toString(16).padStart(2,'0');
 
    p.rgb=`${r}, ${g}, ${b}`;
+
+   /*
+    RGB → HSV
+   */
+
+   const hsv=rgbToHSV(r,g,b);
+
+   /*
+    HSV → 多項式補間による色位置
+   */
+
+   const position=colorToPosition(hsv);
+
+   if(position===null){
+
+    p.valid=false;
+    p.position=null;
+    p.hsv='';
+
+    continue;
+   }
+
+   p.hsv=
+    `${hsv.h.toFixed(5)}, `+
+    `${hsv.s.toFixed(5)}, `+
+    `${hsv.v.toFixed(5)}`;
+
+   /*
+    色位置のみ保存
+    震度への変換は行わない
+   */
+
+   p.position=position;
 
    p.valid=true;
 
@@ -1397,11 +1291,6 @@ async function runImage(targetMs){
  let bitmap=null;
 
  try{
-
-  /*
-   画像取得・観測点取得・色テーブル取得を並列開始。
-   色テーブルは初回のみ作成し、以降はキャッシュを使用。
-  */
 
   const imageTask=(async()=>{
 
@@ -1479,12 +1368,10 @@ async function runImage(targetMs){
   })();
 
   const pointsTask=loadPoints();
-  const colorTask=loadColorMap();
 
   const results=await Promise.all([
    imageTask,
-   pointsTask,
-   colorTask
+   pointsTask
   ]);
 
   const imageResult=results[0];
@@ -1551,14 +1438,7 @@ async function runImage(targetMs){
    updateInterval
   );
 
-  if(colorMapAvailable){
-
-   setStatus('オンライン：色テーブル照合で画像を解析しています');
-
-  }else{
-
-   setStatus('オンライン：取得画像のRGBで解析しています');
-  }
+  setStatus('オンライン：HSV・多項式補間で画像を解析しています');
 
   console.log('画像更新完了:',
    formatJST(imageResult.selectedMs),
@@ -1572,7 +1452,7 @@ async function runImage(targetMs){
      updateInterval===null
       ?null
       :Math.round(updateInterval),
-    colorTable:colorMapAvailable,
+    analysisMethod:'HSV Piecewise Polynomial Interpolation',
     totalProcessingMs:Math.round(performance.now()-started)
    }
   );
@@ -1605,7 +1485,6 @@ async function runImage(targetMs){
 
 /* =====================================
    画像更新キュー
-   ★処理中に届いた最新時刻を保持
 ===================================== */
 
 function queueImage(ms){
@@ -1618,12 +1497,6 @@ function queueImage(ms){
  ){
   return;
  }
-
- /*
-  同じ時刻を連続して取得しない。
-  失敗や5秒前画像を取得した場合は、
-  少し時間を空けて同じ時刻を再試行する。
- */
 
  const sameOrOlder=
   lastRequestedLatestMs!==null&&
@@ -1694,10 +1567,6 @@ async function processImageQueue(){
  }finally{
 
   imageQueueRunning=false;
-
-  /*
-   キュー終了直前に新しい画像時刻が入った場合も処理する。
-  */
 
   if(pendingImageMs!==null){
    processImageQueue();
@@ -1837,7 +1706,11 @@ function addSourceAndLayer(){
 
     RGB：${esc(p.rgb)}<br>
 
-    HEX：${esc(p.hex)}
+    HEX：${esc(p.hex)}<br>
+
+    HSV：${esc(p.hsv)}<br>
+
+    色位置：${Number(p.position).toFixed(5)}
 
    `)
 
@@ -1960,7 +1833,7 @@ map.on('load',()=>{
 
  addSourceAndLayer();
 
- setStatus('最新画像・観測点・色テーブルを取得しています…');
+ setStatus('最新画像・観測点を取得しています…');
 
  maintainClock();
 
