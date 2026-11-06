@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#101827">
 <title>強震モニタ画像解析ビューア</title>
-
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-
 <style>
 :root{
  color-scheme:dark;
@@ -31,7 +29,6 @@ html,body{
  height:100%;
  background:#172338;
 }
-
 .info-panel{
  position:absolute;
  z-index:10;
@@ -48,7 +45,6 @@ html,body{
  box-shadow:0 3.5px 15.4px rgba(0,0,0,.25);
  pointer-events:none;
 }
-
 .info-title{
  font-size:9.1px;
  font-weight:700;
@@ -128,8 +124,30 @@ html,body{
  line-height:1.5;
  font-variant-numeric:tabular-nums;
 }
+/* WSS接続状態 */
+.wss-status{
+ display:flex;
+ align-items:center;
+ gap:5px;
+ margin-top:6px;
+ padding:5px 7px;
+ border-radius:4.9px;
+ background:rgba(30,41,59,.7);
+ font-size:8px;
+ font-weight:700;
+ color:#a8bbd3;
+}
+.wss-dot{
+ width:6px;
+ height:6px;
+ flex-shrink:0;
+ border-radius:50%;
+ background:#ef4444;
+}
+.wss-status.connected .wss-dot{
+ background:#22c55e;
+}
 .hidden-elements{display:none}
-
 .maplibregl-popup-content{
  color:#152033;
  font-size:8.4px;
@@ -141,7 +159,6 @@ html,body{
  font-size:9.8px;
  margin-bottom:3.5px;
 }
-
 .maplibregl-ctrl-top-right{
  transform:scale(.70);
  transform-origin:top right;
@@ -151,7 +168,6 @@ html,body{
  transform:scale(.70);
  transform-origin:bottom right;
 }
-
 @media(max-width:600px){
  .info-panel{
   top:7px;
@@ -165,25 +181,16 @@ html,body{
 }
 </style>
 </head>
-
 <body>
-
 <main id="map" aria-label="強震モニタ観測点マップ"></main>
-
 <section class="info-panel">
-
  <div class="info-title">強震モニタ リアルタイム画像解析</div>
-
  <div class="time-label">画像時刻（実際に取得した画像・JST）</div>
  <div class="time-value" id="imgTime">取得待機中</div>
-
  <div class="divider"></div>
-
  <div class="time-label">同期時刻（Wolfx・JST）</div>
  <div class="time-value" id="syncTime">同期待機中</div>
-
  <div class="divider"></div>
-
  <div class="stats">
   <div class="stat">
    <b id="total">—</b>
@@ -194,163 +201,93 @@ html,body{
    <span>解析・表示地点数</span>
   </div>
  </div>
-
  <div class="status" id="status">
   <span class="status-dot"></span>
   初期化しています…
  </div>
-
  <div class="diagnostics" id="diagnostics">
   画像取得 — / 画像解析 — / 更新間隔 1.00秒
  </div>
-
+ <div class="wss-status" id="wsInfo">
+  <span class="wss-dot"></span>
+  <span>WSS 未接続</span>
+ </div>
 </section>
-
 <div class="hidden-elements">
  <span id="imageSize"></span>
  <span id="route"></span>
 </div>
-
 <script>
-
 /* =====================================
    URL設定
 ===================================== */
-
-const BASE_URL =
-'http://www.kmoni.bosai.go.jp/data/map_img/RealTimeImg/jma_s/';
-
-const LATEST_URL =
-'http://www.kmoni.bosai.go.jp/webservice/server/pros/latest.json';
-
+const WS_URL =
+'wss://green-grass-374f.mirakuro5472.workers.dev/';
 const NTP_URL =
 'https://api.wolfx.jp/ntp.json';
-
-const PROXY_BASE =
-'https://green-grass-374f.mirakuro5472.workers.dev/';
-
-const PROXIES = [
- u=>PROXY_BASE+'?url='+encodeURIComponent(u)
-];
-
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
-
 /* =====================================
    更新設定
 ===================================== */
-
 const TIME_SYNC_INTERVAL = 60000;
 const TIME_SYNC_SAMPLES = 5;
-
-const LATEST_CHECK_INTERVAL = 500;
-const FALLBACK_SECONDS = 5;
-
-const FETCH_TIMEOUT = 10000;
-const LATEST_TIMEOUT = 8000;
 const POINTS_TIMEOUT = 8000;
-
-const IMAGE_TIMEOUT = 4500;
-const IMAGE_TOTAL_TIMEOUT = 12000;
-
+const RECONNECT_BASE = 1000;
+const RECONNECT_MAX = 10000;
+const PING_INTERVAL = 10000;
+const HIDDEN_DISCONNECT = 60000;
 /* =====================================
    状態
 ===================================== */
-
 let clockBaseEpoch = null;
 let clockBasePerf = null;
 let clockSynced = false;
 let timeSyncPromise = null;
-
-let latestImageMs = null;
 let lastAppliedImageMs = null;
-let lastRequestedLatestMs = null;
-
-let latestCheckBusy = false;
-let imageBusy = false;
-let imageQueueRunning = false;
-
-let pendingImageMs = null;
-let nextImageRetryPerf = 0;
-
 let records = null;
 let recordsPromise = null;
-
 let preparedPoints = null;
-
-/* 観測点（静的情報＋解析結果）。地図には色とindexだけを渡す */
 let stations = [];
-let prevKeys = new Uint32Array(0);
 let forceUpdate = true;
-
 let firstFit = true;
 let map;
-
-let analysisCanvas = null;
-let analysisContext = null;
-
 let lastImageWidth = 0;
 let lastImageHeight = 0;
-
-let consecutiveImageErrors = 0;
-
 let lastImageCompletedPerf = null;
-
 const $ = id => document.getElementById(id);
-
 const HEX = Array.from({length:256},(_,i)=>i.toString(16).padStart(2,'0'));
-
 /* =====================================
    共通処理
 ===================================== */
-
 const p2 = n=>String(n).padStart(2,'0');
-
-/* 値が変わらない時はDOMに触らない */
 function setText(el,text){
-
  if(el._t===text)return;
-
  el._t=text;
  el.textContent=text;
 }
-
 let lastStatusKey=null;
-
 function setStatus(message,isError=false){
-
  const key=(isError?'E':'N')+message;
-
  if(key===lastStatusKey)return;
-
  lastStatusKey=key;
-
  const el=$('status');
  el.textContent='';
-
  const dot=document.createElement('span');
  dot.className='status-dot';
-
  el.appendChild(dot);
  el.appendChild(document.createTextNode(message));
-
  el.classList.toggle('error',isError);
 }
-
 function getSyncedNow(){
-
  if(!clockSynced){
   return Date.now();
  }
-
  return clockBaseEpoch+
   (performance.now()-clockBasePerf);
 }
-
 function jstParts(ms){
-
  const d=new Date(ms+9*3600e3);
-
  return {
   Y:d.getUTCFullYear(),
   M:p2(d.getUTCMonth()+1),
@@ -360,62 +297,35 @@ function jstParts(ms){
   s:p2(d.getUTCSeconds())
  };
 }
-
 function formatJST(ms){
-
  const t=jstParts(ms);
-
  return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
 }
-
-function imageUrlFor(ms){
-
- const t=jstParts(ms);
-
- const stamp=
-  `${t.Y}${t.M}${t.D}${t.h}${t.m}${t.s}`;
-
- return {
-  url:`${BASE_URL}${t.Y}${t.M}${t.D}/${stamp}.jma_s.gif`,
-  label:formatJST(ms)
- };
-}
-
 function updateDiagnostics(fetchMs,analysisMs,intervalMs){
-
  const fetchText=
   Number.isFinite(fetchMs)
    ?`${(fetchMs/1000).toFixed(2)}秒`
    :'—';
-
  const analysisText=
   Number.isFinite(analysisMs)
    ?`${(analysisMs/1000).toFixed(2)}秒`
    :'—';
-
  setText(
   $('diagnostics'),
   `画像取得 ${fetchText} / 画像解析 ${analysisText} / 更新間隔 1.00秒`
  );
 }
-
 /* =====================================
    Wolfx時刻同期
 ===================================== */
-
 async function fetchWolfxTime(){
-
  const start=performance.now();
-
  const controller=new AbortController();
-
  const timeout=setTimeout(
   ()=>controller.abort(),
   8000
  );
-
  try{
-
   const response=await fetch(
    NTP_URL+'?_='+Date.now(),
    {
@@ -423,279 +333,246 @@ async function fetchWolfxTime(){
     signal:controller.signal
    }
   );
-
   if(!response.ok){
    throw new Error('Wolfx HTTP '+response.status);
   }
-
   const data=await response.json();
-
   const end=performance.now();
-
   let epoch=Number(data.timestamp);
-
   if(!Number.isFinite(epoch)||epoch<1000000000000){
-
    const value=data.JST?.int;
-
    if(value){
-
     const s=String(value);
-
     if(/^\d{14}$/.test(s)){
-
      const iso=
       `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
       `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
-
      epoch=Date.parse(iso);
     }
    }
   }
-
   if(!Number.isFinite(epoch)){
    throw new Error('Wolfx時刻を解析できません');
   }
-
   return {
    epoch,
    perf:(start+end)/2,
    rtt:end-start
   };
-
  }finally{
   clearTimeout(timeout);
  }
 }
-
 async function syncClock(){
-
  if(timeSyncPromise){
   return timeSyncPromise;
  }
-
  timeSyncPromise=(async()=>{
-
   const samples=[];
-
   for(let i=0;i<TIME_SYNC_SAMPLES;i++){
-
    try{
     samples.push(await fetchWolfxTime());
    }catch(e){
     console.warn('Wolfx同期失敗:',e);
    }
   }
-
   if(!samples.length){
    throw new Error('Wolfx時刻を取得できません');
   }
-
   samples.sort((a,b)=>a.rtt-b.rtt);
-
   const best=samples[0];
-
   clockBaseEpoch=best.epoch;
   clockBasePerf=best.perf;
   clockSynced=true;
-
   console.log('Wolfx時刻同期完了',{
    RTT:Math.round(best.rtt),
    samples:samples.length,
    serverTime:new Date(best.epoch).toISOString()
   });
-
   return best;
-
  })().finally(()=>{
   timeSyncPromise=null;
  });
-
  return timeSyncPromise;
 }
-
 async function maintainClock(){
-
  try{
   await syncClock();
  }catch(e){
   console.error('時刻再同期エラー:',e);
  }
-
  setTimeout(maintainClock,TIME_SYNC_INTERVAL);
 }
-
 /* =====================================
    Wolfx時刻表示
-   秒が変わるタイミングでのみ更新
 ===================================== */
-
 function tickSyncTime(){
-
  const now=getSyncedNow();
-
  setText($('syncTime'),formatJST(now));
-
  setTimeout(
   tickSyncTime,
   1000-(now%1000)+15
  );
 }
-
 /* =====================================
-   Proxy取得
+   WSS受信
 ===================================== */
-
-async function fetchViaProxy(url,timeoutMs=FETCH_TIMEOUT,responseType='text'){
-
- let lastError=null;
-
- for(let i=0;i<PROXIES.length;i++){
-
-  const proxy=PROXIES[i];
-
-  const controller=new AbortController();
-
-  const timeout=setTimeout(
-   ()=>controller.abort(),
-   timeoutMs
-  );
-
-  try{
-
-   const response=await fetch(
-    proxy(url),
-    {
-     cache:'no-store',
-     signal:controller.signal
-    }
-   );
-
-   if(response.status===404){
-
-    const error=new Error('NOTFOUND');
-    error.notFound=true;
-    throw error;
-   }
-
-   if(!response.ok){
-    throw new Error('HTTP '+response.status);
-   }
-
-   if(responseType==='blob'){
-
-    const blob=await response.blob();
-
-    if(!blob.size){
-     throw new Error('空のデータを受信しました');
-    }
-
-    return blob;
-   }
-
-   if(responseType==='text'){
-    return await response.text();
-   }
-
-   return response;
-
-  }catch(e){
-
-   lastError=e;
-
-   try{
-    controller.abort();
-   }catch(_){}
-
-   if(e.notFound){
-    throw e;
-   }
-
-   console.warn(
-    'Proxy取得失敗:',
-    e.name,
-    e.message
-   );
-
-  }finally{
-
-   clearTimeout(timeout);
-  }
- }
-
- throw lastError||new Error('Proxy取得失敗');
+const wsStats={
+ state:'未接続',
+ connects:0,
+ frames:0,
+ errors:0,
+ lastRecvPerf:null,
+ clients:null
+};
+/* WSSの接続状態だけを表示 */
+function updateWsInfo(){
+ const el=$('wsInfo');
+ const connected=
+  ws&&ws.readyState===WebSocket.OPEN;
+ el.classList.toggle('connected',!!connected);
+ const label=el.querySelector('span:last-child');
+ setText(
+  label,
+  connected?'WSS 接続中':'WSS 未接続'
+ );
 }
-
+let ws=null;
+let wsPing=null;
+let wsReconnectTimer=null;
+let wsAttempt=0;
+let wsWanted=true;
+let hiddenTimer=null;
+function scheduleReconnect(){
+ if(!wsWanted)return;
+ clearTimeout(wsReconnectTimer);
+ const delay=Math.min(
+  RECONNECT_BASE*2**wsAttempt,
+  RECONNECT_MAX
+ );
+ wsAttempt++;
+ setStatus('サーバーとの接続が切れました。再接続します…',true);
+ wsReconnectTimer=setTimeout(connectStream,delay);
+}
+function handleTextMessage(text){
+ let msg=null;
+ try{
+  msg=JSON.parse(text);
+ }catch(_){
+  return;
+ }
+ if(msg&&msg.type==='error'){
+  wsStats.errors++;
+  setStatus('サーバー取得エラー：'+msg.msg,true);
+ }
+}
+function connectStream(){
+ if(!wsWanted)return;
+ if(
+  ws&&
+  (ws.readyState===WebSocket.OPEN||
+   ws.readyState===WebSocket.CONNECTING)
+ ){
+  return;
+ }
+ updateWsInfo();
+ const s=new WebSocket(WS_URL);
+ s.binaryType='arraybuffer';
+ ws=s;
+ s.onopen=()=>{
+  wsAttempt=0;
+  wsStats.connects++;
+  wsStats.state='接続中';
+  updateWsInfo();
+  clearInterval(wsPing);
+  wsPing=setInterval(()=>{
+   try{
+    if(s.readyState===WebSocket.OPEN){
+     s.send('ping');
+    }
+   }catch(_){}
+  },PING_INTERVAL);
+  setStatus('サーバーから最新画像を待っています…');
+  loadPoints().catch(()=>{});
+ };
+ s.onmessage=ev=>{
+  if(typeof ev.data==='string'){
+   handleTextMessage(ev.data);
+   return;
+  }
+  wsStats.frames++;
+  wsStats.lastRecvPerf=performance.now();
+  const buf=ev.data;
+  loadPoints()
+   .then(()=>{
+    if(ws===s){
+     applyFrame(buf);
+    }
+   })
+   .catch(e=>{
+    wsStats.errors++;
+    setStatus('観測点取得失敗：'+e.message,true);
+    try{
+     s.close();
+    }catch(_){}
+   });
+ };
+ s.onerror=()=>{};
+ s.onclose=()=>{
+  if(ws===s){
+   ws=null;
+  }
+  clearInterval(wsPing);
+  wsStats.state='切断';
+  updateWsInfo();
+  scheduleReconnect();
+ };
+}
 /* =====================================
    RGB → HSV変換
 ===================================== */
-
 function rgbToHSV(r,g,b){
-
  r/=255;
  g/=255;
  b/=255;
-
  const max=Math.max(r,g,b);
  const min=Math.min(r,g,b);
-
  const delta=max-min;
-
  let h=0;
  const v=max;
-
  const s=max===0?0:delta/max;
-
  if(delta!==0){
-
   if(max===r){
-
    h=(g-b)/delta;
-
    if(g<b){
     h+=6;
    }
-
   }else if(max===g){
-
    h=(b-r)/delta+2;
-
   }else{
-
    h=(r-g)/delta+4;
   }
-
   h/=6;
  }
-
  return {h,s,v};
 }
-
 /* =====================================
    HSV → 色の位置
-   区分的多項式補間
 ===================================== */
-
 function colorToPosition(hsv){
-
  const h=hsv.h;
  const s=hsv.s;
  const v=hsv.v;
-
  if(!(v>0.1&&s>0.75)){
   return null;
  }
-
  let p=0;
-
  if(h>0.1476){
-
   const h2=h*h;
   const h3=h2*h;
   const h4=h3*h;
   const h5=h4*h;
   const h6=h5*h;
-
   p=
    280.31*h6
    -916.05*h5
@@ -704,196 +581,41 @@ function colorToPosition(hsv){
    +234.65*h2
    -40.27*h
    +3.2217;
-
  }else if(h>0.001){
-
   const h2=h*h;
   const h3=h2*h;
   const h4=h3*h;
-
   p=
    151.4*h4
    -49.32*h3
    +6.753*h2
    -2.481*h
    +0.9033;
-
  }else{
-
   p=
    -0.005171*v*v
    -0.3282*v
    +1.2236;
  }
-
  if(p<0){
   p=0;
  }
-
  if(!Number.isFinite(p)){
   return null;
  }
-
  return p;
 }
-
-/* =====================================
-   最新画像時刻JSON解析
-===================================== */
-
-function parseTimeValue(value){
-
- if(typeof value==='number'){
-
-  if(value>1000000000000)return value;
-  if(value>1000000000)return value*1000;
-
-  return null;
- }
-
- if(typeof value!=='string')return null;
-
- const s=value.trim();
-
- if(/^\d{14}$/.test(s)){
-
-  const iso=
-   `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T`+
-   `${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}+09:00`;
-
-  const ms=Date.parse(iso);
-
-  return Number.isFinite(ms)?ms:null;
- }
-
- const compact=s.match(
-  /(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/
- );
-
- if(compact){
-
-  const iso=
-   `${compact[1]}-${compact[2]}-${compact[3]}T`+
-   `${compact[4]}:${compact[5]}:${compact[6]}+09:00`;
-
-  const ms=Date.parse(iso);
-
-  return Number.isFinite(ms)?ms:null;
- }
-
- if(/^\d{10,13}$/.test(s)){
-
-  const n=Number(s);
-
-  if(n>1000000000000)return n;
-  if(n>1000000000)return n*1000;
- }
-
- return null;
-}
-
-function findLatestTime(data){
-
- const candidates=[];
-
- function walk(value,key=''){
-
-  if(value===null||value===undefined)return;
-
-  if(typeof value==='object'){
-
-   if(Array.isArray(value)){
-
-    for(const item of value){
-     walk(item,key);
-    }
-
-   }else{
-
-    for(const [k,v] of Object.entries(value)){
-     walk(v,k);
-    }
-   }
-
-   return;
-  }
-
-  const ms=parseTimeValue(value);
-
-  if(ms===null)return;
-
-  const name=String(key).toLowerCase();
-
-  let priority=0;
-
-  if(name.includes('latest'))priority+=10;
-  if(name.includes('time'))priority+=5;
-  if(name.includes('date'))priority+=3;
-
-  candidates.push({ms,priority,key});
- }
-
- walk(data);
-
- if(!candidates.length){
-  throw new Error('latest.json内に認識可能な時刻がありません');
- }
-
- candidates.sort((a,b)=>{
-
-  if(b.priority!==a.priority){
-   return b.priority-a.priority;
-  }
-
-  return b.ms-a.ms;
- });
-
- return candidates[0].ms;
-}
-
-/* =====================================
-   強震モニタ最新時刻取得
-===================================== */
-
-async function fetchLatestImageTime(){
-
- const raw=await fetchViaProxy(
-  LATEST_URL,
-  LATEST_TIMEOUT,
-  'text'
- );
-
- let data;
-
- try{
-
-  data=JSON.parse(raw.replace(/^\uFEFF/,''));
-
- }catch(e){
-
-  throw new Error('latest.jsonのJSON解析に失敗しました');
- }
-
- return findLatestTime(data);
-}
-
 /* =====================================
    観測点JSON解析
 ===================================== */
-
 function walkRecords(value,out=[]){
-
  if(Array.isArray(value)){
-
   for(const v of value){
    walkRecords(v,out);
   }
-
   return out;
  }
-
  if(value&&typeof value==='object'){
-
   if(
    value.location&&
    value.point&&
@@ -901,43 +623,30 @@ function walkRecords(value,out=[]){
   ){
    out.push(value);
   }
-
   for(const v of Object.values(value)){
-
    if(v&&typeof v==='object'){
     walkRecords(v,out);
    }
   }
  }
-
  return out;
 }
-
 /* =====================================
    観測点の事前計算
 ===================================== */
-
 function preparePoints(recs){
-
  const result=[];
-
  for(const item of recs){
-
   const loc=item.location||{};
   const point=item.point||{};
-
   const center=point.center_point||{};
   const offset=point.offset||{};
-
   const lat=Number(loc.latitude);
   const lon=Number(loc.longitude);
-
   const x=
    Number(center.x)+Number(offset.x||0);
-
   const y=
    Number(center.y)+Number(offset.y||0);
-
   if(
    !Number.isFinite(lat)||
    !Number.isFinite(lon)||
@@ -946,59 +655,42 @@ function preparePoints(recs){
   ){
    continue;
   }
-
   if(item.is_suspended===true)continue;
-
   result.push({
-
    lat,
    lon,
-
    x:Math.round(x),
    y:Math.round(y),
-
    name:
     item.name||
     item.point_name||
     item.station_name||
     item.code||
     '観測点',
-
    region:
     item.region||
     item.prefecture||
     '',
-
    code:item.code||''
   });
  }
-
  return result;
 }
-
 /* =====================================
    観測点JSON取得
 ===================================== */
-
 function loadPoints(){
-
  if(recordsPromise){
   return recordsPromise;
  }
-
  setStatus('観測点JSONを取得しています…');
-
  recordsPromise=(async()=>{
-
   const controller=new AbortController();
-
   const timeout=setTimeout(
    ()=>controller.abort(),
    POINTS_TIMEOUT
   );
-
   try{
-
    const response=await fetch(
     POINTS_URL,
     {
@@ -1006,639 +698,202 @@ function loadPoints(){
      signal:controller.signal
     }
    );
-
    if(!response.ok){
     throw new Error('観測点JSON HTTP '+response.status);
    }
-
    const raw=await response.text();
-
    const data=JSON.parse(raw.replace(/^\uFEFF/,''));
-
    records=walkRecords(data);
-
    if(!records.length){
     throw new Error('観測点データが見つかりません');
    }
-
    preparedPoints=preparePoints(records);
-
    if(!preparedPoints.length){
     throw new Error('有効な観測点がありません');
    }
-
    setText($('total'),records.length.toLocaleString());
-
    console.log('観測点準備完了',{
     total:records.length,
     prepared:preparedPoints.length
    });
-
    return preparedPoints;
-
   }finally{
-
    clearTimeout(timeout);
   }
-
  })().catch(e=>{
-
   recordsPromise=null;
   records=null;
   preparedPoints=null;
-
   throw e;
  });
-
  return recordsPromise;
 }
-
 /* =====================================
-   GIF画像取得
+   観測点の作成
 ===================================== */
-
-async function fetchGifBlob(url,timeoutMs=IMAGE_TIMEOUT){
-
- const blob=await fetchViaProxy(
-  url,
-  timeoutMs,
-  'blob'
- );
-
- const type=blob.type;
-
+function prepareStations(width,height){
  if(
-  type&&
-  !type.includes('image')&&
-  !type.includes('octet-stream')
+  stations.length&&
+  lastImageWidth===width&&
+  lastImageHeight===height
  ){
-  throw new Error('画像以外のレスポンスを受信しました');
+  return;
  }
-
- return blob;
+ lastImageWidth=width;
+ lastImageHeight=height;
+ stations=preparedPoints
+  .filter(p=>
+   p.x>=0&&
+   p.y>=0&&
+   p.x<width&&
+   p.y<height
+  )
+  .map((p,i)=>({
+   i,
+   geom:{
+    type:'Point',
+    coordinates:[p.lon,p.lat]
+   },
+   name:p.name,
+   region:p.region,
+   code:p.code,
+   x:p.x,
+   y:p.y,
+   r:0,
+   g:0,
+   b:0,
+   hex:'#000000',
+   position:null,
+   valid:false
+  }));
+ forceUpdate=true;
 }
-
 /* =====================================
-   Canvas初期化
+   受信データの反映
 ===================================== */
-
-function prepareCanvas(width,height){
-
- if(
-  !analysisCanvas||
-  lastImageWidth!==width||
-  lastImageHeight!==height
- ){
-
-  analysisCanvas=document.createElement('canvas');
-
-  analysisCanvas.width=width;
-  analysisCanvas.height=height;
-
-  analysisContext=analysisCanvas.getContext(
-   '2d',
-   {
-    willReadFrequently:true,
-    alpha:true
-   }
+function applyFrame(buf){
+ const started=performance.now();
+ if(buf.byteLength<22)return;
+ const dv=new DataView(buf);
+ if(dv.getUint8(0)!==1)return;
+ const ms=dv.getFloat64(1,true);
+ const w=dv.getUint16(9,true);
+ const h=dv.getUint16(11,true);
+ const flags=dv.getUint8(13);
+ const total=dv.getUint16(14,true);
+ const count=dv.getUint16(16,true);
+ const serverMs=dv.getUint16(18,true);
+ const clients=dv.getUint16(20,true);
+ if(buf.byteLength!==22+count*6){
+  console.error('フレーム長が不正です',buf.byteLength,count);
+  return;
+ }
+ wsStats.clients=clients;
+ prepareStations(w,h);
+ if(stations.length!==total){
+  setStatus(
+   '観測点数がサーバーと一致しません（サーバー '+
+   total+' / 端末 '+stations.length+'）',
+   true
   );
-
-  lastImageWidth=width;
-  lastImageHeight=height;
-
-  stations=preparedPoints
-   .filter(p=>
-    p.x>=0&&
-    p.y>=0&&
-    p.x<width&&
-    p.y<height
-   )
-   .map((p,i)=>({
-
-    i,
-
-    geom:{
-     type:'Point',
-     coordinates:[p.lon,p.lat]
-    },
-
-    name:p.name,
-    region:p.region,
-    code:p.code,
-
-    x:p.x,
-    y:p.y,
-
-    r:0,
-    g:0,
-    b:0,
-
-    hex:'#000000',
-    position:null,
-
-    valid:false
-   }));
-
-  prevKeys=new Uint32Array(stations.length);
-  forceUpdate=true;
+  return;
  }
-}
-
-/* =====================================
-   Canvas画像解析
-   HSV・多項式補間
-   推定震度は計算しない
-   ・色が前回と同じ観測点は再計算しない
-   ・変化がなければ地図データを更新しない
-   ・地図へは有効地点の index と色だけを渡す
-===================================== */
-
-function analyzeBitmap(bitmap){
-
- const w=bitmap.width;
- const h=bitmap.height;
-
- prepareCanvas(w,h);
-
- const ctx=analysisContext;
-
- ctx.clearRect(0,0,w,h);
- ctx.drawImage(bitmap,0,0);
-
- const px=ctx.getImageData(0,0,w,h).data;
-
  setText($('imageSize'),`${w} × ${h}px`);
-
- let shown=0;
  let changed=forceUpdate;
-
- const n=stations.length;
-
- for(let i=0;i<n;i++){
-
-  const st=stations[i];
-
-  const offset=(st.y*w+st.x)*4;
-
-  let key=0;
-  let r=0,g=0,b=0;
-
-  if(px[offset+3]!==0){
-
-   r=px[offset];
-   g=px[offset+1];
-   b=px[offset+2];
-
-   key=((1<<24)|(r<<16)|(g<<8)|b)>>>0;
-  }
-
-  if(key===prevKeys[i]){
-
-   if(st.valid)shown++;
-
-   continue;
-  }
-
-  prevKeys[i]=key;
-  changed=true;
-
-  if(key===0){
-
+ if(flags&1){
+  for(const st of stations){
    st.valid=false;
    st.position=null;
-
+  }
+  changed=true;
+ }
+ let o=22;
+ for(let k=0;k<count;k++,o+=6){
+  const i=dv.getUint16(o,true);
+  const st=stations[i];
+  if(!st)continue;
+  changed=true;
+  if(!dv.getUint8(o+2)){
+   st.valid=false;
+   st.position=null;
    continue;
   }
-
+  const r=dv.getUint8(o+3);
+  const g=dv.getUint8(o+4);
+  const b=dv.getUint8(o+5);
   st.r=r;
   st.g=g;
   st.b=b;
-
   const position=colorToPosition(rgbToHSV(r,g,b));
-
   if(position===null){
-
    st.valid=false;
    st.position=null;
-
    continue;
   }
-
   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
   st.position=position;
   st.valid=true;
-
-  shown++;
  }
-
+ let shown=0;
+ for(const st of stations){
+  if(st.valid)shown++;
+ }
  setText($('shown'),shown.toLocaleString());
-
- if(changed){
-
-  forceUpdate=false;
-
-  const features=[];
-
-  for(let i=0;i<n;i++){
-
-   const st=stations[i];
-
-   if(!st.valid)continue;
-
-   features.push({
-    type:'Feature',
-    geometry:st.geom,
-    properties:{i:st.i,hex:st.hex}
-   });
-  }
-
-  if(map){
-
-   const source=map.getSource('stations');
-
-   if(source){
-    source.setData({
-     type:'FeatureCollection',
-     features
+ if(changed&&map){
+  const source=map.getSource('stations');
+  if(source){
+   const features=[];
+   for(const st of stations){
+    if(!st.valid)continue;
+    features.push({
+     type:'Feature',
+     geometry:st.geom,
+     properties:{i:st.i,hex:st.hex}
     });
    }
+   source.setData({
+    type:'FeatureCollection',
+    features
+   });
+   forceUpdate=false;
   }
  }
-
  if(firstFit&&shown){
-
   firstFit=false;
   fitAll();
  }
-
- return shown;
+ setText($('imgTime'),formatJST(ms));
+ lastAppliedImageMs=ms;
+ const analysisDuration=performance.now()-started;
+ const completedPerf=performance.now();
+ const updateInterval=
+  lastImageCompletedPerf===null
+   ?null
+   :completedPerf-lastImageCompletedPerf;
+ lastImageCompletedPerf=completedPerf;
+ updateDiagnostics(
+  serverMs,
+  analysisDuration,
+  updateInterval
+ );
+ setStatus('オンライン：サーバー配信の画像をHSV・多項式補間で解析しています');
 }
-
-/* =====================================
-   最新画像取得・解析
-===================================== */
-
-async function runImage(targetMs){
-
- if(imageBusy)return false;
-
- imageBusy=true;
-
- const started=performance.now();
-
- let fetchDuration=0;
- let analysisDuration=0;
-
- let bitmap=null;
-
- try{
-
-  const imageTask=(async()=>{
-
-   const imageStarted=performance.now();
-
-   let blob=null;
-   let selectedMs=null;
-   let lastError=null;
-
-   const deadline=
-    imageStarted+IMAGE_TOTAL_TIMEOUT;
-
-   for(let i=0;i<=FALLBACK_SECONDS;i++){
-
-    const remaining=
-     deadline-performance.now();
-
-    if(remaining<=0){
-     break;
-    }
-
-    const candidateMs=targetMs-i*1000;
-
-    if(
-     lastAppliedImageMs!==null&&
-     candidateMs<=lastAppliedImageMs
-    ){
-     continue;
-    }
-
-    const {url}=imageUrlFor(candidateMs);
-
-    try{
-
-     const timeoutMs=Math.max(
-      500,
-      Math.min(IMAGE_TIMEOUT,remaining)
-     );
-
-     blob=await fetchGifBlob(
-      url,
-      timeoutMs
-     );
-
-     selectedMs=candidateMs;
-
-     break;
-
-    }catch(e){
-
-     lastError=e;
-
-     console.warn(
-      '画像取得失敗:',
-      formatJST(candidateMs),
-      e
-     );
-    }
-   }
-
-   if(!blob){
-
-    throw new Error(
-     '最新画像を取得できません。'+
-     (lastError?.message||'')
-    );
-   }
-
-   return {
-    blob,
-    selectedMs,
-    fetchMs:performance.now()-imageStarted
-   };
-
-  })();
-
-  const pointsTask=loadPoints();
-
-  const results=await Promise.all([
-   imageTask,
-   pointsTask
-  ]);
-
-  const imageResult=results[0];
-  const points=results[1];
-
-  fetchDuration=imageResult.fetchMs;
-
-  /*
-   GIFデコード
-  */
-
-  const decodeStarted=performance.now();
-
-  bitmap=await createImageBitmap(imageResult.blob);
-
-  const decodeDuration=
-   performance.now()-decodeStarted;
-
-  /*
-   観測点解析
-  */
-
-  const analysisStarted=performance.now();
-
-  const shown=analyzeBitmap(bitmap);
-
-  analysisDuration=
-   performance.now()-analysisStarted;
-
-  setText(
-   $('imgTime'),
-   formatJST(imageResult.selectedMs)
-  );
-
-  lastAppliedImageMs=imageResult.selectedMs;
-
-  consecutiveImageErrors=0;
-
-  const completedPerf=performance.now();
-
-  const updateInterval=
-   lastImageCompletedPerf===null
-    ?null
-    :completedPerf-lastImageCompletedPerf;
-
-  lastImageCompletedPerf=completedPerf;
-
-  updateDiagnostics(
-   fetchDuration+decodeDuration,
-   analysisDuration,
-   updateInterval
-  );
-
-  setStatus('オンライン：HSV・多項式補間で画像を解析しています');
-
-  console.log('画像更新完了:',
-   formatJST(imageResult.selectedMs),
-   {
-    stations:points.length,
-    shown,
-    fetchMs:Math.round(fetchDuration),
-    decodeMs:Math.round(decodeDuration),
-    analysisMs:Math.round(analysisDuration),
-    updateIntervalMs:
-     updateInterval===null
-      ?null
-      :Math.round(updateInterval),
-    analysisMethod:'HSV Piecewise Polynomial Interpolation',
-    totalProcessingMs:Math.round(performance.now()-started)
-   }
-  );
-
-  return true;
-
- }catch(e){
-
-  consecutiveImageErrors++;
-
-  console.error('画像取得・解析エラー:',e);
-
-  setStatus(
-   '画像取得失敗。自動再試行します ('+
-   consecutiveImageErrors+'回目)：'+e.message,
-   true
-  );
-
-  return false;
-
- }finally{
-
-  if(bitmap){
-   bitmap.close();
-  }
-
-  imageBusy=false;
- }
-}
-
-/* =====================================
-   画像更新キュー
-===================================== */
-
-function queueImage(ms){
-
- if(!Number.isFinite(ms))return;
-
- if(
-  lastAppliedImageMs!==null&&
-  ms<=lastAppliedImageMs
- ){
-  return;
- }
-
- const sameOrOlder=
-  lastRequestedLatestMs!==null&&
-  ms<=lastRequestedLatestMs;
-
- if(
-  sameOrOlder&&
-  performance.now()<nextImageRetryPerf
- ){
-  return;
- }
-
- if(
-  pendingImageMs===null||
-  ms>pendingImageMs
- ){
-  pendingImageMs=ms;
- }
-
- processImageQueue();
-}
-
-async function processImageQueue(){
-
- if(imageQueueRunning)return;
-
- imageQueueRunning=true;
-
- try{
-
-  while(pendingImageMs!==null){
-
-   const targetMs=pendingImageMs;
-
-   pendingImageMs=null;
-
-   if(
-    lastAppliedImageMs!==null&&
-    targetMs<=lastAppliedImageMs
-   ){
-    continue;
-   }
-
-   if(
-    lastRequestedLatestMs===null||
-    targetMs>lastRequestedLatestMs
-   ){
-    lastRequestedLatestMs=targetMs;
-   }
-
-   nextImageRetryPerf=
-    performance.now()+2500;
-
-   const success=await runImage(targetMs);
-
-   if(success){
-
-    nextImageRetryPerf=
-     performance.now()+3000;
-
-   }else{
-
-    nextImageRetryPerf=
-     performance.now()+2000;
-   }
-  }
-
- }finally{
-
-  imageQueueRunning=false;
-
-  if(pendingImageMs!==null){
-   processImageQueue();
-  }
- }
-}
-
-/* =====================================
-   最新画像監視
-===================================== */
-
-async function checkLatest(){
-
- if(latestCheckBusy)return;
-
- latestCheckBusy=true;
-
- try{
-
-  const ms=await fetchLatestImageTime();
-
-  latestImageMs=ms;
-
-  if(
-   lastAppliedImageMs===null||
-   ms>lastAppliedImageMs
-  ){
-
-   queueImage(ms);
-  }
-
- }catch(e){
-
-  console.warn('最新画像確認:',e);
-
-  setStatus('最新画像確認中：'+e.message,true);
-
- }finally{
-
-  latestCheckBusy=false;
- }
-}
-
-/* =====================================
-   定期更新
-   500msごとに最新時刻を確認
-   非表示タブでは停止
-===================================== */
-
-function scheduleLatest(){
-
- setInterval(()=>{
-
-  if(document.hidden)return;
-
-  checkLatest();
-
- },LATEST_CHECK_INTERVAL);
-}
-
 /* =====================================
    地図レイヤー
 ===================================== */
-
 function addSourceAndLayer(){
-
  if(!map.getSource('stations')){
-
   map.addSource('stations',{
    type:'geojson',
    data:{type:'FeatureCollection',features:[]}
   });
  }
-
  if(!map.getLayer('station-points')){
-
   map.addLayer({
-
    id:'station-points',
    type:'circle',
    source:'stations',
-
    paint:{
-
     'circle-radius':[
      'interpolate',
      ['linear'],
@@ -1648,76 +903,48 @@ function addSourceAndLayer(){
      8,3.8,
      11,4.7
     ],
-
     'circle-color':['get','hex'],
-
     'circle-stroke-color':'#ffffff',
-
     'circle-stroke-width':0.35,
-
     'circle-opacity':1
    }
-
   });
-
   map.on('click','station-points',e=>{
-
    const f=e.features&&e.features[0];
-
    if(!f)return;
-
    const st=stations[f.properties.i];
-
    if(!st)return;
-
    const hsv=rgbToHSV(st.r,st.g,st.b);
-
    const hsvText=
     `${hsv.h.toFixed(5)}, `+
     `${hsv.s.toFixed(5)}, `+
     `${hsv.v.toFixed(5)}`;
-
    new maplibregl.Popup({
     closeButton:true,
     offset:4.4
    })
-
    .setLngLat(st.geom.coordinates)
-
    .setHTML(`
-
     <div class="popup-title">
      ${esc(st.name)}
     </div>
-
     ${st.region?
      `地域：${esc(st.region)}<br>`:''}
-
     ${st.code?
      `コード：${esc(st.code)}<br>`:''}
-
     画像座標：(${st.x}, ${st.y})<br>
-
     RGB：${st.r}, ${st.g}, ${st.b}<br>
-
     HEX：${esc(st.hex)}<br>
-
     HSV：${esc(hsvText)}<br>
-
     色位置：${Number(st.position).toFixed(5)}
-
    `)
-
    .addTo(map);
-
   });
-
   map.on(
    'mouseenter',
    'station-points',
    ()=>map.getCanvas().style.cursor='pointer'
   );
-
   map.on(
    'mouseleave',
    'station-points',
@@ -1725,13 +952,10 @@ function addSourceAndLayer(){
   );
  }
 }
-
 /* =====================================
    HTMLエスケープ
 ===================================== */
-
 function esc(v){
-
  return String(v??'').replace(/[&<>"']/g,c=>({
   '&':'&amp;',
   '<':'&lt;',
@@ -1740,106 +964,79 @@ function esc(v){
   "'":'&#39;'
  }[c]));
 }
-
 /* =====================================
    全観測点表示
 ===================================== */
-
 function fitAll(){
-
  if(!map||!stations.length)return;
-
  const bounds=new maplibregl.LngLatBounds();
-
  for(const st of stations){
   bounds.extend(st.geom.coordinates);
  }
-
  map.fitBounds(bounds,{
   padding:45,
   maxZoom:7,
   duration:700
  });
 }
-
 /* =====================================
    地図初期化
 ===================================== */
-
 map=new maplibregl.Map({
-
  container:'map',
-
  style:'https://tiles.openfreemap.org/styles/liberty',
-
  center:[138,37],
-
  zoom:4.2,
-
  attributionControl:true
-
 });
-
 map.on('error',e=>{
-
  console.error('MapLibre:',e.error||e);
-
 });
-
 map.addControl(
  new maplibregl.NavigationControl(),
  'top-right'
 );
-
 /* =====================================
-   バックグラウンド復帰時の更新
+   バックグラウンド・復帰時の接続管理
 ===================================== */
-
 document.addEventListener(
  'visibilitychange',
  ()=>{
-
-  if(!document.hidden){
-
-   checkLatest();
-
-   if(
-    lastImageCompletedPerf!==null
-   ){
-    console.log('ページ復帰：最新画像を再確認します');
-   }
+  if(document.hidden){
+   clearTimeout(hiddenTimer);
+   hiddenTimer=setTimeout(()=>{
+    wsWanted=false;
+    clearTimeout(wsReconnectTimer);
+    if(ws){
+     try{
+      ws.close(1000,'hidden');
+     }catch(_){}
+    }
+   },HIDDEN_DISCONNECT);
+  }else{
+   clearTimeout(hiddenTimer);
+   wsWanted=true;
+   connectStream();
   }
  }
 );
-
 window.addEventListener(
  'pageshow',
  ()=>{
-  checkLatest();
+  wsWanted=true;
+  connectStream();
  }
 );
-
 /* =====================================
    起動処理
 ===================================== */
-
 map.on('load',()=>{
-
  addSourceAndLayer();
-
- setStatus('最新画像・観測点を取得しています…');
-
+ setStatus('サーバーに接続しています…');
  maintainClock();
-
  tickSyncTime();
-
- checkLatest();
-
- scheduleLatest();
-
+ connectStream();
 });
-
 </script>
-
 </body>
 </html>
