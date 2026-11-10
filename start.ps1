@@ -30,6 +30,10 @@ if (!(Test-Path $node)) {
     throw "Node.js not found: $node"
 }
 
+# Check Node.js version
+$nodeVersion = & $node -v
+Write-Host "Node.js version: $nodeVersion"
+
 # Check existing server
 $serverReady = $false
 
@@ -41,9 +45,11 @@ try {
 # Start Node.js if needed
 if (!$serverReady) {
 
+    Write-Host "Starting Node.js collector..."
+
     $serverProcess = Start-Process `
         -FilePath $node `
-        -ArgumentList "server.js" `
+        -ArgumentList @("--experimental-fetch", "server.js") `
         -WorkingDirectory $root `
         -PassThru `
         -WindowStyle Hidden `
