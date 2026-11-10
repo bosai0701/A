@@ -7,7 +7,6 @@ $branch = "main"
 
 $serverPath = Join-Path $root "server.js"
 $tunnelPath = Join-Path $root "cloudflared.exe"
-
 $node = "C:\Program Files\nodejs\node.exe"
 
 $nodeLog = Join-Path $root "node.log"
@@ -15,82 +14,126 @@ $nodeError = Join-Path $root "node-error.log"
 $tunnelLog = Join-Path $root "tunnel.log"
 $tunnelError = Join-Path $root "tunnel-error.log"
 
-Write-Host "Starting server..."
+$nodePidFile = Join-Path $root "node.pid"
+$tunnelPidFile = Join-Path $root "cloudflared.pid"
 
-# Check required files
+Write-Host "=================================="
+Write-Host " Kyoshin Server Startup"
+Write-Host "=================================="
+
 if (!(Test-Path $serverPath)) {
-    throw "server.js not found"
+    throw "server.js not found: $serverPath"
 }
 
 if (!(Test-Path $tunnelPath)) {
-    throw "cloudflared.exe not found"
+    throw "cloudflared.exe not found: $tunnelPath"
 }
 
 if (!(Test-Path $node)) {
     throw "Node.js not found: $node"
 }
 
-# Check Node.js version
+# Node.jsのバージョン確認
 $nodeVersion = & $node -v
-Write-Host "Node.js version: $nodeVersion"
+Write-Host "Node.js: $nodeVersion"
 
-# Check existing server
-$serverReady = $false
+# fetchが有効になるか確認
+$fetchCheck = & $node --experimental-fetch -e "console.log(typeof fetch); console.log(typeof AbortSignal.timeout)"
 
-try {
-    Invoke-RestMethod "http://127.0.0.1:8787/status" -TimeoutSec 2 | Out-Null
-    $serverReady = $true
-} catch {}
+if ($LASTEXITCODE -ne 0) {
+    throw "Node.js fetch check failed"
+}
 
-# Start Node.js if needed
-if (!$serverReady) {
+if ($fetchCheck[0] -ne "function") {
+    throw "fetch is not available"
+}
 
-    Write-Host "Starting Node.js collector..."
+if ($fetchCheck[1] -ne "function") {
+    throw "AbortSignal.timeout is not available"
+}
 
-    $serverProcess = Start-Process `
-        -FilePath $node `
-        -ArgumentList @("--experimental-fetch", "server.js") `
-        -WorkingDirectory $root `
-        -PassThru `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $nodeLog `
-        -RedirectStandardError $nodeError
+Write-Host "Fetch support OK"
 
-    Set-Content (Join-Path $root "node.pid") $serverProcess.Id
+# 前回起動したNode.jsを停止
+if (Test-Path $nodePidFile) {
 
-    $ready = $false
+    $oldNodePid = Get-Content $nodePidFile -ErrorAction SilentlyContinue
 
-    for ($i = 0; $i -lt 30; $i++) {
+    if ($oldNodePid -match '^\d+$') {
 
-        Start-Sleep -Seconds 1
+        $oldNodeProcess = Get-Process -Id ([int]$oldNodePid) -ErrorAction SilentlyContinue
 
-        try {
-            Invoke-RestMethod "http://127.0.0.1:8787/status" -TimeoutSec 2 | Out-Null
-            $ready = $true
-            break
-        } catch {}
-    }
-
-    if (!$ready) {
-        throw "Node server failed. Check node-error.log"
+        if ($oldNodeProcess -and $oldNodeProcess.ProcessName -eq "node") {
+            Write-Host "Stopping previous Node.js process..."
+            Stop-Process -Id ([int]$oldNodePid) -Force
+            Start-Sleep -Seconds 2
+        }
     }
 }
 
-Write-Host "Node server OK"
+# 8787番ポートに既存サーバーが残っていないか確認
+try {
+    Invoke-RestMethod "http://127.0.0.1:8787/status" -TimeoutSec 2 | Out-Null
+    throw "Port 8787 is already occupied. Stop the existing collector first."
+} catch {
+    if ($_.Exception.Message -like "*already occupied*") {
+        throw
+    }
+}
 
-# Stop previous tunnel started by this script
-$oldPidFile = Join-Path $root "cloudflared.pid"
+# ログを初期化
+Remove-Item $nodeLog, $nodeError -Force -ErrorAction SilentlyContinue
 
-if (Test-Path $oldPidFile) {
+# Node.js起動
+Write-Host "Starting Node.js collector..."
 
-    $oldPid = Get-Content $oldPidFile -ErrorAction SilentlyContinue
+$serverProcess = Start-Process `
+    -FilePath $node `
+    -ArgumentList @("--experimental-fetch", "server.js") `
+    -WorkingDirectory $root `
+    -PassThru `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $nodeLog `
+    -RedirectStandardError $nodeError
 
-    if ($oldPid -match '^\d+$') {
+Set-Content $nodePidFile $serverProcess.Id
 
-        $oldProcess = Get-Process -Id ([int]$oldPid) -ErrorAction SilentlyContinue
+# サーバー起動確認
+$ready = $false
 
-        if ($oldProcess -and $oldProcess.ProcessName -eq "cloudflared") {
-            Stop-Process -Id ([int]$oldPid) -Force
+for ($i = 0; $i -lt 30; $i++) {
+
+    Start-Sleep -Seconds 1
+
+    if ($serverProcess.HasExited) {
+        throw "Node.js stopped. Check node-error.log"
+    }
+
+    try {
+        $status = Invoke-RestMethod "http://127.0.0.1:8787/status" -TimeoutSec 2
+        $ready = $true
+        break
+    } catch {}
+}
+
+if (!$ready) {
+    throw "Node.js server failed to start. Check node-error.log"
+}
+
+Write-Host "Node.js server OK"
+
+# 前回のCloudflare Tunnelを停止
+if (Test-Path $tunnelPidFile) {
+
+    $oldTunnelPid = Get-Content $tunnelPidFile -ErrorAction SilentlyContinue
+
+    if ($oldTunnelPid -match '^\d+$') {
+
+        $oldTunnelProcess = Get-Process -Id ([int]$oldTunnelPid) -ErrorAction SilentlyContinue
+
+        if ($oldTunnelProcess -and $oldTunnelProcess.ProcessName -eq "cloudflared") {
+            Write-Host "Stopping previous Cloudflare Tunnel..."
+            Stop-Process -Id ([int]$oldTunnelPid) -Force
             Start-Sleep -Seconds 2
         }
     }
@@ -98,6 +141,7 @@ if (Test-Path $oldPidFile) {
 
 Remove-Item $tunnelLog, $tunnelError -Force -ErrorAction SilentlyContinue
 
+# Cloudflare Tunnel起動
 Write-Host "Starting Cloudflare Tunnel..."
 
 $tunnelProcess = Start-Process `
@@ -114,61 +158,62 @@ $tunnelProcess = Start-Process `
     -RedirectStandardOutput $tunnelLog `
     -RedirectStandardError $tunnelError
 
-Set-Content $oldPidFile $tunnelProcess.Id
+Set-Content $tunnelPidFile $tunnelProcess.Id
 
-# Wait for Quick Tunnel URL
+# Cloudflare URL取得
 $httpsUrl = $null
+
+Write-Host "Waiting for Cloudflare URL..."
 
 for ($i = 0; $i -lt 60; $i++) {
 
     Start-Sleep -Seconds 1
 
+    if ($tunnelProcess.HasExited) {
+        throw "Cloudflare Tunnel stopped. Check tunnel-error.log"
+    }
+
     $logs = ""
 
-    foreach ($file in @($tunnelLog, $tunnelError)) {
+    foreach ($logFile in @($tunnelLog, $tunnelError)) {
 
-        if (Test-Path $file) {
-            $logs += Get-Content $file -Raw -ErrorAction SilentlyContinue
+        if (Test-Path $logFile) {
+            $logs += Get-Content $logFile -Raw -ErrorAction SilentlyContinue
         }
     }
 
-    $match = [regex]::Match(
+    $urlMatch = [regex]::Match(
         $logs,
         'https://[a-z0-9-]+\.trycloudflare\.com',
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )
 
-    if ($match.Success) {
-        $httpsUrl = $match.Value
+    if ($urlMatch.Success) {
+        $httpsUrl = $urlMatch.Value
         break
-    }
-
-    if ($tunnelProcess.HasExited) {
-        throw "Cloudflare Tunnel stopped. Check tunnel-error.log"
     }
 }
 
 if (!$httpsUrl) {
-    throw "Could not get Cloudflare URL"
+    throw "Could not get Cloudflare URL. Check tunnel.log"
 }
 
 $wsUrl = ($httpsUrl -replace '^https://', 'wss://') + "/"
 
-Write-Host "New WSS URL: $wsUrl"
+Write-Host ""
+Write-Host "Cloudflare URL: $httpsUrl"
+Write-Host "WSS URL: $wsUrl"
 
-# Check GitHub CLI
-$ghCommand = Get-Command gh.exe -ErrorAction Stop
+# GitHub CLI確認
+$ghCommand = Get-Command gh.exe -ErrorAction SilentlyContinue
+
+if (!$ghCommand) {
+    throw "GitHub CLI not found. Install GitHub CLI and add it to PATH."
+}
+
 $gh = $ghCommand.Definition
 
-if ([string]::IsNullOrEmpty($gh)) {
-    throw "GitHub CLI not found"
-}
-
-if (!(Test-Path $gh)) {
-    throw "GitHub CLI executable not found"
-}
-
-# Check GitHub login
+Write-Host ""
 Write-Host "Checking GitHub login..."
 
 & $gh auth status
@@ -177,13 +222,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "GitHub login required. Run gh auth login first."
 }
 
-# Fetch GitHub file
-Write-Host "Fetching GitHub file..."
+# GitHubからHTML取得
+Write-Host "Fetching GitHub index.html..."
 
 $fileJson = & $gh api "repos/$repo/contents/index.html?ref=$branch"
 
 if ($LASTEXITCODE -ne 0) {
-    throw "Could not fetch GitHub file"
+    throw "Could not fetch GitHub index.html"
 }
 
 $file = $fileJson | ConvertFrom-Json
@@ -198,12 +243,14 @@ $bytes = [Convert]::FromBase64String(
 
 $html = [System.Text.Encoding]::UTF8.GetString($bytes)
 
-# Replace exactly one WS_URL
+# WS_URLを1か所だけ変更
 $pattern = "(?m)(const WS_URL\s*=\s*\r?\n\s*)'wss://[^']+';"
 
-$matches = [regex]::Matches($html, $pattern)
+$regex = New-Object System.Text.RegularExpressions.Regex($pattern)
 
-if ($matches.Count -ne 1) {
+$urlMatches = $regex.Matches($html)
+
+if ($urlMatches.Count -ne 1) {
     throw "WS_URL was not found exactly once. GitHub was not changed."
 }
 
@@ -213,13 +260,9 @@ $evaluator = [System.Text.RegularExpressions.MatchEvaluator] {
     return $m.Groups[1].Value + "'" + $wsUrl + "';"
 }
 
-$html = [regex]::Replace(
-    $html,
-    $pattern,
-    $evaluator,
-    1
-)
+$html = $regex.Replace($html, $evaluator, 1)
 
+# GitHub更新用データ作成
 Write-Host "Preparing GitHub update..."
 
 $newBytes = [System.Text.Encoding]::UTF8.GetBytes($html)
@@ -262,6 +305,10 @@ finally {
 
 }
 
-Write-Host "GitHub update completed."
+Write-Host ""
+Write-Host "=================================="
+Write-Host " Startup completed"
+Write-Host "=================================="
 Write-Host "WSS URL: $wsUrl"
-Write-Host "All tasks completed."
+Write-Host "GitHub index.html updated."
+Write-Host "Node.js and Cloudflare are running."
