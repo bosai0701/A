@@ -15,11 +15,25 @@ $tunnelError = Join-Path $root "tunnel-error.log"
 
 Write-Host "Starting server..."
 
-$node = (Get-Command node.exe -ErrorAction Stop).Source
+if (!(Test-Path $serverPath)) {
+    throw "server.js not found"
+}
 
-if (!(Test-Path $serverPath)) { throw "server.js not found" }
-if (!(Test-Path $tunnelPath)) { throw "cloudflared.exe not found" }
+if (!(Test-Path $tunnelPath)) {
+    throw "cloudflared.exe not found"
+}
 
+# Find Node.js executable
+$nodeCommand = Get-Command node.exe -ErrorAction Stop
+$node = $nodeCommand.Definition
+
+if ([string]::IsNullOrEmpty($node) -or !(Test-Path $node)) {
+    throw "Node.js executable not found"
+}
+
+Write-Host "Node.js: $node"
+
+# Check existing server
 $serverReady = $false
 
 try {
@@ -27,7 +41,9 @@ try {
     $serverReady = $true
 } catch {}
 
+# Start Node.js if needed
 if (!$serverReady) {
+
     $serverProcess = Start-Process `
         -FilePath $node `
         -ArgumentList "server.js" `
@@ -42,7 +58,9 @@ if (!$serverReady) {
     $ready = $false
 
     for ($i = 0; $i -lt 30; $i++) {
+
         Start-Sleep -Seconds 1
+
         try {
             Invoke-RestMethod "http://127.0.0.1:8787/status" -TimeoutSec 2 | Out-Null
             $ready = $true
@@ -57,15 +75,20 @@ if (!$serverReady) {
 
 Write-Host "Node server OK"
 
+# Stop previous tunnel started by this script
 $oldPidFile = Join-Path $root "cloudflared.pid"
 
 if (Test-Path $oldPidFile) {
+
     $oldPid = Get-Content $oldPidFile -ErrorAction SilentlyContinue
 
     if ($oldPid -match '^\d+$') {
+
         $oldProcess = Get-Process -Id ([int]$oldPid) -ErrorAction SilentlyContinue
+
         if ($oldProcess -and $oldProcess.ProcessName -eq "cloudflared") {
             Stop-Process -Id ([int]$oldPid) -Force
+            Start-Sleep -Seconds 2
         }
     }
 }
@@ -76,7 +99,12 @@ Write-Host "Starting Cloudflare Tunnel..."
 
 $tunnelProcess = Start-Process `
     -FilePath $tunnelPath `
-    -ArgumentList @("tunnel", "--url", "http://127.0.0.1:8787", "--no-autoupdate") `
+    -ArgumentList @(
+        "tunnel",
+        "--url",
+        "http://127.0.0.1:8787",
+        "--no-autoupdate"
+    ) `
     -WorkingDirectory $root `
     -PassThru `
     -WindowStyle Hidden `
@@ -85,14 +113,17 @@ $tunnelProcess = Start-Process `
 
 Set-Content $oldPidFile $tunnelProcess.Id
 
+# Wait for Quick Tunnel URL
 $httpsUrl = $null
 
 for ($i = 0; $i -lt 60; $i++) {
+
     Start-Sleep -Seconds 1
 
     $logs = ""
 
     foreach ($file in @($tunnelLog, $tunnelError)) {
+
         if (Test-Path $file) {
             $logs += Get-Content $file -Raw -ErrorAction SilentlyContinue
         }
@@ -122,34 +153,58 @@ $wsUrl = ($httpsUrl -replace '^https://', 'wss://') + "/"
 
 Write-Host "New WSS URL: $wsUrl"
 
+# Check GitHub CLI
+$ghCommand = Get-Command gh.exe -ErrorAction Stop
+$gh = $ghCommand.Definition
+
+if ([string]::IsNullOrEmpty($gh)) {
+    throw "GitHub CLI not found"
+}
+
+# Fetch GitHub file
 Write-Host "Fetching GitHub file..."
 
-$file = (& gh api "repos/$repo/contents/index.html?ref=$branch" | ConvertFrom-Json)
+$fileJson = & $gh api "repos/$repo/contents/index.html?ref=$branch"
 
 if ($LASTEXITCODE -ne 0) {
     throw "Could not fetch GitHub file"
 }
 
-$bytes = [Convert]::FromBase64String(($file.content -replace '\s', ''))
+$file = $fileJson | ConvertFrom-Json
+
+if (!$file.content -or !$file.sha) {
+    throw "GitHub file content or SHA is missing"
+}
+
+$bytes = [Convert]::FromBase64String(
+    ($file.content -replace '\s', '')
+)
+
 $html = [System.Text.Encoding]::UTF8.GetString($bytes)
 
+# Replace exactly one WS_URL
 $pattern = "(?m)(const WS_URL\s*=\s*\r?\n\s*)'wss://[^']+';"
-$regex = [regex]::new($pattern)
 
-if ($regex.Matches($html).Count -ne 1) {
+$matches = [regex]::Matches($html, $pattern)
+
+if ($matches.Count -ne 1) {
     throw "WS_URL was not found exactly once. GitHub was not changed."
 }
 
-$html = $regex.Replace(
+$evaluator = [System.Text.RegularExpressions.MatchEvaluator] {
+    param($m)
+
+    return $m.Groups[1].Value + "'" + $wsUrl + "';"
+}
+
+$html = [regex]::Replace(
     $html,
-    [System.Text.RegularExpressions.MatchEvaluator]{
-        param($m)
-        return $m.Groups[1].Value + "'" + $wsUrl + "';"
-    },
+    $pattern,
+    $evaluator,
     1
 )
 
-Write-Host "Updating GitHub..."
+Write-Host "Preparing GitHub update..."
 
 $newBytes = [System.Text.Encoding]::UTF8.GetBytes($html)
 $encoded = [Convert]::ToBase64String($newBytes)
@@ -163,21 +218,32 @@ $payload = @{
 
 $tempJson = Join-Path $root "github-update.json"
 
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+
 [System.IO.File]::WriteAllText(
     $tempJson,
     $payload,
-    [System.Text.UTF8Encoding]::new($false)
+    $utf8
 )
 
 try {
-    & gh api --method PUT "repos/$repo/contents/index.html" --input $tempJson
+
+    Write-Host "Updating GitHub..."
+
+    & $gh api `
+        --method PUT `
+        "repos/$repo/contents/index.html" `
+        --input $tempJson
 
     if ($LASTEXITCODE -ne 0) {
         throw "GitHub update failed"
     }
+
 }
 finally {
+
     Remove-Item $tempJson -Force -ErrorAction SilentlyContinue
+
 }
 
 Write-Host "GitHub update completed."
