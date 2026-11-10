@@ -8,6 +8,8 @@ $branch = "main"
 $serverPath = Join-Path $root "server.js"
 $tunnelPath = Join-Path $root "cloudflared.exe"
 
+$node = "C:\Program Files\nodejs\node.exe"
+
 $nodeLog = Join-Path $root "node.log"
 $nodeError = Join-Path $root "node-error.log"
 $tunnelLog = Join-Path $root "tunnel.log"
@@ -15,6 +17,7 @@ $tunnelError = Join-Path $root "tunnel-error.log"
 
 Write-Host "Starting server..."
 
+# Check required files
 if (!(Test-Path $serverPath)) {
     throw "server.js not found"
 }
@@ -23,15 +26,9 @@ if (!(Test-Path $tunnelPath)) {
     throw "cloudflared.exe not found"
 }
 
-# Find Node.js executable
-$nodeCommand = Get-Command node.exe -ErrorAction Stop
-$node = $nodeCommand.Definition
-
-if ([string]::IsNullOrEmpty($node) -or !(Test-Path $node)) {
-    throw "Node.js executable not found"
+if (!(Test-Path $node)) {
+    throw "Node.js not found: $node"
 }
-
-Write-Host "Node.js: $node"
 
 # Check existing server
 $serverReady = $false
@@ -159,6 +156,19 @@ $gh = $ghCommand.Definition
 
 if ([string]::IsNullOrEmpty($gh)) {
     throw "GitHub CLI not found"
+}
+
+if (!(Test-Path $gh)) {
+    throw "GitHub CLI executable not found"
+}
+
+# Check GitHub login
+Write-Host "Checking GitHub login..."
+
+& $gh auth status
+
+if ($LASTEXITCODE -ne 0) {
+    throw "GitHub login required. Run gh auth login first."
 }
 
 # Fetch GitHub file
