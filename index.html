@@ -32,10 +32,9 @@ html,body{
  height:100%;
  background:#e9edf2;
 }
-#resetMapButton{
+.map-button{
  position:absolute;
  z-index:20;
- top:12px;
  right:12px;
  width:42px;
  height:42px;
@@ -53,13 +52,19 @@ html,body{
  cursor:pointer;
  -webkit-tap-highlight-color:transparent;
 }
-#resetMapButton:active{
+.map-button:active{
  background:#e2e8f0;
  transform:scale(.94);
 }
-#resetMapButton svg{
+.map-button svg{
  width:20px;
  height:20px;
+}
+#resetMapButton{top:12px}
+#cameraButton{top:62px}
+#cameraButton.off{
+ background:#e2e8f0;
+ color:#94a3b8;
 }
 .info-panel{
  position:absolute;
@@ -210,12 +215,36 @@ html,body{
  flex-shrink:0;
  font-weight:800;
 }
-.shake-level-0{color:#64748b}
-.shake-level-1{color:#2563eb}
-.shake-level-2{color:#ca8a04}
-.shake-level-3{color:#ea580c}
-.shake-level-4{color:#dc2626}
+.shake-level-0{color:#22a447}
+.shake-level-1{color:#ca8a04}
+.shake-level-2{color:#dc2626}
 
+.legend{
+ position:absolute;
+ z-index:10;
+ right:12px;
+ bottom:24px;
+ padding:9px 11px;
+ border:1px solid rgba(71,85,105,.2);
+ border-radius:7px;
+ background:rgba(255,255,255,.95);
+ box-shadow:0 3px 12px rgba(0,0,0,.12);
+ pointer-events:none;
+}
+.legend-item{
+ display:flex;
+ align-items:center;
+ gap:7px;
+ margin:4px 0;
+ font-size:9px;
+ font-weight:700;
+ color:#334155;
+}
+.legend-color{
+ width:11px;
+ height:11px;
+ border-radius:2px;
+}
 .hidden-elements{display:none}
 
 .maplibregl-ctrl-bottom-right,
@@ -239,21 +268,36 @@ html,body{
   width:40px;
   height:40px;
  }
+ #cameraButton{
+  top:60px;
+  right:12px;
+  width:40px;
+  height:40px;
+ }
 }
 </style>
 </head>
 
 <body>
 
-<main id="map" aria-label="リアルタイム震度グリッドマップ"></main>
+<main id="map" aria-label="リアルタイム震度観測点マップ"></main>
 
-<button id="resetMapButton" type="button" aria-label="初期位置に戻す">
+<button id="resetMapButton" class="map-button" type="button" aria-label="初期位置に戻す">
  <svg viewBox="0 0 24 24" fill="none"
   stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round">
   <path d="m3 10 9-7 9 7"/>
   <path d="M5 9v12h14V9"/>
   <path d="M9 21v-7h6v7"/>
+ </svg>
+</button>
+
+<button id="cameraButton" class="map-button" type="button" aria-label="カメラ枠の表示切り替え">
+ <svg viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 4h-4l-2 3H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z"/>
+  <circle cx="12" cy="13" r="3"/>
  </svg>
 </button>
 
@@ -301,6 +345,21 @@ html,body{
  </div>
 </section>
 
+<div class="legend">
+ <div class="legend-item">
+  <span class="legend-color" style="background:#22c55e"></span>
+  <span>弱い揺れ検知</span>
+ </div>
+ <div class="legend-item">
+  <span class="legend-color" style="background:#eab308"></span>
+  <span>揺れ検知</span>
+ </div>
+ <div class="legend-item">
+  <span class="legend-color" style="background:#ef4444"></span>
+  <span>強い揺れ検知</span>
+ </div>
+</div>
+
 <div class="hidden-elements">
  <span id="imageSize"></span>
  <span id="route"></span>
@@ -345,51 +404,56 @@ const MAP_PADDING = {
 
 const GRID_PARAMS = Object.freeze({
 
- /*
-  * 0.1度単位
-  * 日本付近では約11km × 約8～9km
-  */
- GRID_SIZE:0.1,
+ /* 0.1度単位。日本付近ではおよそ10km前後 */
+ SIZE:0.1,
 
- /*
-  * 直近10フレームの履歴
-  * 通常の約1秒間隔のフレームを想定
-  */
+ /* 10フレーム分の履歴 */
  HISTORY_COUNT:10,
 
- /*
-  * グリッドの震度上昇量
-  */
- MIN_RISE:0.35,
+ /* 履歴が途切れたとみなす時間 */
+ HISTORY_RESET_GAP:5000,
 
- /*
-  * 検知対象とする最低震度
-  */
- MIN_INTENSITY:-1,
+ /* 検知に必要な震度変化 */
+ MIN_RISE:0.2,
 
- /*
-  * 隣接するグリッドの必要数
-  * 自分自身を含まず1個以上
-  */
- MIN_NEIGHBORS:1,
+ /* グリッドの検知状態を保持する時間 */
+ HOLD_TIME:5000,
 
- /*
-  * イベント終了までの保持時間
-  */
- EXPIRE_SECONDS:[
-  20,
-  30,
-  40,
-  70,
-  80
- ],
+ /* カメラ枠の余白 */
+ CAMERA_PADDING:0.1,
 
- /*
-  * 時刻が大きく飛んだ場合の履歴リセット
-  */
- HISTORY_RESET_GAP:5
+ /* 隣接セルの探索範囲 */
+ NEIGHBOR_RANGE:1
 
 });
+
+/*
+ * 3段階の色分け。
+ * intensityは既存のRGB変換結果を使用する。
+ */
+function getGridLevel(intensity){
+ if(intensity>=2.5)return 2;
+ if(intensity>=0.5)return 1;
+ return 0;
+}
+
+const GRID_LEVELS=[
+ {
+  name:'弱い揺れ検知',
+  color:'#22c55e',
+  className:'shake-level-0'
+ },
+ {
+  name:'揺れ検知',
+  color:'#eab308',
+  className:'shake-level-1'
+ },
+ {
+  name:'強い揺れ検知',
+  color:'#ef4444',
+  className:'shake-level-2'
+ }
+];
 
 let clockBaseEpoch = null;
 let clockBasePerf = null;
@@ -400,11 +464,14 @@ let records = null;
 let recordsPromise = null;
 let preparedPoints = null;
 let stations = [];
+let gridCells = new Map();
+let gridEvents = [];
 let forceUpdate = true;
 let firstFit = true;
 let map;
 let lastImageWidth = 0;
 let lastImageHeight = 0;
+let cameraFrameEnabled = true;
 
 const $ = id => document.getElementById(id);
 
@@ -448,6 +515,10 @@ function formatJST(ms){
 
  return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
 }
+
+/* =========================================================
+   Wolfx時刻同期
+========================================================= */
 
 async function fetchWolfxTime(){
  const start=performance.now();
@@ -818,6 +889,9 @@ function colorToPosition(hsv){
  return p;
 }
 
+/*
+ * 元コードの変換処理を維持。
+ */
 function scaleToIntensity(scale){
  return scale*10-3;
 }
@@ -977,208 +1051,88 @@ function loadPoints(){
 }
 
 /* =========================================================
-   グリッド検知エンジン
+   グリッド生成
 ========================================================= */
 
-const gridEngine={
- grids:new Map(),
- events:[],
- lastFrameTime:null,
- nextEventId:1,
- processedFrames:0
-};
+function getGridCoordinates(lat,lon){
+ const size=GRID_PARAMS.SIZE;
 
-/*
- * グリッドキー
- *
- * 0.1度ごとに区切る。
- * 同じグリッド内の観測点は1つのセルに集約する。
- */
-function getGridIndex(lon,lat){
- const size=GRID_PARAMS.GRID_SIZE;
+ const gx=Math.floor((lon+180)/size);
+ const gy=Math.floor((lat+90)/size);
 
  return {
-  x:Math.floor(lon/size),
-  y:Math.floor(lat/size)
+  gx,
+  gy,
+  key:`${gx}:${gy}`
  };
 }
 
-function getGridKey(x,y){
- return `${x}:${y}`;
-}
+function createGridCell(gx,gy){
+ const size=GRID_PARAMS.SIZE;
 
-function getGridBounds(grid){
- const size=GRID_PARAMS.GRID_SIZE;
-
- const west=grid.x*size;
- const south=grid.y*size;
+ const west=gx*size-180;
+ const south=gy*size-90;
+ const east=west+size;
+ const north=south+size;
 
  return {
+  key:`${gx}:${gy}`,
+  gx,
+  gy,
+
   west,
   south,
-  east:west+size,
-  north:south+size
+  east,
+  north,
+
+  stations:[],
+
+  history:[],
+  currentIntensity:null,
+  rise:0,
+
+  detectedUntil:0,
+  level:0,
+
+  lastUpdated:0
  };
 }
 
-/*
- * 全観測点をグリッドに振り分ける。
- * 観測点は検知イベントを直接生成しない。
- */
-function setupGrids(){
- gridEngine.grids.clear();
- gridEngine.events=[];
- gridEngine.lastFrameTime=null;
+function setupGridCells(){
+ gridCells=new Map();
 
  for(const st of stations){
-  const index=getGridIndex(st.lon,st.lat);
-  const key=getGridKey(index.x,index.y);
+  const pos=getGridCoordinates(st.lat,st.lon);
 
-  let grid=gridEngine.grids.get(key);
+  let cell=gridCells.get(pos.key);
 
-  if(!grid){
-   grid={
-    key,
-    x:index.x,
-    y:index.y,
-    stations:[],
-    history:[],
-    intensity:null,
-    previousIntensity:null,
-    rise:0,
-    valid:false,
-    active:false,
-    level:0
-   };
-
-   gridEngine.grids.set(key,grid);
+  if(!cell){
+   cell=createGridCell(pos.gx,pos.gy);
+   gridCells.set(pos.key,cell);
   }
 
-  grid.stations.push(st);
+  cell.stations.push(st);
+  st.gridKey=pos.key;
  }
 
- console.log('グリッド初期化完了',{
-  grids:gridEngine.grids.size,
-  stations:stations.length,
-  gridSize:GRID_PARAMS.GRID_SIZE
+ console.log('グリッド生成完了',{
+  cells:gridCells.size,
+  size:GRID_PARAMS.SIZE
  });
 }
 
-/*
- * 震度レベル
- */
-function getShakeLevel(intensity){
- if(intensity>=4.5)return 4;
- if(intensity>=2.5)return 3;
- if(intensity>=0.5)return 2;
- if(intensity>=-1)return 1;
- return 0;
-}
-
-function getShakeLevelName(level){
- return [
-  '弱い揺れ',
-  '弱い揺れ',
-  '中程度',
-  '強い揺れ',
-  '非常に強い揺れ'
- ][level]||'不明';
-}
-
-function getShakeLevelClass(level){
- return 'shake-level-'+level;
-}
-
-function getExpireSeconds(level){
- return GRID_PARAMS.EXPIRE_SECONDS[level]??20;
-}
-
-/*
- * グリッド内の最大震度を計算する。
- *
- * 無効な観測点は集計しない。
- * すべて無効なら、そのグリッドは無効。
- */
-function aggregateGridIntensity(){
- for(const grid of gridEngine.grids.values()){
-  let maxIntensity=null;
-
-  for(const st of grid.stations){
-   if(!st.valid||!Number.isFinite(st.intensity)){
-    continue;
-   }
-
-   if(
-    maxIntensity===null||
-    st.intensity>maxIntensity
-   ){
-    maxIntensity=st.intensity;
-   }
-  }
-
-  grid.intensity=maxIntensity;
-  grid.valid=maxIntensity!==null;
- }
-}
-
-/*
- * グリッドの履歴を更新する。
- *
- * 直近10フレームのうち、最も古い有効値と
- * 現在値の差を上昇量として扱う。
- */
-function updateGridHistory(grid){
- const history=grid.history;
-
- let previous=null;
-
- for(const sample of history){
-  if(sample!==null){
-   previous=sample;
-   break;
-  }
- }
-
- grid.previousIntensity=previous;
-
- if(
-  grid.valid&&
-  previous!==null
- ){
-  grid.rise=grid.intensity-previous;
- }else{
-  grid.rise=0;
- }
-
- history.unshift(
-  grid.valid?grid.intensity:null
- );
-
- if(history.length>GRID_PARAMS.HISTORY_COUNT){
-  history.length=GRID_PARAMS.HISTORY_COUNT;
- }
-
- grid.level=grid.valid
-  ?getShakeLevel(grid.intensity)
-  :0;
-}
-
-/*
- * 隣接する8方向のグリッドを取得する。
- */
-function getNeighborGrids(grid){
+function getNeighborCells(cell){
  const result=[];
+ const range=GRID_PARAMS.NEIGHBOR_RANGE;
 
- for(let dy=-1;dy<=1;dy++){
-  for(let dx=-1;dx<=1;dx++){
+ for(let dy=-range;dy<=range;dy++){
+  for(let dx=-range;dx<=range;dx++){
    if(dx===0&&dy===0)continue;
 
-   const key=getGridKey(
-    grid.x+dx,
-    grid.y+dy
-   );
+   const key=
+    `${cell.gx+dx}:${cell.gy+dy}`;
 
-   const neighbor=gridEngine.grids.get(key);
+   const neighbor=gridCells.get(key);
 
    if(neighbor){
     result.push(neighbor);
@@ -1189,318 +1143,197 @@ function getNeighborGrids(grid){
  return result;
 }
 
-/*
- * グリッドの検知候補を作る。
- *
- * 自分のグリッドが上昇し、
- * 隣接グリッドも上昇していることが条件。
- */
-function findActiveGrids(){
- const candidates=[];
+/* =========================================================
+   グリッド履歴更新
+========================================================= */
 
- for(const grid of gridEngine.grids.values()){
-  grid.active=false;
+function updateGridHistory(cell){
+ let maxIntensity=null;
 
-  if(!grid.valid)continue;
+ for(const st of cell.stations){
+  if(!st.valid||st.intensity===null)continue;
 
   if(
-   grid.previousIntensity===null||
-   grid.rise<GRID_PARAMS.MIN_RISE||
-   grid.intensity<GRID_PARAMS.MIN_INTENSITY
+   maxIntensity===null||
+   st.intensity>maxIntensity
   ){
-   continue;
+   maxIntensity=st.intensity;
   }
-
-  const neighbors=getNeighborGrids(grid);
-
-  let activeNeighborCount=0;
-
-  for(const neighbor of neighbors){
-   if(
-    neighbor.valid&&
-    neighbor.previousIntensity!==null&&
-    neighbor.rise>=GRID_PARAMS.MIN_RISE&&
-    neighbor.intensity>=GRID_PARAMS.MIN_INTENSITY
-   ){
-    activeNeighborCount++;
-   }
-  }
-
-  if(
-   activeNeighborCount<
-   GRID_PARAMS.MIN_NEIGHBORS
-  ){
-   continue;
-  }
-
-  grid.active=true;
-  candidates.push(grid);
  }
 
- return candidates;
+ cell.currentIntensity=maxIntensity;
+
+ cell.history.push({
+  time:cell.lastUpdated,
+  value:maxIntensity
+ });
+
+ while(
+  cell.history.length>
+  GRID_PARAMS.HISTORY_COUNT
+ ){
+  cell.history.shift();
+ }
+
+ if(maxIntensity===null){
+  cell.rise=0;
+  return;
+ }
+
+ const firstValid=cell.history.find(
+  h=>h.value!==null
+ );
+
+ if(!firstValid){
+  cell.rise=0;
+  return;
+ }
+
+ cell.rise=maxIntensity-firstValid.value;
 }
 
-/*
- * 検知中のグリッドを隣接関係でグループ化する。
- *
- * 1つの連続したグリッド群が1イベントになる。
- */
-function createGridClusters(activeGrids){
- const activeMap=new Map();
+/* =========================================================
+   グリッド検知処理
+========================================================= */
 
- for(const grid of activeGrids){
-  activeMap.set(grid.key,grid);
+function resetGridHistories(){
+ for(const cell of gridCells.values()){
+  cell.history=[];
+  cell.currentIntensity=null;
+  cell.rise=0;
+  cell.detectedUntil=0;
+  cell.level=0;
  }
 
- const visited=new Set();
- const clusters=[];
+ gridEvents=[];
 
- for(const start of activeGrids){
+ updateShakeUI();
+ updateShakeMap();
+}
+
+function processGridFrame(time){
+ if(!gridCells.size)return;
+
+ /*
+  * 全グリッドの現在値を更新。
+  * 差分フレームに含まれない観測点も
+  * 現在の有効値を使って集約する。
+  */
+ for(const cell of gridCells.values()){
+  cell.lastUpdated=time;
+  updateGridHistory(cell);
+ }
+
+ const candidates=[];
+
+ for(const cell of gridCells.values()){
+  if(cell.currentIntensity===null)continue;
+
+  if(
+   cell.history.length<
+   GRID_PARAMS.HISTORY_COUNT
+  ){
+   continue;
+  }
+
+  if(cell.rise<GRID_PARAMS.MIN_RISE){
+   continue;
+  }
+
+  candidates.push(cell);
+ }
+
+ const candidateSet=new Set(
+  candidates.map(c=>c.key)
+ );
+
+ /*
+  * 隣接グリッドも反応している場合のみ検知。
+  * 単独セルの反応はイベント化しない。
+  */
+ for(const cell of candidates){
+  const neighbors=getNeighborCells(cell);
+
+  const activeNeighbors=neighbors.filter(
+   n=>candidateSet.has(n.key)
+  );
+
+  if(activeNeighbors.length<1){
+   continue;
+  }
+
+  cell.detectedUntil=
+   time+GRID_PARAMS.HOLD_TIME;
+
+  cell.level=getGridLevel(
+   cell.currentIntensity
+  );
+ }
+
+ /*
+  * 検知継続中のセルを集める。
+  */
+ const activeCells=[
+  ...gridCells.values()
+ ].filter(
+  cell=>cell.detectedUntil>=time
+ );
+
+ /*
+  * 隣接セルを連結して1つのイベントにする。
+  */
+ const activeMap=new Map(
+  activeCells.map(cell=>[cell.key,cell])
+ );
+
+ const visited=new Set();
+ const events=[];
+
+ for(const start of activeCells){
   if(visited.has(start.key))continue;
 
   const stack=[start];
-  const cells=[];
+  const component=[];
 
   visited.add(start.key);
 
   while(stack.length){
    const current=stack.pop();
 
-   cells.push(current);
+   component.push(current);
 
-   for(let dy=-1;dy<=1;dy++){
-    for(let dx=-1;dx<=1;dx++){
-     if(dx===0&&dy===0)continue;
-
-     const key=getGridKey(
-      current.x+dx,
-      current.y+dy
-     );
-
-     const neighbor=activeMap.get(key);
-
-     if(!neighbor||visited.has(key)){
-      continue;
-     }
-
-     visited.add(key);
-     stack.push(neighbor);
+   for(const neighbor of getNeighborCells(current)){
+    if(
+     !activeMap.has(neighbor.key)||
+     visited.has(neighbor.key)
+    ){
+     continue;
     }
+
+    visited.add(neighbor.key);
+    stack.push(neighbor);
    }
   }
 
-  /*
-   * 1セルだけの反応はイベントにしない。
-   * 少なくとも2つの隣接グリッドを必要とする。
-   */
-  if(cells.length>=2){
-   clusters.push(cells);
-  }
- }
+  if(component.length<2)continue;
 
- return clusters;
-}
-
-/*
- * グリッドイベント同士の接続判定。
- */
-function gridsTouch(a,b){
- return Math.abs(a.x-b.x)<=1&&
-        Math.abs(a.y-b.y)<=1;
-}
-
-function clusterTouchesEvent(cluster,event){
- for(const grid of cluster){
-  for(const oldGrid of event.cells){
-   if(gridsTouch(grid,oldGrid)){
-    return true;
-   }
-  }
- }
-
- return false;
-}
-
-/*
- * イベント統合。
- */
-function mergeGridEvents(target,source){
- if(target===source)return;
-
- for(const grid of source.cells){
-  target.cells.add(grid);
- }
-
- target.level=Math.max(
-  target.level,
-  source.level
- );
-
- target.peakIntensity=Math.max(
-  target.peakIntensity,
-  source.peakIntensity
- );
-
- target.lastActiveAt=Math.max(
-  target.lastActiveAt,
-  source.lastActiveAt
- );
-
- gridEngine.events=gridEngine.events.filter(
-  event=>event!==source
- );
-}
-
-/*
- * 新しいグリッドイベントを生成する。
- */
-function createGridEvent(cluster,time){
- let maxIntensity=-Infinity;
- let level=0;
-
- for(const grid of cluster){
-  maxIntensity=Math.max(
-   maxIntensity,
-   grid.intensity
+  const maxLevel=Math.max(
+   ...component.map(c=>c.level)
   );
 
-  level=Math.max(level,grid.level);
+  events.push({
+   cells:component,
+   level:maxLevel,
+   createdAt:Math.min(
+    ...component.map(c=>c.lastUpdated)
+   )
+  });
  }
 
- const event={
-  id:gridEngine.nextEventId++,
-  createdAt:time,
-  lastActiveAt:time,
-  level,
-  peakIntensity:maxIntensity,
-  cells:new Set(cluster)
- };
-
- gridEngine.events.push(event);
-
- return event;
-}
-
-/*
- * クラスタと既存イベントを結び付ける。
- *
- * 隣接したイベントは古いイベントに統合する。
- */
-function updateGridEvents(clusters,time){
- for(const cluster of clusters){
-  const matched=gridEngine.events.filter(
-   event=>clusterTouchesEvent(cluster,event)
-  );
-
-  let event;
-
-  if(matched.length===0){
-   event=createGridEvent(cluster,time);
-
-  }else{
-   matched.sort(
-    (a,b)=>a.createdAt-b.createdAt
-   );
-
-   event=matched[0];
-
-   for(let i=1;i<matched.length;i++){
-    mergeGridEvents(event,matched[i]);
-   }
-
-   event.cells=new Set(cluster);
-   event.lastActiveAt=time;
-
-   for(const grid of cluster){
-    event.level=Math.max(
-     event.level,
-     grid.level
-    );
-
-    event.peakIntensity=Math.max(
-     event.peakIntensity,
-     grid.intensity
-    );
-   }
-  }
- }
-
- /*
-  * イベントの有効期限を確認する。
-  */
- gridEngine.events=gridEngine.events.filter(event=>{
-  const expire=getExpireSeconds(event.level)*1000;
-
-  return time-event.lastActiveAt<expire;
- });
-}
-
-/*
- * メインのグリッド検知処理。
- */
-function processGridDetection(time){
- aggregateGridIntensity();
-
- for(const grid of gridEngine.grids.values()){
-  updateGridHistory(grid);
- }
-
- const activeGrids=findActiveGrids();
-
- const clusters=createGridClusters(activeGrids);
-
- updateGridEvents(clusters,time);
-
- gridEngine.processedFrames++;
+ gridEvents=events;
 
  updateShakeUI();
  updateShakeMap();
-}
-
-/*
- * 履歴をリセット。
- */
-function resetGridHistories(){
- for(const grid of gridEngine.grids.values()){
-  grid.history=[];
-  grid.previousIntensity=null;
-  grid.rise=0;
-  grid.active=false;
- }
-
- gridEngine.events=[];
- gridEngine.lastFrameTime=null;
-
- updateShakeUI();
- updateShakeMap();
-}
-
-/*
- * フレーム時刻の飛びを検出する。
- */
-function processShakeFrame(time){
- if(!gridEngine.grids.size)return;
-
- if(gridEngine.lastFrameTime!==null){
-  const gap=Math.abs(
-   time-gridEngine.lastFrameTime
-  );
-
-  if(
-   gap>=GRID_PARAMS.HISTORY_RESET_GAP*1000
-  ){
-   console.warn(
-    'グリッド履歴リセット: 時刻ジャンプ',
-    gap
-   );
-
-   resetGridHistories();
-  }
- }
-
- gridEngine.lastFrameTime=time;
-
- processGridDetection(time);
 }
 
 /* =========================================================
@@ -1508,7 +1341,7 @@ function processShakeFrame(time){
 ========================================================= */
 
 function updateShakeUI(){
- const events=gridEngine.events
+ const events=gridEvents
   .slice()
   .sort((a,b)=>b.createdAt-a.createdAt);
 
@@ -1526,9 +1359,7 @@ function updateShakeUI(){
 
  setText(
   $('shakeStateText'),
-  events.length>0
-   ?'地震検知中'
-   :'現在検知なし'
+  events.length>0?'グリッド地震検知中':'現在検知なし'
  );
 
  const list=$('shakeList');
@@ -1545,16 +1376,15 @@ function updateShakeUI(){
   name.className='shake-item-name';
 
   name.textContent=
-   `グリッド ${event.cells.size}セル`;
+   `検知エリア / ${event.cells.length}グリッド`;
 
   const level=document.createElement('span');
   level.className=
    'shake-level '+
-   getShakeLevelClass(event.level);
+   GRID_LEVELS[event.level].className;
 
-  level.textContent=getShakeLevelName(
-   event.level
-  );
+  level.textContent=
+   GRID_LEVELS[event.level].name;
 
   item.appendChild(name);
   item.appendChild(level);
@@ -1564,49 +1394,133 @@ function updateShakeUI(){
 }
 
 /* =========================================================
-   グリッド検知マップ
+   グリッドGeoJSON
 ========================================================= */
+
+function cellToFeature(cell){
+ return {
+  type:'Feature',
+
+  geometry:{
+   type:'Polygon',
+   coordinates:[[
+    [cell.west,cell.south],
+    [cell.east,cell.south],
+    [cell.east,cell.north],
+    [cell.west,cell.north],
+    [cell.west,cell.south]
+   ]]
+  },
+
+  properties:{
+   level:cell.level,
+   key:cell.key
+  }
+ };
+}
+
+function createCameraFeature(event,index){
+ const cells=event.cells;
+
+ const west=Math.min(
+  ...cells.map(c=>c.west)
+ )-GRID_PARAMS.CAMERA_PADDING;
+
+ const east=Math.max(
+  ...cells.map(c=>c.east)
+ )+GRID_PARAMS.CAMERA_PADDING;
+
+ const south=Math.min(
+  ...cells.map(c=>c.south)
+ )-GRID_PARAMS.CAMERA_PADDING;
+
+ const north=Math.max(
+  ...cells.map(c=>c.north)
+ )+GRID_PARAMS.CAMERA_PADDING;
+
+ return {
+  type:'Feature',
+
+  geometry:{
+   type:'Polygon',
+   coordinates:[[
+    [west,south],
+    [east,south],
+    [east,north],
+    [west,north],
+    [west,south]
+   ]]
+  },
+
+  properties:{
+   event:index
+  }
+ };
+}
 
 function updateShakeMap(){
  if(!map)return;
 
- const source=map.getSource('shake-grids');
+ const gridSource=map.getSource('shake-grid');
+ const cameraSource=map.getSource('camera-frame');
 
- if(!source)return;
+ if(!gridSource||!cameraSource)return;
 
- const features=[];
+ const gridFeatures=[];
+ const cameraFeatures=[];
 
- for(const event of gridEngine.events){
-  for(const grid of event.cells){
-   const bounds=getGridBounds(grid);
+ gridEvents.forEach((event,index)=>{
+  for(const cell of event.cells){
+   gridFeatures.push(
+    cellToFeature(cell)
+   );
+  }
 
-   features.push({
-    type:'Feature',
+  if(cameraFrameEnabled){
+   cameraFeatures.push(
+    createCameraFeature(event,index)
+   );
+  }
+ });
 
-    geometry:{
-     type:'Polygon',
-     coordinates:[[
-      [bounds.west,bounds.south],
-      [bounds.east,bounds.south],
-      [bounds.east,bounds.north],
-      [bounds.west,bounds.north],
-      [bounds.west,bounds.south]
-     ]]
-    },
+ gridSource.setData({
+  type:'FeatureCollection',
+  features:gridFeatures
+ });
 
-    properties:{
-     level:event.level,
-     eventId:event.id,
-     gridKey:grid.key
-    }
-   });
+ cameraSource.setData({
+  type:'FeatureCollection',
+  features:cameraFeatures
+ });
+}
+
+/* =========================================================
+   検知フレーム
+========================================================= */
+
+let lastGridFrameTime=null;
+
+function processDetectionFrame(time){
+ if(lastGridFrameTime!==null){
+  const gap=Math.abs(
+   time-lastGridFrameTime
+  );
+
+  if(
+   gap>=GRID_PARAMS.HISTORY_RESET_GAP
+  ){
+   console.warn(
+    'グリッド履歴リセット: 時刻間隔',
+    gap
+   );
+
+   resetGridHistories();
   }
  }
 
- source.setData({
-  type:'FeatureCollection',
-  features
- });
+ lastGridFrameTime=time;
+
+ processGridFrame(time);
 }
 
 /* =========================================================
@@ -1658,10 +1572,15 @@ function prepareStations(width,height){
 
    position:null,
    intensity:null,
-   valid:false
+   valid:false,
+
+   gridKey:null
   }));
 
- setupGrids();
+ setupGridCells();
+
+ gridEvents=[];
+ lastGridFrameTime=null;
 
  forceUpdate=true;
 }
@@ -1723,7 +1642,7 @@ function applyFrame(buf){
  let changed=forceUpdate;
 
  /*
-  * フルフレームの場合は全観測点を無効化する。
+  * フルフレームの場合は全観測点を一度無効化する。
   */
  if(flags&1){
   for(const st of stations){
@@ -1783,10 +1702,9 @@ function applyFrame(buf){
  }
 
  /*
-  * 差分フレームで更新されなかった観測点は、
-  * 以前の有効値を維持してグリッドに集約する。
+  * グリッド単位で検知処理。
   */
- processShakeFrame(ms);
+ processDetectionFrame(ms);
 
  let shown=0;
 
@@ -1844,6 +1762,7 @@ function applyFrame(buf){
 ========================================================= */
 
 function addSourceAndLayer(){
+
  if(!map.getSource('stations')){
   map.addSource('stations',{
    type:'geojson',
@@ -1881,11 +1800,9 @@ function addSourceAndLayer(){
   });
  }
 
- /*
-  * グリッド検知用GeoJSON
-  */
- if(!map.getSource('shake-grids')){
-  map.addSource('shake-grids',{
+ /* グリッド検知セル */
+ if(!map.getSource('shake-grid')){
+  map.addSource('shake-grid',{
    type:'geojson',
    data:{
     type:'FeatureCollection',
@@ -1894,55 +1811,77 @@ function addSourceAndLayer(){
   });
  }
 
- /*
-  * 検知グリッド塗りつぶし
-  */
  if(!map.getLayer('shake-grid-fill')){
   map.addLayer({
    id:'shake-grid-fill',
    type:'fill',
-   source:'shake-grids',
+   source:'shake-grid',
 
    paint:{
     'fill-color':[
      'match',
      ['get','level'],
-     0,'#94a3b8',
-     1,'#3b82f6',
-     2,'#eab308',
-     3,'#f97316',
-     4,'#dc2626',
-     '#64748b'
+     0,'#22c55e',
+     1,'#eab308',
+     2,'#ef4444',
+     '#22c55e'
     ],
 
-    'fill-opacity':0.38
+    'fill-opacity':0.55
    }
   });
  }
 
- /*
-  * グリッド境界線
-  */
  if(!map.getLayer('shake-grid-outline')){
   map.addLayer({
    id:'shake-grid-outline',
    type:'line',
-   source:'shake-grids',
+   source:'shake-grid',
 
    paint:{
     'line-color':[
      'match',
      ['get','level'],
-     0,'#64748b',
-     1,'#2563eb',
-     2,'#ca8a04',
-     3,'#ea580c',
-     4,'#dc2626',
-     '#475569'
+     0,'#16a34a',
+     1,'#ca8a04',
+     2,'#dc2626',
+     '#16a34a'
     ],
 
-    'line-width':1.2,
-    'line-opacity':0.9
+    'line-width':1.5,
+    'line-opacity':0.95
+   }
+  });
+ }
+
+ /* カメラ枠 */
+ if(!map.getSource('camera-frame')){
+  map.addSource('camera-frame',{
+   type:'geojson',
+   data:{
+    type:'FeatureCollection',
+    features:[]
+   }
+  });
+ }
+
+ if(!map.getLayer('camera-frame-outline')){
+  map.addLayer({
+   id:'camera-frame-outline',
+   type:'line',
+   source:'camera-frame',
+
+   paint:{
+    'line-color':'#ef1111',
+    'line-width':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     3,2,
+     6,3,
+     10,4
+    ],
+    'line-opacity':1
    }
   });
  }
@@ -1994,9 +1933,35 @@ function fitAll(){
  }
 }
 
+/* =========================================================
+   ボタン
+========================================================= */
+
 $('resetMapButton').addEventListener('click',()=>{
  fitAll();
 });
+
+$('cameraButton').addEventListener('click',()=>{
+ cameraFrameEnabled=!cameraFrameEnabled;
+
+ $('cameraButton').classList.toggle(
+  'off',
+  !cameraFrameEnabled
+ );
+
+ $('cameraButton').setAttribute(
+  'aria-label',
+  cameraFrameEnabled
+   ?'カメラ枠を非表示'
+   :'カメラ枠を表示'
+ );
+
+ updateShakeMap();
+});
+
+/* =========================================================
+   Map初期化
+========================================================= */
 
 map=new maplibregl.Map({
  container:'map',
