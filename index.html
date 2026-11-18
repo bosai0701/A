@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -32,9 +31,18 @@ html,body{
  height:100%;
  background:#e9edf2;
 }
-.map-button{
+#shakeCanvas{
+ position:absolute;
+ inset:0;
+ width:100%;
+ height:100%;
+ z-index:5;
+ pointer-events:none;
+}
+#resetMapButton{
  position:absolute;
  z-index:20;
+ top:12px;
  right:12px;
  width:42px;
  height:42px;
@@ -52,19 +60,13 @@ html,body{
  cursor:pointer;
  -webkit-tap-highlight-color:transparent;
 }
-.map-button:active{
+#resetMapButton:active{
  background:#e2e8f0;
  transform:scale(.94);
 }
-.map-button svg{
+#resetMapButton svg{
  width:20px;
  height:20px;
-}
-#resetMapButton{top:12px}
-#cameraButton{top:62px}
-#cameraButton.off{
- background:#e2e8f0;
- color:#94a3b8;
 }
 .info-panel{
  position:absolute;
@@ -150,103 +152,7 @@ html,body{
 .wss-status.connected .wss-dot{
  background:#168447;
 }
-.shake-box{
- margin-top:7px;
- padding:7px;
- border-radius:5.6px;
- background:#edf1f5;
-}
-.shake-heading{
- display:flex;
- align-items:center;
- justify-content:space-between;
- font-size:8px;
- font-weight:700;
- color:#475569;
-}
-.shake-count{
- font-size:12px;
- font-weight:800;
- color:#172033;
- font-variant-numeric:tabular-nums;
-}
-.shake-state{
- display:flex;
- align-items:center;
- gap:5px;
- margin-top:4px;
- font-size:8px;
- color:#64748b;
-}
-.shake-state-dot{
- width:6px;
- height:6px;
- border-radius:50%;
- background:#94a3b8;
- flex-shrink:0;
-}
-.shake-state.active .shake-state-dot{
- background:#dc3545;
-}
-.shake-state.active{
- color:#b42318;
- font-weight:700;
-}
-.shake-list{
- margin-top:5px;
- display:flex;
- flex-direction:column;
- gap:3px;
-}
-.shake-item{
- display:flex;
- align-items:center;
- justify-content:space-between;
- gap:5px;
- font-size:8px;
- color:#334155;
-}
-.shake-item-name{
- overflow:hidden;
- white-space:nowrap;
- text-overflow:ellipsis;
-}
-.shake-level{
- flex-shrink:0;
- font-weight:800;
-}
-.shake-level-0{color:#22a447}
-.shake-level-1{color:#ca8a04}
-.shake-level-2{color:#dc2626}
-
-.legend{
- position:absolute;
- z-index:10;
- right:12px;
- bottom:24px;
- padding:9px 11px;
- border:1px solid rgba(71,85,105,.2);
- border-radius:7px;
- background:rgba(255,255,255,.95);
- box-shadow:0 3px 12px rgba(0,0,0,.12);
- pointer-events:none;
-}
-.legend-item{
- display:flex;
- align-items:center;
- gap:7px;
- margin:4px 0;
- font-size:9px;
- font-weight:700;
- color:#334155;
-}
-.legend-color{
- width:11px;
- height:11px;
- border-radius:2px;
-}
 .hidden-elements{display:none}
-
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left{
  transform:scale(.70);
@@ -268,12 +174,6 @@ html,body{
   width:40px;
   height:40px;
  }
- #cameraButton{
-  top:60px;
-  right:12px;
-  width:40px;
-  height:40px;
- }
 }
 </style>
 </head>
@@ -281,23 +181,15 @@ html,body{
 <body>
 
 <main id="map" aria-label="リアルタイム震度観測点マップ"></main>
+<canvas id="shakeCanvas"></canvas>
 
-<button id="resetMapButton" class="map-button" type="button" aria-label="初期位置に戻す">
+<button id="resetMapButton" type="button" aria-label="初期位置に戻す">
  <svg viewBox="0 0 24 24" fill="none"
   stroke="currentColor" stroke-width="2"
   stroke-linecap="round" stroke-linejoin="round">
   <path d="m3 10 9-7 9 7"/>
   <path d="M5 9v12h14V9"/>
   <path d="M9 21v-7h6v7"/>
- </svg>
-</button>
-
-<button id="cameraButton" class="map-button" type="button" aria-label="カメラ枠の表示切り替え">
- <svg viewBox="0 0 24 24" fill="none"
-  stroke="currentColor" stroke-width="2"
-  stroke-linecap="round" stroke-linejoin="round">
-  <path d="M14 4h-4l-2 3H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z"/>
-  <circle cx="12" cy="13" r="3"/>
  </svg>
 </button>
 
@@ -325,40 +217,11 @@ html,body{
   </div>
  </div>
 
- <div class="shake-box">
-  <div class="shake-heading">
-   <span>グリッド地震検知</span>
-   <span class="shake-count" id="shakeCount">0</span>
-  </div>
-
-  <div class="shake-state" id="shakeState">
-   <span class="shake-state-dot"></span>
-   <span id="shakeStateText">待機中</span>
-  </div>
-
-  <div class="shake-list" id="shakeList"></div>
- </div>
-
  <div class="wss-status" id="wsInfo">
   <span class="wss-dot"></span>
   <span>WSS 未接続</span>
  </div>
 </section>
-
-<div class="legend">
- <div class="legend-item">
-  <span class="legend-color" style="background:#22c55e"></span>
-  <span>弱い揺れ検知</span>
- </div>
- <div class="legend-item">
-  <span class="legend-color" style="background:#eab308"></span>
-  <span>揺れ検知</span>
- </div>
- <div class="legend-item">
-  <span class="legend-color" style="background:#ef4444"></span>
-  <span>強い揺れ検知</span>
- </div>
-</div>
 
 <div class="hidden-elements">
  <span id="imageSize"></span>
@@ -375,112 +238,95 @@ const NTP_URL =
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-const TIME_SYNC_INTERVAL = 60000;
-const TIME_SYNC_SAMPLES = 5;
-const POINTS_TIMEOUT = 8000;
-const RECONNECT_BASE = 1000;
-const RECONNECT_MAX = 10000;
-const PING_INTERVAL = 10000;
-const HIDDEN_DISCONNECT = 60000;
+const TIME_SYNC_INTERVAL=60000;
+const TIME_SYNC_SAMPLES=5;
+const POINTS_TIMEOUT=8000;
+const RECONNECT_BASE=1000;
+const RECONNECT_MAX=10000;
+const PING_INTERVAL=10000;
+const HIDDEN_DISCONNECT=60000;
 
-const INITIAL_CENTER = [138,36.5];
-const INITIAL_ZOOM = 4.2;
+const INITIAL_CENTER=[138,36.5];
+const INITIAL_ZOOM=4.2;
 
-const JAPAN_BOUNDS = [
+const JAPAN_BOUNDS=[
  [122.5,24],
  [146,46]
 ];
 
-const MAP_PADDING = {
+const MAP_PADDING={
  top:90,
  right:35,
  bottom:70,
  left:35
 };
 
-/* =========================================================
-   グリッド検知パラメータ
-========================================================= */
+/* 揺れ検知設定：元のC#初期値 */
 
-const GRID_PARAMS = Object.freeze({
+const SHAKE={
+ MAX_DISTANCE:60,
+ PEAK_DISTANCE:14,
+ MAX_NEAR_POINTS:50,
 
- /* 0.1度単位。日本付近ではおよそ10km前後 */
- SIZE:0.1,
+ MIN_DIFF:0.2,
+ ISOLATED_THRESHOLD:1,
+ ISOLATED_DIFF:1.4,
 
- /* 10フレーム分の履歴 */
- HISTORY_COUNT:10,
+ SCORE_RATIO:0.333333,
+ SCORE_OFFSET:-0.8,
+ NO_CHANGE_PENALTY:0.25,
 
- /* 履歴が途切れたとみなす時間 */
- HISTORY_RESET_GAP:5000,
+ WEAKER_CONFIRM:4,
+ WEAK_CONFIRM:3,
 
- /* 検知に必要な震度変化 */
- MIN_RISE:0.2,
+ MERGE_DISTANCE:[90,130,180,250,250],
 
- /* グリッドの検知状態を保持する時間 */
- HOLD_TIME:5000,
+ EXPIRE_SECONDS:[20,30,40,70,80],
 
- /* カメラ枠の余白 */
- CAMERA_PADDING:0.1,
+ GRID_SIZE:150
+};
 
- /* 隣接セルの探索範囲 */
- NEIGHBOR_RANGE:1
-
-});
-
-/*
- * 3段階の色分け。
- * intensityは既存のRGB変換結果を使用する。
- */
-function getGridLevel(intensity){
- if(intensity>=2.5)return 2;
- if(intensity>=0.5)return 1;
- return 0;
-}
-
-const GRID_LEVELS=[
- {
-  name:'弱い揺れ検知',
-  color:'#22c55e',
-  className:'shake-level-0'
- },
- {
-  name:'揺れ検知',
-  color:'#eab308',
-  className:'shake-level-1'
- },
- {
-  name:'強い揺れ検知',
-  color:'#ef4444',
-  className:'shake-level-2'
- }
+const SHAKE_COLORS=[
+ '#16A34A',
+ '#16A34A',
+ '#EAB308',
+ '#DC2626',
+ '#DC2626'
 ];
 
-let clockBaseEpoch = null;
-let clockBasePerf = null;
-let clockSynced = false;
-let timeSyncPromise = null;
-let lastAppliedImageMs = null;
-let records = null;
-let recordsPromise = null;
-let preparedPoints = null;
-let stations = [];
-let gridCells = new Map();
-let gridEvents = [];
-let forceUpdate = true;
-let firstFit = true;
+let clockBaseEpoch=null;
+let clockBasePerf=null;
+let clockSynced=false;
+let timeSyncPromise=null;
+
+let lastAppliedImageMs=null;
+let records=null;
+let recordsPromise=null;
+let preparedPoints=null;
+let stations=[];
+
+let forceUpdate=true;
+let firstFit=true;
 let map;
-let lastImageWidth = 0;
-let lastImageHeight = 0;
-let cameraFrameEnabled = true;
 
-const $ = id => document.getElementById(id);
+let lastImageWidth=0;
+let lastImageHeight=0;
 
-const HEX = Array.from(
+let ws=null;
+let wsPing=null;
+let wsReconnectTimer=null;
+let wsAttempt=0;
+let wsWanted=true;
+let hiddenTimer=null;
+
+const $=id=>document.getElementById(id);
+
+const HEX=Array.from(
  {length:256},
  (_,i)=>i.toString(16).padStart(2,'0')
 );
 
-const p2 = n=>String(n).padStart(2,'0');
+const p2=n=>String(n).padStart(2,'0');
 
 function setText(el,text){
  if(el._t===text)return;
@@ -488,10 +334,10 @@ function setText(el,text){
  el.textContent=text;
 }
 
+/* 時刻同期 */
+
 function getSyncedNow(){
- if(!clockSynced){
-  return Date.now();
- }
+ if(!clockSynced)return Date.now();
 
  return clockBaseEpoch+
   (performance.now()-clockBasePerf);
@@ -516,13 +362,8 @@ function formatJST(ms){
  return `${t.Y}/${t.M}/${t.D} ${t.h}:${t.m}:${t.s}`;
 }
 
-/* =========================================================
-   Wolfx時刻同期
-========================================================= */
-
 async function fetchWolfxTime(){
  const start=performance.now();
-
  const controller=new AbortController();
 
  const timeout=setTimeout(
@@ -580,9 +421,7 @@ async function fetchWolfxTime(){
 }
 
 async function syncClock(){
- if(timeSyncPromise){
-  return timeSyncPromise;
- }
+ if(timeSyncPromise)return timeSyncPromise;
 
  timeSyncPromise=(async()=>{
   const samples=[];
@@ -606,12 +445,6 @@ async function syncClock(){
   clockBaseEpoch=best.epoch;
   clockBasePerf=best.perf;
   clockSynced=true;
-
-  console.log('Wolfx時刻同期完了',{
-   RTT:Math.round(best.rtt),
-   samples:samples.length,
-   serverTime:new Date(best.epoch).toISOString()
-  });
 
   return best;
 
@@ -643,9 +476,7 @@ function tickSyncTime(){
  );
 }
 
-/* =========================================================
-   WebSocket
-========================================================= */
+/* WSS */
 
 const wsStats={
  state:'未接続',
@@ -656,13 +487,6 @@ const wsStats={
  clients:null
 };
 
-let ws=null;
-let wsPing=null;
-let wsReconnectTimer=null;
-let wsAttempt=0;
-let wsWanted=true;
-let hiddenTimer=null;
-
 function updateWsInfo(){
  const el=$('wsInfo');
 
@@ -671,10 +495,8 @@ function updateWsInfo(){
 
  el.classList.toggle('connected',!!connected);
 
- const label=el.querySelector('span:last-child');
-
  setText(
-  label,
+  el.querySelector('span:last-child'),
   connected?'WSS 接続中':'WSS 未接続'
  );
 }
@@ -722,9 +544,7 @@ function connectStream(){
  updateWsInfo();
 
  const s=new WebSocket(WS_URL);
-
  s.binaryType='arraybuffer';
-
  ws=s;
 
  s.onopen=()=>{
@@ -754,48 +574,38 @@ function connectStream(){
   }
 
   wsStats.frames++;
-
   wsStats.lastRecvPerf=performance.now();
-
-  const buf=ev.data;
 
   loadPoints()
    .then(()=>{
     if(ws===s){
-     applyFrame(buf);
+     applyFrame(ev.data);
     }
    })
    .catch(e=>{
     wsStats.errors++;
 
-    console.error('観測点データ処理エラー:',e);
+    console.error('フレーム処理エラー:',e);
 
-    try{
-     s.close();
-    }catch(_){}
+    try{s.close();}catch(_){}
    });
  };
 
  s.onerror=()=>{};
 
  s.onclose=()=>{
-  if(ws===s){
-   ws=null;
-  }
+  if(ws===s)ws=null;
 
   clearInterval(wsPing);
 
   wsStats.state='切断';
-
   updateWsInfo();
 
   scheduleReconnect();
  };
 }
 
-/* =========================================================
-   RGB → HSV → 強震モニタスケール
-========================================================= */
+/* 画像色解析 */
 
 function rgbToHSV(r,g,b){
  r/=255;
@@ -814,14 +624,9 @@ function rgbToHSV(r,g,b){
  if(delta!==0){
   if(max===r){
    h=(g-b)/delta;
-
-   if(g<b){
-    h+=6;
-   }
-
+   if(g<b)h+=6;
   }else if(max===g){
    h=(b-r)/delta+2;
-
   }else{
    h=(r-g)/delta+4;
   }
@@ -878,34 +683,18 @@ function colorToPosition(hsv){
    +1.2236;
  }
 
- if(p<0){
-  p=0;
- }
+ if(p<0)p=0;
 
- if(!Number.isFinite(p)){
-  return null;
- }
+ if(!Number.isFinite(p))return null;
 
  return p;
 }
 
-/*
- * 元コードの変換処理を維持。
- */
-function scaleToIntensity(scale){
- return scale*10-3;
-}
-
-/* =========================================================
-   観測点JSON
-========================================================= */
+/* 観測点データ */
 
 function walkRecords(value,out=[]){
  if(Array.isArray(value)){
-  for(const v of value){
-   walkRecords(v,out);
-  }
-
+  for(const v of value)walkRecords(v,out);
   return out;
  }
 
@@ -951,15 +740,12 @@ function preparePoints(recs){
    !Number.isFinite(lon)||
    !Number.isFinite(x)||
    !Number.isFinite(y)
-  ){
-   continue;
-  }
+  )continue;
 
   if(item.is_suspended===true)continue;
 
   result.push({
-   lat,
-   lon,
+   lat,lon,
    x:Math.round(x),
    y:Math.round(y),
 
@@ -983,9 +769,7 @@ function preparePoints(recs){
 }
 
 function loadPoints(){
- if(recordsPromise){
-  return recordsPromise;
- }
+ if(recordsPromise)return recordsPromise;
 
  recordsPromise=(async()=>{
   const controller=new AbortController();
@@ -1050,482 +834,7 @@ function loadPoints(){
  return recordsPromise;
 }
 
-/* =========================================================
-   グリッド生成
-========================================================= */
-
-function getGridCoordinates(lat,lon){
- const size=GRID_PARAMS.SIZE;
-
- const gx=Math.floor((lon+180)/size);
- const gy=Math.floor((lat+90)/size);
-
- return {
-  gx,
-  gy,
-  key:`${gx}:${gy}`
- };
-}
-
-function createGridCell(gx,gy){
- const size=GRID_PARAMS.SIZE;
-
- const west=gx*size-180;
- const south=gy*size-90;
- const east=west+size;
- const north=south+size;
-
- return {
-  key:`${gx}:${gy}`,
-  gx,
-  gy,
-
-  west,
-  south,
-  east,
-  north,
-
-  stations:[],
-
-  history:[],
-  currentIntensity:null,
-  rise:0,
-
-  detectedUntil:0,
-  level:0,
-
-  lastUpdated:0
- };
-}
-
-function setupGridCells(){
- gridCells=new Map();
-
- for(const st of stations){
-  const pos=getGridCoordinates(st.lat,st.lon);
-
-  let cell=gridCells.get(pos.key);
-
-  if(!cell){
-   cell=createGridCell(pos.gx,pos.gy);
-   gridCells.set(pos.key,cell);
-  }
-
-  cell.stations.push(st);
-  st.gridKey=pos.key;
- }
-
- console.log('グリッド生成完了',{
-  cells:gridCells.size,
-  size:GRID_PARAMS.SIZE
- });
-}
-
-function getNeighborCells(cell){
- const result=[];
- const range=GRID_PARAMS.NEIGHBOR_RANGE;
-
- for(let dy=-range;dy<=range;dy++){
-  for(let dx=-range;dx<=range;dx++){
-   if(dx===0&&dy===0)continue;
-
-   const key=
-    `${cell.gx+dx}:${cell.gy+dy}`;
-
-   const neighbor=gridCells.get(key);
-
-   if(neighbor){
-    result.push(neighbor);
-   }
-  }
- }
-
- return result;
-}
-
-/* =========================================================
-   グリッド履歴更新
-========================================================= */
-
-function updateGridHistory(cell){
- let maxIntensity=null;
-
- for(const st of cell.stations){
-  if(!st.valid||st.intensity===null)continue;
-
-  if(
-   maxIntensity===null||
-   st.intensity>maxIntensity
-  ){
-   maxIntensity=st.intensity;
-  }
- }
-
- cell.currentIntensity=maxIntensity;
-
- cell.history.push({
-  time:cell.lastUpdated,
-  value:maxIntensity
- });
-
- while(
-  cell.history.length>
-  GRID_PARAMS.HISTORY_COUNT
- ){
-  cell.history.shift();
- }
-
- if(maxIntensity===null){
-  cell.rise=0;
-  return;
- }
-
- const firstValid=cell.history.find(
-  h=>h.value!==null
- );
-
- if(!firstValid){
-  cell.rise=0;
-  return;
- }
-
- cell.rise=maxIntensity-firstValid.value;
-}
-
-/* =========================================================
-   グリッド検知処理
-========================================================= */
-
-function resetGridHistories(){
- for(const cell of gridCells.values()){
-  cell.history=[];
-  cell.currentIntensity=null;
-  cell.rise=0;
-  cell.detectedUntil=0;
-  cell.level=0;
- }
-
- gridEvents=[];
-
- updateShakeUI();
- updateShakeMap();
-}
-
-function processGridFrame(time){
- if(!gridCells.size)return;
-
- /*
-  * 全グリッドの現在値を更新。
-  * 差分フレームに含まれない観測点も
-  * 現在の有効値を使って集約する。
-  */
- for(const cell of gridCells.values()){
-  cell.lastUpdated=time;
-  updateGridHistory(cell);
- }
-
- const candidates=[];
-
- for(const cell of gridCells.values()){
-  if(cell.currentIntensity===null)continue;
-
-  if(
-   cell.history.length<
-   GRID_PARAMS.HISTORY_COUNT
-  ){
-   continue;
-  }
-
-  if(cell.rise<GRID_PARAMS.MIN_RISE){
-   continue;
-  }
-
-  candidates.push(cell);
- }
-
- const candidateSet=new Set(
-  candidates.map(c=>c.key)
- );
-
- /*
-  * 隣接グリッドも反応している場合のみ検知。
-  * 単独セルの反応はイベント化しない。
-  */
- for(const cell of candidates){
-  const neighbors=getNeighborCells(cell);
-
-  const activeNeighbors=neighbors.filter(
-   n=>candidateSet.has(n.key)
-  );
-
-  if(activeNeighbors.length<1){
-   continue;
-  }
-
-  cell.detectedUntil=
-   time+GRID_PARAMS.HOLD_TIME;
-
-  cell.level=getGridLevel(
-   cell.currentIntensity
-  );
- }
-
- /*
-  * 検知継続中のセルを集める。
-  */
- const activeCells=[
-  ...gridCells.values()
- ].filter(
-  cell=>cell.detectedUntil>=time
- );
-
- /*
-  * 隣接セルを連結して1つのイベントにする。
-  */
- const activeMap=new Map(
-  activeCells.map(cell=>[cell.key,cell])
- );
-
- const visited=new Set();
- const events=[];
-
- for(const start of activeCells){
-  if(visited.has(start.key))continue;
-
-  const stack=[start];
-  const component=[];
-
-  visited.add(start.key);
-
-  while(stack.length){
-   const current=stack.pop();
-
-   component.push(current);
-
-   for(const neighbor of getNeighborCells(current)){
-    if(
-     !activeMap.has(neighbor.key)||
-     visited.has(neighbor.key)
-    ){
-     continue;
-    }
-
-    visited.add(neighbor.key);
-    stack.push(neighbor);
-   }
-  }
-
-  if(component.length<2)continue;
-
-  const maxLevel=Math.max(
-   ...component.map(c=>c.level)
-  );
-
-  events.push({
-   cells:component,
-   level:maxLevel,
-   createdAt:Math.min(
-    ...component.map(c=>c.lastUpdated)
-   )
-  });
- }
-
- gridEvents=events;
-
- updateShakeUI();
- updateShakeMap();
-}
-
-/* =========================================================
-   検知UI
-========================================================= */
-
-function updateShakeUI(){
- const events=gridEvents
-  .slice()
-  .sort((a,b)=>b.createdAt-a.createdAt);
-
- setText(
-  $('shakeCount'),
-  String(events.length)
- );
-
- const state=$('shakeState');
-
- state.classList.toggle(
-  'active',
-  events.length>0
- );
-
- setText(
-  $('shakeStateText'),
-  events.length>0?'グリッド地震検知中':'現在検知なし'
- );
-
- const list=$('shakeList');
-
- while(list.firstChild){
-  list.removeChild(list.firstChild);
- }
-
- for(const event of events.slice(0,5)){
-  const item=document.createElement('div');
-  item.className='shake-item';
-
-  const name=document.createElement('span');
-  name.className='shake-item-name';
-
-  name.textContent=
-   `検知エリア / ${event.cells.length}グリッド`;
-
-  const level=document.createElement('span');
-  level.className=
-   'shake-level '+
-   GRID_LEVELS[event.level].className;
-
-  level.textContent=
-   GRID_LEVELS[event.level].name;
-
-  item.appendChild(name);
-  item.appendChild(level);
-
-  list.appendChild(item);
- }
-}
-
-/* =========================================================
-   グリッドGeoJSON
-========================================================= */
-
-function cellToFeature(cell){
- return {
-  type:'Feature',
-
-  geometry:{
-   type:'Polygon',
-   coordinates:[[
-    [cell.west,cell.south],
-    [cell.east,cell.south],
-    [cell.east,cell.north],
-    [cell.west,cell.north],
-    [cell.west,cell.south]
-   ]]
-  },
-
-  properties:{
-   level:cell.level,
-   key:cell.key
-  }
- };
-}
-
-function createCameraFeature(event,index){
- const cells=event.cells;
-
- const west=Math.min(
-  ...cells.map(c=>c.west)
- )-GRID_PARAMS.CAMERA_PADDING;
-
- const east=Math.max(
-  ...cells.map(c=>c.east)
- )+GRID_PARAMS.CAMERA_PADDING;
-
- const south=Math.min(
-  ...cells.map(c=>c.south)
- )-GRID_PARAMS.CAMERA_PADDING;
-
- const north=Math.max(
-  ...cells.map(c=>c.north)
- )+GRID_PARAMS.CAMERA_PADDING;
-
- return {
-  type:'Feature',
-
-  geometry:{
-   type:'Polygon',
-   coordinates:[[
-    [west,south],
-    [east,south],
-    [east,north],
-    [west,north],
-    [west,south]
-   ]]
-  },
-
-  properties:{
-   event:index
-  }
- };
-}
-
-function updateShakeMap(){
- if(!map)return;
-
- const gridSource=map.getSource('shake-grid');
- const cameraSource=map.getSource('camera-frame');
-
- if(!gridSource||!cameraSource)return;
-
- const gridFeatures=[];
- const cameraFeatures=[];
-
- gridEvents.forEach((event,index)=>{
-  for(const cell of event.cells){
-   gridFeatures.push(
-    cellToFeature(cell)
-   );
-  }
-
-  if(cameraFrameEnabled){
-   cameraFeatures.push(
-    createCameraFeature(event,index)
-   );
-  }
- });
-
- gridSource.setData({
-  type:'FeatureCollection',
-  features:gridFeatures
- });
-
- cameraSource.setData({
-  type:'FeatureCollection',
-  features:cameraFeatures
- });
-}
-
-/* =========================================================
-   検知フレーム
-========================================================= */
-
-let lastGridFrameTime=null;
-
-function processDetectionFrame(time){
- if(lastGridFrameTime!==null){
-  const gap=Math.abs(
-   time-lastGridFrameTime
-  );
-
-  if(
-   gap>=GRID_PARAMS.HISTORY_RESET_GAP
-  ){
-   console.warn(
-    'グリッド履歴リセット: 時刻間隔',
-    gap
-   );
-
-   resetGridHistories();
-  }
- }
-
- lastGridFrameTime=time;
-
- processGridFrame(time);
-}
-
-/* =========================================================
-   観測点準備
-========================================================= */
+/* 観測点の初期化 */
 
 function prepareStations(width,height){
  if(
@@ -1561,33 +870,724 @@ function prepareStations(width,height){
    x:p.x,
    y:p.y,
 
-   lat:p.lat,
-   lon:p.lon,
-
    r:0,
    g:0,
    b:0,
 
    hex:'#000000',
-
    position:null,
-   intensity:null,
    valid:false,
 
-   gridKey:null
+   /* 揺れ検知用 */
+   history:new Array(10).fill(null),
+   historyPosition:0,
+
+   intensityDiff:0,
+   intensityAverage:0,
+
+   hasValidHistory:false,
+   tmpDisabled:false,
+
+   event:null,
+   eventedAt:0,
+   eventedExpireAt:0,
+
+   nearPoints:null
   }));
 
- setupGridCells();
-
- gridEvents=[];
- lastGridFrameTime=null;
+ initializeShakeDetection();
 
  forceUpdate=true;
 }
 
-/* =========================================================
-   バイナリフレーム処理
-========================================================= */
+/* =========================================
+   揺れ検知エンジン
+   ShakeDetectionEngine.cs のブラウザ移植
+========================================= */
+
+let shakeEvents=[];
+let shakeGridOrigin=null;
+let shakeInitialized=false;
+
+function haversine(a,b){
+ const R=6371;
+
+ const rad=Math.PI/180;
+
+ const dLat=(b.lat-a.lat)*rad;
+ const dLon=(b.lon-a.lon)*rad;
+
+ const lat1=a.lat*rad;
+ const lat2=b.lat*rad;
+
+ const x=
+  Math.sin(dLat/2)**2+
+  Math.cos(lat1)*Math.cos(lat2)*
+  Math.sin(dLon/2)**2;
+
+ return 2*R*Math.asin(Math.sqrt(x));
+}
+
+function calculateDistanceWeight(distance){
+ if(distance<=SHAKE.PEAK_DISTANCE){
+  return distance/SHAKE.PEAK_DISTANCE;
+ }
+
+ return (
+  SHAKE.MAX_DISTANCE-distance
+ )/(
+  SHAKE.MAX_DISTANCE-SHAKE.PEAK_DISTANCE
+ );
+}
+
+function initializeShakeDetection(){
+ if(shakeInitialized)return;
+
+ if(!stations.length)return;
+
+ console.log('揺れ検知：近傍観測点計算開始');
+
+ for(const point of stations){
+  const near=[];
+
+  for(const other of stations){
+   if(point===other)continue;
+
+   const distance=haversine(point,other);
+
+   if(distance>=SHAKE.MAX_DISTANCE)continue;
+
+   near.push({
+    point:other,
+    distance,
+    weight:calculateDistanceWeight(distance)
+   });
+  }
+
+  near.sort((a,b)=>a.distance-b.distance);
+
+  point.nearPoints=near.slice(
+   0,
+   SHAKE.MAX_NEAR_POINTS
+  );
+ }
+
+ shakeInitialized=true;
+
+ console.log('揺れ検知：初期化完了',{
+  stations:stations.length
+ });
+}
+
+/* 震度履歴 */
+
+function updateIntensityHistory(point,intensity){
+ const h=point.history;
+
+ point.historyPosition=
+  (point.historyPosition+1)%10;
+
+ h[point.historyPosition]=intensity;
+
+ let before=null;
+ let diff=0;
+ let total=0;
+
+ for(let i=point.historyPosition;i>=0;i--){
+  if(h[i]!==null){
+   if(before!==null){
+    diff+=before-h[i];
+   }
+
+   before=h[i];
+   total+=h[i];
+  }
+ }
+
+ for(let i=9;i>point.historyPosition;i--){
+  if(h[i]!==null){
+   if(before!==null){
+    diff+=before-h[i];
+   }
+
+   before=h[i];
+   total+=h[i];
+  }
+ }
+
+ point.intensityDiff=diff;
+ point.intensityAverage=total/10;
+
+ if(intensity!==null){
+  point.hasValidHistory=true;
+ }
+}
+
+/* イベントレベル */
+
+function getShakeLevel(intensity){
+ if(intensity>4.5)return 4;
+ if(intensity>2.5)return 3;
+ if(intensity>0.5)return 2;
+ if(intensity>-1)return 1;
+
+ return 0;
+}
+
+function getExpireSeconds(level){
+ return SHAKE.EXPIRE_SECONDS[level]||20;
+}
+
+function getMergeDistance(level){
+ return SHAKE.MERGE_DISTANCE[level]||90;
+}
+
+/* イベント管理 */
+
+let shakeEventSequence=0;
+
+function createShakeEvent(point,time){
+ const level=getShakeLevel(point.position);
+
+ const evt={
+  id:++shakeEventSequence,
+
+  createdAt:time,
+  level,
+
+  points:[],
+  confirmed:false
+ };
+
+ evt.points.push(point);
+
+ point.event=evt;
+ point.eventedAt=time;
+
+ point.eventedExpireAt=
+  time+getExpireSeconds(level)*1000;
+
+ shakeEvents.push(evt);
+
+ updateEventConfirmation(evt);
+
+ return evt;
+}
+
+function updateEventConfirmation(evt){
+ if(evt.confirmed)return;
+
+ if(
+  (evt.level<=0&&evt.points.length>SHAKE.WEAKER_CONFIRM)||
+  (evt.level===1&&evt.points.length>SHAKE.WEAK_CONFIRM)||
+  evt.level>1
+ ){
+  evt.confirmed=true;
+ }
+}
+
+function addEventPoint(evt,point,time){
+ const level=getShakeLevel(point.position);
+
+ if(
+  evt.level<level&&
+  evt.points.some(p=>getShakeLevel(p.position)>=level)
+ ){
+  evt.level=level;
+ }
+
+ if(!evt.points.includes(point)){
+  evt.points.push(point);
+ }
+
+ point.event=evt;
+ point.eventedAt=time;
+
+ const expire=
+  time+getExpireSeconds(level)*1000;
+
+ if(point.eventedExpireAt<expire){
+  point.eventedExpireAt=expire;
+ }
+
+ updateEventConfirmation(evt);
+}
+
+function removeEventPoint(point){
+ const evt=point.event;
+
+ if(!evt)return;
+
+ point.event=null;
+ point.eventedExpireAt=0;
+
+ const index=evt.points.indexOf(point);
+
+ if(index!==-1){
+  evt.points.splice(index,1);
+ }
+
+ if(evt.points.length===0){
+  const i=shakeEvents.indexOf(evt);
+
+  if(i!==-1){
+   shakeEvents.splice(i,1);
+  }
+ }
+}
+
+function mergeEvents(target,source){
+ for(const point of source.points){
+  if(!target.points.includes(point)){
+   target.points.push(point);
+  }
+
+  point.event=target;
+ }
+
+ if(source.level>target.level){
+  target.level=source.level;
+ }
+
+ const i=shakeEvents.indexOf(source);
+
+ if(i!==-1){
+  shakeEvents.splice(i,1);
+ }
+}
+
+function checkNearbyEvents(a,b,distance){
+ for(const p1 of a.points){
+  for(const p2 of b.points){
+   if(haversine(p1,p2)<=distance){
+    return true;
+   }
+  }
+ }
+
+ return false;
+}
+
+/* 異常値の除外 */
+
+function checkAbnormalPoint(point){
+ const latest=point.position;
+
+ if(latest===null)return;
+
+ const near=point.nearPoints;
+
+ const condition=
+  point.intensityDiff<1&&
+  point.event===null&&
+  latest>=(near&&near.length?3:5)&&
+  Math.abs(
+   point.intensityAverage-latest
+  )<=1&&
+  (
+   point.tmpDisabled||
+   (
+    near?.every(np=>
+     latest-(np.point.position??-3)>=3
+    )??true
+   )
+  );
+
+ if(condition){
+  point.tmpDisabled=true;
+ }else if(point.tmpDisabled){
+  point.tmpDisabled=false;
+ }
+}
+
+/* 検知スコア */
+
+function calculateDetection(point,time){
+ const latest=point.position;
+
+ if(latest===null)return;
+
+ const near=point.nearPoints;
+
+ if(!near)return;
+
+ checkAbnormalPoint(point);
+
+ if(point.tmpDisabled)return;
+
+ if(point.intensityDiff<SHAKE.MIN_DIFF){
+
+  if(
+   point.event&&
+   (
+    point.eventedAt>time||
+    point.eventedExpireAt<time
+   )
+  ){
+   removeEventPoint(point);
+  }
+
+  return;
+ }
+
+ const available=near
+  .filter(np=>np.point.hasValidHistory)
+  .reduce((sum,np)=>sum+np.weight,0);
+
+ /* 離島判定 */
+
+ if(available<SHAKE.ISOLATED_THRESHOLD){
+
+  if(
+   point.intensityDiff>=SHAKE.ISOLATED_DIFF&&
+   point.event===null
+  ){
+   createShakeEvent(point,time);
+  }
+
+  return;
+ }
+
+ let score=0;
+ let penalty=0;
+ let contributing=0;
+
+ const events=[];
+
+ if(point.event){
+  events.push(point.event);
+ }
+
+ for(const np of near){
+  const p=np.point;
+
+  if(
+   p.tmpDisabled||
+   !p.hasValidHistory
+  ){
+   continue;
+  }
+
+  if(p.intensityDiff>=SHAKE.MIN_DIFF){
+
+   score+=np.weight*(
+    p.intensityDiff-SHAKE.SCORE_OFFSET
+   );
+
+   contributing++;
+
+   if(p.event){
+    events.push(p.event);
+   }
+
+  }else{
+
+   penalty+=np.weight*
+    SHAKE.NO_CHANGE_PENALTY;
+  }
+ }
+
+ const finalScore=score-penalty;
+ const threshold=available*SHAKE.SCORE_RATIO;
+
+ if(contributing<=1)return;
+
+ if(finalScore<threshold)return;
+
+ point.eventedAt=time;
+
+ const unique=[...new Set(events)];
+
+ /* 複数イベントを統合 */
+
+ if(unique.length>1){
+
+  unique.sort((a,b)=>a.createdAt-b.createdAt);
+
+  const first=unique[0];
+
+  for(const evt of unique){
+   if(evt===first)continue;
+
+   mergeEvents(first,evt);
+  }
+
+  if(point.event!==first){
+   addEventPoint(
+    first,
+    point,
+    time
+   );
+  }
+
+  return;
+ }
+
+ /* 既存イベントに追加 */
+
+ if(unique.length===1){
+
+  addEventPoint(
+   unique[0],
+   point,
+   time
+  );
+
+  return;
+ }
+
+ /* 新規イベント */
+
+ if(point.event===null){
+  createShakeEvent(point,time);
+ }
+}
+
+/* イベント全体の処理 */
+
+function processShakeEvents(time){
+ if(!shakeInitialized)return;
+
+ for(const point of stations){
+  calculateDetection(point,time);
+ }
+
+ /* イベント同士の距離による統合 */
+
+ for(const evt of [...shakeEvents].sort(
+  (a,b)=>a.createdAt-b.createdAt
+ )){
+  if(!shakeEvents.includes(evt))continue;
+
+  for(const other of [...shakeEvents]){
+   if(
+    other===evt||
+    !shakeEvents.includes(other)||
+    evt.createdAt>other.createdAt
+   ){
+    continue;
+   }
+
+   const level=Math.max(evt.level,other.level);
+   const distance=getMergeDistance(level);
+
+   if(checkNearbyEvents(evt,other,distance)){
+    mergeEvents(evt,other);
+   }
+  }
+ }
+}
+
+/* 画像1フレームごとの履歴更新 */
+
+function updateShakeFrame(time){
+ if(!shakeInitialized)return;
+
+ /*
+  元のC#は画像1枚ごとに
+  全観測点の履歴を更新する。
+
+  差分データで変化していない観測点も
+  現在の値を履歴に追加する。
+ */
+
+ for(const point of stations){
+  updateIntensityHistory(
+   point,
+   point.valid?point.position:null
+  );
+ }
+
+ processShakeEvents(time);
+
+ drawShakeGrid();
+}
+
+/* =========================================
+   正方形グリッド表示
+   ShakeDetectionAreaLayer.cs のGrid方式
+========================================= */
+
+const shakeCanvas=$('shakeCanvas');
+const shakeCtx=shakeCanvas.getContext('2d',{
+ alpha:true
+});
+
+let canvasWidth=0;
+let canvasHeight=0;
+
+function resizeShakeCanvas(){
+ const rect=map.getContainer().getBoundingClientRect();
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+
+ const width=Math.round(rect.width*dpr);
+ const height=Math.round(rect.height*dpr);
+
+ if(
+  shakeCanvas.width===width&&
+  shakeCanvas.height===height
+ ){
+  return;
+ }
+
+ shakeCanvas.width=width;
+ shakeCanvas.height=height;
+
+ shakeCanvas.style.width=rect.width+'px';
+ shakeCanvas.style.height=rect.height+'px';
+
+ canvasWidth=rect.width;
+ canvasHeight=rect.height;
+
+ drawShakeGrid();
+}
+
+function drawShakeGrid(){
+ if(!map||!map.loaded())return;
+
+ if(!shakeCtx)return;
+
+ const rect=map.getContainer().getBoundingClientRect();
+
+ const dpr=Math.min(window.devicePixelRatio||1,2);
+
+ const width=rect.width;
+ const height=rect.height;
+
+ if(
+  shakeCanvas.width!==Math.round(width*dpr)||
+  shakeCanvas.height!==Math.round(height*dpr)
+ ){
+  shakeCanvas.width=Math.round(width*dpr);
+  shakeCanvas.height=Math.round(height*dpr);
+ }
+
+ shakeCtx.setTransform(
+  dpr,0,0,dpr,0,0
+ );
+
+ shakeCtx.clearRect(0,0,width,height);
+
+ const confirmedPoints=[];
+
+ for(const evt of shakeEvents){
+  if(!evt.confirmed)continue;
+
+  for(const point of evt.points){
+   if(
+    point.position===null||
+    !point.valid
+   )continue;
+
+   confirmedPoints.push(point);
+  }
+ }
+
+ if(!confirmedPoints.length){
+  shakeGridOrigin=null;
+  return;
+ }
+
+ /*
+  最初の確定観測点をグリッド原点にする。
+  イベントが継続している間は原点を維持する。
+ */
+
+ if(!shakeGridOrigin){
+  shakeGridOrigin=confirmedPoints[0].geom.coordinates;
+ }
+
+ const origin=map.project(shakeGridOrigin);
+
+ const gridCells=new Map();
+
+ for(const point of confirmedPoints){
+  const pixel=map.project(
+   point.geom.coordinates
+  );
+
+  const relX=pixel.x-origin.x;
+  const relY=pixel.y-origin.y;
+
+  const cellX=Math.floor(
+   (relX+SHAKE.GRID_SIZE/2)/
+   SHAKE.GRID_SIZE
+  );
+
+  const cellY=Math.floor(
+   (relY+SHAKE.GRID_SIZE/2)/
+   SHAKE.GRID_SIZE
+  );
+
+  const key=cellX+','+cellY;
+
+  const level=getShakeLevel(point.position);
+
+  const current=gridCells.get(key);
+
+  if(!current||point.position>current.intensity){
+   gridCells.set(key,{
+    cellX,
+    cellY,
+    level,
+    intensity:point.position
+   });
+  }
+ }
+
+ /*
+  低いレベルから描画し、
+  強いレベルを上に表示する。
+ */
+
+ const cells=[...gridCells.values()].sort(
+  (a,b)=>a.level-b.level
+ );
+
+ for(const cell of cells){
+  const x=
+   origin.x+
+   (cell.cellX-0.5)*SHAKE.GRID_SIZE;
+
+  const y=
+   origin.y+
+   (cell.cellY-0.5)*SHAKE.GRID_SIZE;
+
+  const color=SHAKE_COLORS[cell.level];
+
+  shakeCtx.save();
+
+  shakeCtx.strokeStyle=color;
+  shakeCtx.globalAlpha=0.82;
+  shakeCtx.lineWidth=1.6;
+
+  shakeCtx.strokeRect(
+   x,
+   y,
+   SHAKE.GRID_SIZE,
+   SHAKE.GRID_SIZE
+  );
+
+  shakeCtx.restore();
+ }
+}
+
+/* 地図移動時も枠を再描画 */
+
+function setupShakeCanvas(){
+ map.on('move',drawShakeGrid);
+ map.on('zoom',drawShakeGrid);
+ map.on('rotate',drawShakeGrid);
+ map.on('resize',resizeShakeCanvas);
+ map.on('moveend',drawShakeGrid);
+ map.on('zoomend',drawShakeGrid);
+
+ resizeShakeCanvas();
+}
+
+/* =========================================
+   WebSocket画像フレーム処理
+========================================= */
 
 function applyFrame(buf){
  if(buf.byteLength<22)return;
@@ -1619,7 +1619,6 @@ function applyFrame(buf){
    buf.byteLength,
    count
   );
-
   return;
  }
 
@@ -1633,7 +1632,6 @@ function applyFrame(buf){
    total,
    stations.length
   );
-
   return;
  }
 
@@ -1641,14 +1639,10 @@ function applyFrame(buf){
 
  let changed=forceUpdate;
 
- /*
-  * フルフレームの場合は全観測点を一度無効化する。
-  */
  if(flags&1){
   for(const st of stations){
    st.valid=false;
    st.position=null;
-   st.intensity=null;
   }
 
   changed=true;
@@ -1667,8 +1661,6 @@ function applyFrame(buf){
   if(!dv.getUint8(o+2)){
    st.valid=false;
    st.position=null;
-   st.intensity=null;
-
    continue;
   }
 
@@ -1687,24 +1679,13 @@ function applyFrame(buf){
   if(position===null){
    st.valid=false;
    st.position=null;
-   st.intensity=null;
-
    continue;
   }
 
   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
-
   st.position=position;
-
-  st.intensity=scaleToIntensity(position);
-
   st.valid=true;
  }
-
- /*
-  * グリッド単位で検知処理。
-  */
- processDetectionFrame(ms);
 
  let shown=0;
 
@@ -1717,6 +1698,8 @@ function applyFrame(buf){
   shown.toLocaleString()
  );
 
+ /* 地図上の観測点 */
+
  if(changed&&map){
   const source=map.getSource('stations');
 
@@ -1728,9 +1711,7 @@ function applyFrame(buf){
 
     features.push({
      type:'Feature',
-
      geometry:st.geom,
-
      properties:{
       i:st.i,
       hex:st.hex
@@ -1747,6 +1728,9 @@ function applyFrame(buf){
   }
  }
 
+ /* 揺れ検知 */
+ updateShakeFrame(ms);
+
  if(firstFit&&shown){
   firstFit=false;
   fitAll();
@@ -1757,12 +1741,11 @@ function applyFrame(buf){
  lastAppliedImageMs=ms;
 }
 
-/* =========================================================
+/* =========================================
    MapLibre
-========================================================= */
+========================================= */
 
 function addSourceAndLayer(){
-
  if(!map.getSource('stations')){
   map.addSource('stations',{
    type:'geojson',
@@ -1799,94 +1782,6 @@ function addSourceAndLayer(){
    }
   });
  }
-
- /* グリッド検知セル */
- if(!map.getSource('shake-grid')){
-  map.addSource('shake-grid',{
-   type:'geojson',
-   data:{
-    type:'FeatureCollection',
-    features:[]
-   }
-  });
- }
-
- if(!map.getLayer('shake-grid-fill')){
-  map.addLayer({
-   id:'shake-grid-fill',
-   type:'fill',
-   source:'shake-grid',
-
-   paint:{
-    'fill-color':[
-     'match',
-     ['get','level'],
-     0,'#22c55e',
-     1,'#eab308',
-     2,'#ef4444',
-     '#22c55e'
-    ],
-
-    'fill-opacity':0.55
-   }
-  });
- }
-
- if(!map.getLayer('shake-grid-outline')){
-  map.addLayer({
-   id:'shake-grid-outline',
-   type:'line',
-   source:'shake-grid',
-
-   paint:{
-    'line-color':[
-     'match',
-     ['get','level'],
-     0,'#16a34a',
-     1,'#ca8a04',
-     2,'#dc2626',
-     '#16a34a'
-    ],
-
-    'line-width':1.5,
-    'line-opacity':0.95
-   }
-  });
- }
-
- /* カメラ枠 */
- if(!map.getSource('camera-frame')){
-  map.addSource('camera-frame',{
-   type:'geojson',
-   data:{
-    type:'FeatureCollection',
-    features:[]
-   }
-  });
- }
-
- if(!map.getLayer('camera-frame-outline')){
-  map.addLayer({
-   id:'camera-frame-outline',
-   type:'line',
-   source:'camera-frame',
-
-   paint:{
-    'line-color':'#ef1111',
-    'line-width':[
-     'interpolate',
-     ['linear'],
-     ['zoom'],
-     3,2,
-     6,3,
-     10,4
-    ],
-    'line-opacity':1
-   }
-  });
- }
-
- updateShakeMap();
 }
 
 function fitAll(){
@@ -1900,21 +1795,16 @@ function fitAll(){
   if(
    !st.geom||
    !Array.isArray(st.geom.coordinates)
-  ){
-   continue;
-  }
+  )continue;
 
   const [lon,lat]=st.geom.coordinates;
 
   if(
    !Number.isFinite(lon)||
    !Number.isFinite(lat)
-  ){
-   continue;
-  }
+  )continue;
 
   bounds.extend([lon,lat]);
-
   hasValidPoint=true;
  }
 
@@ -1933,35 +1823,9 @@ function fitAll(){
  }
 }
 
-/* =========================================================
-   ボタン
-========================================================= */
-
 $('resetMapButton').addEventListener('click',()=>{
  fitAll();
 });
-
-$('cameraButton').addEventListener('click',()=>{
- cameraFrameEnabled=!cameraFrameEnabled;
-
- $('cameraButton').classList.toggle(
-  'off',
-  !cameraFrameEnabled
- );
-
- $('cameraButton').setAttribute(
-  'aria-label',
-  cameraFrameEnabled
-   ?'カメラ枠を非表示'
-   :'カメラ枠を表示'
- );
-
- updateShakeMap();
-});
-
-/* =========================================================
-   Map初期化
-========================================================= */
 
 map=new maplibregl.Map({
  container:'map',
@@ -1982,10 +1846,6 @@ map=new maplibregl.Map({
 map.on('error',e=>{
  console.error('MapLibre:',e.error||e);
 });
-
-/* =========================================================
-   ページ状態管理
-========================================================= */
 
 document.addEventListener(
  'visibilitychange',
@@ -2026,15 +1886,16 @@ window.addEventListener(
 map.on('load',()=>{
  addSourceAndLayer();
 
+ setupShakeCanvas();
+
  fitAll();
 
  maintainClock();
-
  tickSyncTime();
 
  connectStream();
 });
-</script>
 
+</script>
 </body>
 </html>
