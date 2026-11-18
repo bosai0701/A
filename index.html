@@ -261,7 +261,15 @@ const MAP_PADDING={
  left:35
 };
 
-/* 揺れ検知設定：元のC#初期値 */
+/* 自動ズーム設定 */
+const SHAKE_FOCUS={
+ SINGLE_ZOOM:7.5,
+ MAX_ZOOM:8.2,
+ PADDING:90,
+ DURATION:1200
+};
+
+/* 揺れ検知設定 */
 
 const SHAKE={
  MAX_DISTANCE:60,
@@ -834,7 +842,15 @@ function loadPoints(){
  return recordsPromise;
 }
 
-/* 観測点の初期化 */
+/* 揺れ検知エンジン */
+
+let shakeEvents=[];
+let shakeGridOrigin=null;
+let shakeInitialized=false;
+let shakeEventSequence=0;
+
+/* 自動ズーム済みイベント */
+const focusedShakeEventIds=new Set();
 
 function prepareStations(width,height){
  if(
@@ -878,7 +894,6 @@ function prepareStations(width,height){
    position:null,
    valid:false,
 
-   /* 揺れ検知用 */
    history:new Array(10).fill(null),
    historyPosition:0,
 
@@ -895,23 +910,22 @@ function prepareStations(width,height){
    nearPoints:null
   }));
 
+ /*
+  画像サイズが変わった場合は、
+  近傍観測点と検知イベントを再構築する。
+ */
+ shakeInitialized=false;
+ shakeEvents=[];
+ shakeGridOrigin=null;
+ focusedShakeEventIds.clear();
+
  initializeShakeDetection();
 
  forceUpdate=true;
 }
 
-/* =========================================
-   揺れ検知エンジン
-   ShakeDetectionEngine.cs のブラウザ移植
-========================================= */
-
-let shakeEvents=[];
-let shakeGridOrigin=null;
-let shakeInitialized=false;
-
 function haversine(a,b){
  const R=6371;
-
  const rad=Math.PI/180;
 
  const dLat=(b.lat-a.lat)*rad;
@@ -942,7 +956,6 @@ function calculateDistanceWeight(distance){
 
 function initializeShakeDetection(){
  if(shakeInitialized)return;
-
  if(!stations.length)return;
 
  console.log('揺れ検知：近傍観測点計算開始');
@@ -1044,19 +1057,15 @@ function getMergeDistance(level){
 
 /* イベント管理 */
 
-let shakeEventSequence=0;
-
-function createShakeEvent(point,time){
+function createShakeEvent(point,time,isolated=false){
  const level=getShakeLevel(point.position);
 
  const evt={
   id:++shakeEventSequence,
-
   createdAt:time,
   level,
-
   points:[],
-  confirmed:false
+  confirmed:isolated&&level>1
  };
 
  evt.points.push(point);
@@ -1149,6 +1158,10 @@ function mergeEvents(target,source){
   target.level=source.level;
  }
 
+ if(source.confirmed){
+  target.confirmed=true;
+ }
+
  const i=shakeEvents.indexOf(source);
 
  if(i!==-1){
@@ -1203,10 +1216,6 @@ function checkAbnormalPoint(point){
 /* 検知スコア */
 
 function calculateDetection(point,time){
- const latest=point.position;
-
- if(latest===null)return;
-
  const near=point.nearPoints;
 
  if(!near)return;
@@ -1215,6 +1224,10 @@ function calculateDetection(point,time){
 
  if(point.tmpDisabled)return;
 
+ /*
+  最新値が無効でも、履歴差分が小さい場合は
+  イベントの期限処理を実行する。
+ */
  if(point.intensityDiff<SHAKE.MIN_DIFF){
 
   if(
@@ -1230,6 +1243,8 @@ function calculateDetection(point,time){
   return;
  }
 
+ if(point.position===null)return;
+
  const available=near
   .filter(np=>np.point.hasValidHistory)
   .reduce((sum,np)=>sum+np.weight,0);
@@ -1242,7 +1257,7 @@ function calculateDetection(point,time){
    point.intensityDiff>=SHAKE.ISOLATED_DIFF&&
    point.event===null
   ){
-   createShakeEvent(point,time);
+   createShakeEvent(point,time,true);
   }
 
   return;
@@ -1291,7 +1306,6 @@ function calculateDetection(point,time){
  const threshold=available*SHAKE.SCORE_RATIO;
 
  if(contributing<=1)return;
-
  if(finalScore<threshold)return;
 
  point.eventedAt=time;
@@ -1378,18 +1392,100 @@ function processShakeEvents(time){
  }
 }
 
+/* =========================================
+   新しく確定した検知エリアへ自動ズーム
+========================================= */
+
+function focusShakeEvent(evt){
+ if(!map||!map.loaded())return;
+ if(!evt||!evt.points.length)return;
+
+ const coordinates=evt.points
+  .filter(point=>
+   point.geom&&
+   Array.isArray(point.geom.coordinates)
+  )
+  .map(point=>point.geom.coordinates);
+
+ if(!coordinates.length)return;
+
+ map.stop();
+
+ /*
+  1観測点の場合は、その地点を中心に拡大。
+ */
+ if(coordinates.length===1){
+  map.flyTo({
+   center:coordinates[0],
+   zoom:SHAKE_FOCUS.SINGLE_ZOOM,
+   bearing:0,
+   pitch:0,
+   duration:SHAKE_FOCUS.DURATION,
+   essential:true
+  });
+
+  return;
+ }
+
+ /*
+  複数観測点の場合は、検知範囲全体を表示。
+ */
+ const bounds=new maplibregl.LngLatBounds();
+
+ for(const coordinate of coordinates){
+  bounds.extend(coordinate);
+ }
+
+ map.fitBounds(bounds,{
+  padding:{
+   top:SHAKE_FOCUS.PADDING+75,
+   right:SHAKE_FOCUS.PADDING,
+   bottom:SHAKE_FOCUS.PADDING,
+   left:SHAKE_FOCUS.PADDING
+  },
+  maxZoom:SHAKE_FOCUS.MAX_ZOOM,
+  bearing:0,
+  pitch:0,
+  duration:SHAKE_FOCUS.DURATION,
+  essential:true
+ });
+
+ console.log('検知エリアへ自動ズーム',{
+  eventId:evt.id,
+  level:evt.level,
+  stations:coordinates.length
+ });
+}
+
+function detectNewConfirmedEvents(){
+ const newlyConfirmed=[];
+
+ for(const evt of shakeEvents){
+  if(!evt.confirmed)continue;
+  if(focusedShakeEventIds.has(evt.id))continue;
+
+  focusedShakeEventIds.add(evt.id);
+  newlyConfirmed.push(evt);
+ }
+
+ if(!newlyConfirmed.length)return;
+
+ /*
+  同時に複数確定した場合は、
+  強いイベントを優先して表示する。
+ */
+ newlyConfirmed.sort((a,b)=>
+  b.level-a.level||
+  b.createdAt-a.createdAt
+ );
+
+ focusShakeEvent(newlyConfirmed[0]);
+}
+
 /* 画像1フレームごとの履歴更新 */
 
 function updateShakeFrame(time){
  if(!shakeInitialized)return;
-
- /*
-  元のC#は画像1枚ごとに
-  全観測点の履歴を更新する。
-
-  差分データで変化していない観測点も
-  現在の値を履歴に追加する。
- */
 
  for(const point of stations){
   updateIntensityHistory(
@@ -1400,12 +1496,14 @@ function updateShakeFrame(time){
 
  processShakeEvents(time);
 
+ /* 新規確定イベントを確認 */
+ detectNewConfirmedEvents();
+
  drawShakeGrid();
 }
 
 /* =========================================
    正方形グリッド表示
-   ShakeDetectionAreaLayer.cs のGrid方式
 ========================================= */
 
 const shakeCanvas=$('shakeCanvas');
@@ -1444,7 +1542,6 @@ function resizeShakeCanvas(){
 
 function drawShakeGrid(){
  if(!map||!map.loaded())return;
-
  if(!shakeCtx)return;
 
  const rect=map.getContainer().getBoundingClientRect();
@@ -1488,11 +1585,6 @@ function drawShakeGrid(){
   return;
  }
 
- /*
-  最初の確定観測点をグリッド原点にする。
-  イベントが継続している間は原点を維持する。
- */
-
  if(!shakeGridOrigin){
   shakeGridOrigin=confirmedPoints[0].geom.coordinates;
  }
@@ -1534,11 +1626,6 @@ function drawShakeGrid(){
    });
   }
  }
-
- /*
-  低いレベルから描画し、
-  強いレベルを上に表示する。
- */
 
  const cells=[...gridCells.values()].sort(
   (a,b)=>a.level-b.level
@@ -1728,13 +1815,17 @@ function applyFrame(buf){
   }
  }
 
- /* 揺れ検知 */
- updateShakeFrame(ms);
-
+ /*
+  初回表示の日本全体フィットを先に実行。
+  その後に検知イベントの自動ズームを実行する。
+ */
  if(firstFit&&shown){
   firstFit=false;
   fitAll();
  }
+
+ /* 揺れ検知 */
+ updateShakeFrame(ms);
 
  setText($('imgTime'),formatJST(ms));
 
@@ -1824,6 +1915,7 @@ function fitAll(){
 }
 
 $('resetMapButton').addEventListener('click',()=>{
+ map.stop();
  fitAll();
 });
 
