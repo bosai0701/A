@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -276,13 +277,28 @@ const SHAKE={
  PEAK_DISTANCE:14,
  MAX_NEAR_POINTS:50,
 
- MIN_DIFF:0.2,
- ISOLATED_THRESHOLD:1,
- ISOLATED_DIFF:1.4,
+ /*
+  微弱な変化を検知対象にする。
+  従来の0.2から0.08へ変更。
+ */
+ MIN_DIFF:0.08,
 
- SCORE_RATIO:0.333333,
- SCORE_OFFSET:-0.8,
- NO_CHANGE_PENALTY:0.25,
+ /*
+  周辺観測点が少ない場合の単独検知。
+  単独地点のノイズを抑えるため、
+  微弱な変化だけでは単独確定しない。
+ */
+ ISOLATED_THRESHOLD:0.5,
+ ISOLATED_DIFF:0.45,
+
+ /*
+  微弱な変化を複数地点で評価する。
+  スコアに固定加算を行わず、
+  実際の変化量を使って評価する。
+ */
+ SCORE_RATIO:0.04,
+ SCORE_OFFSET:0,
+ NO_CHANGE_PENALTY:0.025,
 
  WEAKER_CONFIRM:4,
  WEAK_CONFIRM:3,
@@ -645,57 +661,71 @@ function rgbToHSV(r,g,b){
  return {h,s,v};
 }
 
+/*
+ NIED ColorConverter.cs の計算式に合わせる。
+
+ 1. RGB → HSV
+ 2. HSV → 多項式補間によるスケール
+ 3. 震度相当値 = scale × 10 - 3
+
+ HSV条件に該当しない色はscale=0として扱う。
+ その場合の震度相当値は-3。
+*/
+
 function colorToPosition(hsv){
  const h=hsv.h;
  const s=hsv.s;
  const v=hsv.v;
 
- if(!(v>0.1&&s>0.75)){
-  return null;
- }
-
  let p=0;
 
- if(h>0.1476){
-  const h2=h*h;
-  const h3=h2*h;
-  const h4=h3*h;
-  const h5=h4*h;
-  const h6=h5*h;
+ if(v>0.1&&s>0.75){
 
-  p=
-   280.31*h6
-   -916.05*h5
-   +1142.6*h4
-   -709.95*h3
-   +234.65*h2
-   -40.27*h
-   +3.2217;
+  if(h>0.1476){
+   const h2=h*h;
+   const h3=h2*h;
+   const h4=h3*h;
+   const h5=h4*h;
+   const h6=h5*h;
 
- }else if(h>0.001){
-  const h2=h*h;
-  const h3=h2*h;
-  const h4=h3*h;
+   p=
+    280.31*h6
+    -916.05*h5
+    +1142.6*h4
+    -709.95*h3
+    +234.65*h2
+    -40.27*h
+    +3.2217;
 
-  p=
-   151.4*h4
-   -49.32*h3
-   +6.753*h2
-   -2.481*h
-   +0.9033;
+  }else if(h>0.001){
+   const h2=h*h;
+   const h3=h2*h;
+   const h4=h3*h;
 
- }else{
-  p=
-   -0.005171*v*v
-   -0.3282*v
-   +1.2236;
+   p=
+    151.4*h4
+    -49.32*h3
+    +6.753*h2
+    -2.481*h
+    +0.9033;
+
+  }else{
+   p=
+    -0.005171*v*v
+    -0.3282*v
+    +1.2236;
+  }
  }
 
- if(p<0)p=0;
+ if(!Number.isFinite(p)){
+  p=0;
+ }
 
- if(!Number.isFinite(p))return null;
+ if(p<0){
+  p=0;
+ }
 
- return p;
+ return p*10-3;
 }
 
 /* 観測点データ */
@@ -895,7 +925,8 @@ function prepareStations(width,height){
    valid:false,
 
    history:new Array(10).fill(null),
-   historyPosition:0,
+   historyPosition:-1,
+   historyCount:0,
 
    intensityDiff:0,
    intensityAverage:0,
@@ -992,7 +1023,23 @@ function initializeShakeDetection(){
  });
 }
 
-/* 震度履歴 */
+/* =========================================
+   震度履歴・微弱変化検知
+========================================= */
+
+/*
+ 変更点：
+
+ ・過去10フレームの履歴を使用
+ ・最新値と過去の最低値を比較
+ ・上昇方向の変化を検出
+ ・無効データは履歴の有効数に含めない
+ ・有効な履歴が3フレーム蓄積するまで
+   周辺観測点の判定には使用しない
+
+ これにより、サイト起動直後の履歴不足による
+ 不安定な判定を抑制する。
+*/
 
 function updateIntensityHistory(point,intensity){
  const h=point.history;
@@ -1002,38 +1049,87 @@ function updateIntensityHistory(point,intensity){
 
  h[point.historyPosition]=intensity;
 
- let before=null;
- let diff=0;
+ point.historyCount=Math.min(
+  point.historyCount+1,
+  10
+ );
+
+ const values=[];
+
+ /*
+  リングバッファを古い順に読み出す。
+ */
+ const start=
+  (point.historyPosition-point.historyCount+1+10)%10;
+
+ for(let i=0;i<point.historyCount;i++){
+  const index=(start+i)%10;
+  const value=h[index];
+
+  if(value!==null&&Number.isFinite(value)){
+   values.push(value);
+  }
+ }
+
+ if(!values.length){
+  point.intensityDiff=0;
+  point.intensityAverage=0;
+  point.hasValidHistory=false;
+  return;
+ }
+
+ const latest=
+  intensity!==null&&Number.isFinite(intensity)
+   ?intensity
+   :null;
+
+ /*
+  有効な値の平均。
+  無効データを0として扱わない。
+ */
  let total=0;
 
- for(let i=point.historyPosition;i>=0;i--){
-  if(h[i]!==null){
-   if(before!==null){
-    diff+=before-h[i];
-   }
-
-   before=h[i];
-   total+=h[i];
-  }
+ for(const value of values){
+  total+=value;
  }
 
- for(let i=9;i>point.historyPosition;i--){
-  if(h[i]!==null){
-   if(before!==null){
-    diff+=before-h[i];
-   }
+ point.intensityAverage=total/values.length;
 
-   before=h[i];
-   total+=h[i];
-  }
+ /*
+  最新値が無効なら変化量を0にする。
+ */
+ if(latest===null){
+  point.intensityDiff=0;
+  point.hasValidHistory=values.length>=3;
+  return;
  }
 
- point.intensityDiff=diff;
- point.intensityAverage=total/10;
+ /*
+  最新値より前の履歴だけを比較対象にする。
+ */
+ const previous=values.slice(0,-1);
 
- if(intensity!==null){
-  point.hasValidHistory=true;
+ if(!previous.length){
+  point.intensityDiff=0;
+  point.hasValidHistory=false;
+  return;
  }
+
+ /*
+  過去の最低値から最新値への上昇量。
+  震度相当値が上昇した場合に正の値になる。
+ */
+ const baseline=Math.min(...previous);
+
+ point.intensityDiff=Math.max(
+  0,
+  latest-baseline
+ );
+
+ /*
+  少なくとも3つの有効な値が必要。
+ */
+ point.hasValidHistory=values.length>=3;
 }
 
 /* イベントレベル */
@@ -1220,13 +1316,14 @@ function calculateDetection(point,time){
 
  if(!near)return;
 
+ if(!point.hasValidHistory)return;
+
  checkAbnormalPoint(point);
 
  if(point.tmpDisabled)return;
 
  /*
-  最新値が無効でも、履歴差分が小さい場合は
-  イベントの期限処理を実行する。
+  変化が小さい場合はイベントの期限処理を行う。
  */
  if(point.intensityDiff<SHAKE.MIN_DIFF){
 
@@ -1249,7 +1346,7 @@ function calculateDetection(point,time){
   .filter(np=>np.point.hasValidHistory)
   .reduce((sum,np)=>sum+np.weight,0);
 
- /* 離島判定 */
+ /* 離島・孤立観測点判定 */
 
  if(available<SHAKE.ISOLATED_THRESHOLD){
 
@@ -1285,9 +1382,11 @@ function calculateDetection(point,time){
 
   if(p.intensityDiff>=SHAKE.MIN_DIFF){
 
-   score+=np.weight*(
-    p.intensityDiff-SHAKE.SCORE_OFFSET
-   );
+   /*
+    固定の加算値を廃止し、
+    実際の変化量をスコアに使用する。
+   */
+   score+=np.weight*p.intensityDiff;
 
    contributing++;
 
@@ -1305,6 +1404,10 @@ function calculateDetection(point,time){
  const finalScore=score-penalty;
  const threshold=available*SHAKE.SCORE_RATIO;
 
+ /*
+  変化した観測点が2地点以下なら
+  周辺連動による確定判定は行わない。
+ */
  if(contributing<=1)return;
  if(finalScore<threshold)return;
 
@@ -1759,15 +1862,14 @@ function applyFrame(buf){
   st.g=g;
   st.b=b;
 
+  /*
+   HSV条件外の色も有効な観測データとして扱う。
+   colorToPosition()が-3を返す。
+  */
+
   const position=colorToPosition(
    rgbToHSV(r,g,b)
   );
-
-  if(position===null){
-   st.valid=false;
-   st.position=null;
-   continue;
-  }
 
   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
   st.position=position;
