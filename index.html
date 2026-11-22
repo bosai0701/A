@@ -315,7 +315,17 @@ const LV_WEAK = 1;
 const SHAKE_HISTORY_LEN = 10;
 
 /* フレーム間隔がこれ以上空いたら履歴をリセット */
-const SHAKE_GAP_RESET = 5000;
+const SHAKE_GAP_RESET = 15000;
+
+/* 履歴が有効とみなす最小有効サンプル数 */
+const SHAKE_MIN_VALID = 5;
+
+/*
+ * 起動直後(履歴不足)用の基準震度。
+ * 開く前から揺れていた場合、上昇量が取れないため
+ * 「この震度を平常時」とみなして絶対値から上昇量を求める。
+ */
+const SHAKE_COLD_BASELINE = -1.0;
 
 /* イベント円の余白(km)と最小半径(km) */
 const SHAKE_CIRCLE_PAD = 8;
@@ -1248,6 +1258,18 @@ function updateShakePoint(st,intensity){
 
  st.avg=cntAll?sumAll/cntAll:0;
 
+ /* 履歴不足(起動直後・再接続直後)は絶対値で判定 */
+ if(cntAll<SHAKE_MIN_VALID){
+  st.diff=
+   intensity!==null
+    ?Math.max(0,intensity-SHAKE_COLD_BASELINE)
+    :0;
+
+  st.hasValidHistory=intensity!==null;
+
+  return;
+ }
+
  /* 直近の履歴平均に対する上昇量 */
  st.diff=
   (intensity!==null&&cntPrev)
@@ -1255,7 +1277,7 @@ function updateShakePoint(st,intensity){
    :0;
 
  st.hasValidHistory=
-  allValid&&n>=SHAKE_HISTORY_LEN;
+  intensity!==null&&cntAll>=SHAKE_MIN_VALID;
 }
 
 /* 揺れイベント */
@@ -1268,6 +1290,8 @@ class ShakeEvent{
   this.level=LV_WEAKER;
 
   this.addPoint(point,time,seconds);
+
+  console.log('揺れ検知 イベント発生:',this.id,point.code,point.latest);
  }
 
  get pointCount(){
@@ -1734,10 +1758,9 @@ function detectShake(ms){
  lastShakeMs=ms;
 
  for(const st of stations){
-  /* 保持中(未検出)の観測点は欠測として扱う */
+  /* 保持中(一時未検出)の観測点も直前の値で継続 */
   const live=
    st.valid&&
-   st.invalidSince===null&&
    st.position!==null;
 
   updateShakePoint(
