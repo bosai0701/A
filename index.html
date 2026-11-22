@@ -1770,7 +1770,7 @@ function circlePolygon(lat,lon,radiusKm,props){
 }
 
 /* 正方形グリッド (Webメルカトル座標上の正方形 = 画面上でも正方形) */
-const SHAKE_GRID_DEG = 0.2;
+const SHAKE_GRID_DEG = 0.5;
 
 function mercatorY(lat){
  return Math.log(
@@ -2385,27 +2385,6 @@ function addSourceAndLayer(){
   });
  }
 
- if(!map.getLayer('shake-area-fill')){
-  map.addLayer({
-   id:'shake-area-fill',
-   type:'fill',
-   source:'shake-areas',
-   paint:{
-    'fill-color':[
-     'match',
-     ['get','l'],
-     0,'#facc15',
-     1,'#f59e0b',
-     2,'#f97316',
-     3,'#ef4444',
-     4,'#b91c1c',
-     '#f59e0b'
-    ],
-    'fill-opacity':0.38
-   }
-  },'station-points');
- }
-
  if(!map.getLayer('shake-area-line')){
   map.addLayer({
    id:'shake-area-line',
@@ -2422,8 +2401,8 @@ function addSourceAndLayer(){
      4,'#7f1d1d',
      '#d97706'
     ],
-    'line-width':1,
-    'line-opacity':0.9
+    'line-width':2,
+    'line-opacity':1
    }
   },'station-points');
  }
