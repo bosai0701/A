@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -31,14 +30,6 @@ html,body{
  width:100%;
  height:100%;
  background:#e9edf2;
-}
-#shakeCanvas{
- position:absolute;
- inset:0;
- width:100%;
- height:100%;
- z-index:5;
- pointer-events:none;
 }
 #resetMapButton{
  position:absolute;
@@ -103,6 +94,9 @@ html,body{
  font-variant-numeric:tabular-nums;
  color:#172033;
 }
+.time-value.image-stale{
+ color:#dc2626;
+}
 .divider{
  height:1.27px;
  background:rgba(100,116,139,.2);
@@ -153,6 +147,24 @@ html,body{
 .wss-status.connected .wss-dot{
  background:#168447;
 }
+/* 揺れ検知ステータス */
+#shakeInfo .wss-dot{
+ background:#94a3b8;
+}
+#shakeInfo.pending{
+ background:#fef3c7;
+ color:#92400e;
+}
+#shakeInfo.pending .wss-dot{
+ background:#f59e0b;
+}
+#shakeInfo.confirmed{
+ background:#fee2e2;
+ color:#991b1b;
+}
+#shakeInfo.confirmed .wss-dot{
+ background:#dc2626;
+}
 .hidden-elements{display:none}
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left{
@@ -182,7 +194,6 @@ html,body{
 <body>
 
 <main id="map" aria-label="リアルタイム震度観測点マップ"></main>
-<canvas id="shakeCanvas"></canvas>
 
 <button id="resetMapButton" type="button" aria-label="初期位置に戻す">
  <svg viewBox="0 0 24 24" fill="none"
@@ -222,6 +233,11 @@ html,body{
   <span class="wss-dot"></span>
   <span>WSS 未接続</span>
  </div>
+
+ <div class="wss-status" id="shakeInfo">
+  <span class="wss-dot"></span>
+  <span>揺れ検知 待機中</span>
+ </div>
 </section>
 
 <div class="hidden-elements">
@@ -239,118 +255,103 @@ const NTP_URL =
 const POINTS_URL =
 'https://raw.githubusercontent.com/ingen084/kyoshin-monitor-observation-points/refs/heads/master/intensity-points.json';
 
-const TIME_SYNC_INTERVAL=60000;
-const TIME_SYNC_SAMPLES=5;
-const POINTS_TIMEOUT=8000;
-const RECONNECT_BASE=1000;
-const RECONNECT_MAX=10000;
-const PING_INTERVAL=10000;
-const HIDDEN_DISCONNECT=60000;
+const TIME_SYNC_INTERVAL = 60000;
+const TIME_SYNC_SAMPLES = 5;
+const POINTS_TIMEOUT = 8000;
+const RECONNECT_BASE = 1000;
+const RECONNECT_MAX = 10000;
+const PING_INTERVAL = 10000;
+const HIDDEN_DISCONNECT = 60000;
 
-const INITIAL_CENTER=[138,36.5];
-const INITIAL_ZOOM=4.2;
+const IMAGE_LAG_LIMIT = 3000;
 
-const JAPAN_BOUNDS=[
+/* 観測点の表示保持時間 */
+const STATION_HOLD_TIME = 3000;
+
+/* 保持時間の確認間隔 */
+const STATION_CHECK_INTERVAL = 250;
+
+const LAST_FRAME_CACHE_KEY = 'EQ_RTS_LAST_FRAME_V1';
+
+const INITIAL_CENTER = [138,36.5];
+const INITIAL_ZOOM = 4.2;
+
+const JAPAN_BOUNDS = [
  [122.5,24],
  [146,46]
 ];
 
-const MAP_PADDING={
+const MAP_PADDING = {
  top:90,
  right:35,
  bottom:70,
  left:35
 };
 
-/* 自動ズーム設定 */
-const SHAKE_FOCUS={
- SINGLE_ZOOM:7.5,
- MAX_ZOOM:8.2,
- PADDING:90,
- DURATION:1200
+/* ========== 揺れ検知パラメータ (ShakeDetectionParameters 相当) ========== */
+const SD = {
+ MaxSearchDistance:60.0,
+ PeakWeightDistance:14.0,
+ IsolatedThreshold:1,
+ IsolatedDetectionDiff:1.4,
+ ScoreThresholdRatio:0.333333,
+ ScoreIntensityOffset:-0.8,
+ MinDetectionDiff:0.2,
+ NoChangePenaltyFactor:0.25,
+ MaxNearPoints:50,
+
+ /* index = レベル (0:Weaker 1:Weak 2:Medium 3:Strong 4:Stronger) */
+ MergeDistance:[90,130,180,250,250],
+ Seconds:[20,30,40,70,80],
+
+ WeakerConfirmPointCount:4,
+ WeakConfirmPointCount:3
 };
 
-/* 揺れ検知設定 */
+const LV_WEAKER = 0;
+const LV_WEAK = 1;
 
-const SHAKE={
- MAX_DISTANCE:60,
- PEAK_DISTANCE:14,
- MAX_NEAR_POINTS:50,
+/* 震度履歴の長さ(フレーム数 ≒ 秒) */
+const SHAKE_HISTORY_LEN = 10;
 
- /*
-  微弱な変化を検知対象にする。
-  従来の0.2から0.08へ変更。
- */
- MIN_DIFF:0.08,
+/* フレーム間隔がこれ以上空いたら履歴をリセット */
+const SHAKE_GAP_RESET = 5000;
 
- /*
-  周辺観測点が少ない場合の単独検知。
-  単独地点のノイズを抑えるため、
-  微弱な変化だけでは単独確定しない。
- */
- ISOLATED_THRESHOLD:0.5,
- ISOLATED_DIFF:0.45,
+/* イベント円の余白(km)と最小半径(km) */
+const SHAKE_CIRCLE_PAD = 8;
+const SHAKE_CIRCLE_MIN = 12;
 
- /*
-  微弱な変化を複数地点で評価する。
-  スコアに固定加算を行わず、
-  実際の変化量を使って評価する。
- */
- SCORE_RATIO:0.04,
- SCORE_OFFSET:0,
- NO_CHANGE_PENALTY:0.025,
-
- WEAKER_CONFIRM:4,
- WEAK_CONFIRM:3,
-
- MERGE_DISTANCE:[90,130,180,250,250],
-
- EXPIRE_SECONDS:[20,30,40,70,80],
-
- GRID_SIZE:150
-};
-
-const SHAKE_COLORS=[
- '#16A34A',
- '#16A34A',
- '#EAB308',
- '#DC2626',
- '#DC2626'
-];
-
-let clockBaseEpoch=null;
-let clockBasePerf=null;
-let clockSynced=false;
-let timeSyncPromise=null;
-
-let lastAppliedImageMs=null;
-let records=null;
-let recordsPromise=null;
-let preparedPoints=null;
-let stations=[];
-
-let forceUpdate=true;
-let firstFit=true;
+let clockBaseEpoch = null;
+let clockBasePerf = null;
+let clockSynced = false;
+let timeSyncPromise = null;
+let lastAppliedImageMs = null;
+let records = null;
+let recordsPromise = null;
+let preparedPoints = null;
+let stations = [];
+let forceUpdate = true;
+let firstFit = true;
 let map;
+let lastImageWidth = 0;
+let lastImageHeight = 0;
+let lastImageCompletedPerf = null;
 
-let lastImageWidth=0;
-let lastImageHeight=0;
+let lastFrameCacheRestored = false;
 
-let ws=null;
-let wsPing=null;
-let wsReconnectTimer=null;
-let wsAttempt=0;
-let wsWanted=true;
-let hiddenTimer=null;
+/* 揺れ検知の状態 */
+let shakeEvents = [];
+let shakeEventSeq = 0;
+let lastShakeMs = null;
 
-const $=id=>document.getElementById(id);
+const $ = id => document.getElementById(id);
 
-const HEX=Array.from(
+const HEX = Array.from(
  {length:256},
  (_,i)=>i.toString(16).padStart(2,'0')
 );
 
-const p2=n=>String(n).padStart(2,'0');
+const p2 = n=>String(n).padStart(2,'0');
 
 function setText(el,text){
  if(el._t===text)return;
@@ -358,13 +359,200 @@ function setText(el,text){
  el.textContent=text;
 }
 
-/* 時刻同期 */
-
 function getSyncedNow(){
- if(!clockSynced)return Date.now();
+ if(!clockSynced){
+  return Date.now();
+ }
 
  return clockBaseEpoch+
   (performance.now()-clockBasePerf);
+}
+
+function updateImageTimeColor(){
+ const el=$('imgTime');
+
+ if(lastAppliedImageMs===null){
+  el.classList.remove('image-stale');
+  return;
+ }
+
+ const lag=getSyncedNow()-lastAppliedImageMs;
+
+ el.classList.toggle(
+  'image-stale',
+  lag>IMAGE_LAG_LIMIT
+ );
+}
+
+function saveLastFrameCache(){
+ if(
+  lastAppliedImageMs===null||
+  !stations.length
+ ){
+  return;
+ }
+
+ try{
+  const points=[];
+
+  for(const st of stations){
+   if(!st.valid)continue;
+
+   points.push([
+    st.i,
+    st.r,
+    st.g,
+    st.b
+   ]);
+  }
+
+  const cache={
+   version:1,
+   ms:lastAppliedImageMs,
+   width:lastImageWidth,
+   height:lastImageHeight,
+   total:stations.length,
+   points
+  };
+
+  localStorage.setItem(
+   LAST_FRAME_CACHE_KEY,
+   JSON.stringify(cache)
+  );
+
+ }catch(e){
+  console.warn('最後の画像を保存できません:',e);
+ }
+}
+
+function restoreLastFrameCache(){
+ if(lastFrameCacheRestored)return false;
+
+ if(
+  !preparedPoints||
+  !map||
+  !map.getSource('stations')
+ ){
+  return false;
+ }
+
+ lastFrameCacheRestored=true;
+
+ try{
+  const raw=localStorage.getItem(
+   LAST_FRAME_CACHE_KEY
+  );
+
+  if(!raw)return false;
+
+  const cache=JSON.parse(raw);
+
+  if(
+   !cache||
+   cache.version!==1||
+   !Number.isFinite(cache.ms)||
+   !Number.isFinite(cache.width)||
+   !Number.isFinite(cache.height)||
+   !Array.isArray(cache.points)
+  ){
+   return false;
+  }
+
+  prepareStations(
+   cache.width,
+   cache.height
+  );
+
+  if(stations.length!==cache.total){
+   stations=[];
+   lastImageWidth=0;
+   lastImageHeight=0;
+
+   console.warn(
+    '保存画像と現在の観測点データが一致しません'
+   );
+
+   return false;
+  }
+
+  for(const st of stations){
+   st.valid=false;
+   st.position=null;
+   st.invalidSince=null;
+  }
+
+  for(const row of cache.points){
+   if(!Array.isArray(row)||row.length<4){
+    continue;
+   }
+
+   const index=Number(row[0]);
+   const st=stations[index];
+
+   if(!st)continue;
+
+   const r=Number(row[1]);
+   const g=Number(row[2]);
+   const b=Number(row[3]);
+
+   if(
+    !Number.isInteger(r)||
+    !Number.isInteger(g)||
+    !Number.isInteger(b)||
+    r<0||r>255||
+    g<0||g>255||
+    b<0||b>255
+   ){
+    continue;
+   }
+
+   const position=colorToPosition(
+    rgbToHSV(r,g,b)
+   );
+
+   if(position===null)continue;
+
+   st.r=r;
+   st.g=g;
+   st.b=b;
+
+   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
+   st.position=position;
+   st.valid=true;
+   st.invalidSince=null;
+  }
+
+  updateStationSource();
+
+  lastAppliedImageMs=cache.ms;
+
+  setText(
+   $('imgTime'),
+   formatJST(cache.ms)
+  );
+
+  setText(
+   $('imageSize'),
+   `${cache.width} × ${cache.height}px`
+  );
+
+  lastImageCompletedPerf=null;
+  forceUpdate=false;
+
+  updateImageTimeColor();
+
+  console.log('最後の画像を復元しました',{
+   imageTime:formatJST(cache.ms),
+   shown:stations.filter(st=>st.valid).length,
+   total:stations.length
+  });
+
+  return true;
+
+ }catch(e){
+  console.warn('最後の画像を復元できません:',e);
+  return false;
+ }
 }
 
 function jstParts(ms){
@@ -388,6 +576,7 @@ function formatJST(ms){
 
 async function fetchWolfxTime(){
  const start=performance.now();
+
  const controller=new AbortController();
 
  const timeout=setTimeout(
@@ -445,7 +634,9 @@ async function fetchWolfxTime(){
 }
 
 async function syncClock(){
- if(timeSyncPromise)return timeSyncPromise;
+ if(timeSyncPromise){
+  return timeSyncPromise;
+ }
 
  timeSyncPromise=(async()=>{
   const samples=[];
@@ -469,6 +660,14 @@ async function syncClock(){
   clockBaseEpoch=best.epoch;
   clockBasePerf=best.perf;
   clockSynced=true;
+
+  updateImageTimeColor();
+
+  console.log('Wolfx時刻同期完了',{
+   RTT:Math.round(best.rtt),
+   samples:samples.length,
+   serverTime:new Date(best.epoch).toISOString()
+  });
 
   return best;
 
@@ -494,13 +693,13 @@ function tickSyncTime(){
 
  setText($('syncTime'),formatJST(now));
 
+ updateImageTimeColor();
+
  setTimeout(
   tickSyncTime,
   1000-(now%1000)+15
  );
 }
-
-/* WSS */
 
 const wsStats={
  state:'未接続',
@@ -519,11 +718,20 @@ function updateWsInfo(){
 
  el.classList.toggle('connected',!!connected);
 
+ const label=el.querySelector('span:last-child');
+
  setText(
-  el.querySelector('span:last-child'),
+  label,
   connected?'WSS 接続中':'WSS 未接続'
  );
 }
+
+let ws=null;
+let wsPing=null;
+let wsReconnectTimer=null;
+let wsAttempt=0;
+let wsWanted=true;
+let hiddenTimer=null;
 
 function scheduleReconnect(){
  if(!wsWanted)return;
@@ -568,7 +776,9 @@ function connectStream(){
  updateWsInfo();
 
  const s=new WebSocket(WS_URL);
+
  s.binaryType='arraybuffer';
+
  ws=s;
 
  s.onopen=()=>{
@@ -598,38 +808,42 @@ function connectStream(){
   }
 
   wsStats.frames++;
+
   wsStats.lastRecvPerf=performance.now();
+
+  const buf=ev.data;
 
   loadPoints()
    .then(()=>{
     if(ws===s){
-     applyFrame(ev.data);
+     applyFrame(buf);
     }
    })
    .catch(e=>{
     wsStats.errors++;
 
-    console.error('フレーム処理エラー:',e);
-
-    try{s.close();}catch(_){}
+    try{
+     s.close();
+    }catch(_){}
    });
  };
 
  s.onerror=()=>{};
 
  s.onclose=()=>{
-  if(ws===s)ws=null;
+  if(ws===s){
+   ws=null;
+  }
 
   clearInterval(wsPing);
 
   wsStats.state='切断';
+
   updateWsInfo();
 
   scheduleReconnect();
  };
 }
-
-/* 画像色解析 */
 
 function rgbToHSV(r,g,b){
  r/=255;
@@ -648,9 +862,14 @@ function rgbToHSV(r,g,b){
  if(delta!==0){
   if(max===r){
    h=(g-b)/delta;
-   if(g<b)h+=6;
+
+   if(g<b){
+    h+=6;
+   }
+
   }else if(max===g){
    h=(b-r)/delta+2;
+
   }else{
    h=(r-g)/delta+4;
   }
@@ -661,78 +880,69 @@ function rgbToHSV(r,g,b){
  return {h,s,v};
 }
 
-/*
- NIED ColorConverter.cs の計算式に合わせる。
-
- 1. RGB → HSV
- 2. HSV → 多項式補間によるスケール
- 3. 震度相当値 = scale × 10 - 3
-
- HSV条件に該当しない色はscale=0として扱う。
- その場合の震度相当値は-3。
-*/
-
 function colorToPosition(hsv){
  const h=hsv.h;
  const s=hsv.s;
  const v=hsv.v;
 
- let p=0;
-
- if(v>0.1&&s>0.75){
-
-  if(h>0.1476){
-   const h2=h*h;
-   const h3=h2*h;
-   const h4=h3*h;
-   const h5=h4*h;
-   const h6=h5*h;
-
-   p=
-    280.31*h6
-    -916.05*h5
-    +1142.6*h4
-    -709.95*h3
-    +234.65*h2
-    -40.27*h
-    +3.2217;
-
-  }else if(h>0.001){
-   const h2=h*h;
-   const h3=h2*h;
-   const h4=h3*h;
-
-   p=
-    151.4*h4
-    -49.32*h3
-    +6.753*h2
-    -2.481*h
-    +0.9033;
-
-  }else{
-   p=
-    -0.005171*v*v
-    -0.3282*v
-    +1.2236;
-  }
+ if(!(v>0.1&&s>0.75)){
+  return null;
  }
 
- if(!Number.isFinite(p)){
-  p=0;
+ let p=0;
+
+ if(h>0.1476){
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+  const h5=h4*h;
+  const h6=h5*h;
+
+  p=
+   280.31*h6
+   -916.05*h5
+   +1142.6*h4
+   -709.95*h3
+   +234.65*h2
+   -40.27*h
+   +3.2217;
+
+ }else if(h>0.001){
+  const h2=h*h;
+  const h3=h2*h;
+  const h4=h3*h;
+
+  p=
+   151.4*h4
+   -49.32*h3
+   +6.753*h2
+   -2.481*h
+   +0.9033;
+
+ }else{
+  p=
+   -0.005171*v*v
+   -0.3282*v
+   +1.2236;
  }
 
  if(p<0){
   p=0;
  }
 
- return p*10-3;
-}
+ if(!Number.isFinite(p)){
+  return null;
+ }
 
-/* 観測点データ */
+ return p;
+}
 
 function walkRecords(value,out=[]){
  if(Array.isArray(value)){
-  for(const v of value)walkRecords(v,out);
+  for(const v of value){
+   walkRecords(v,out);
+  }
+
   return out;
  }
 
@@ -778,12 +988,15 @@ function preparePoints(recs){
    !Number.isFinite(lon)||
    !Number.isFinite(x)||
    !Number.isFinite(y)
-  )continue;
+  ){
+   continue;
+  }
 
   if(item.is_suspended===true)continue;
 
   result.push({
-   lat,lon,
+   lat,
+   lon,
    x:Math.round(x),
    y:Math.round(y),
 
@@ -807,7 +1020,9 @@ function preparePoints(recs){
 }
 
 function loadPoints(){
- if(recordsPromise)return recordsPromise;
+ if(recordsPromise){
+  return recordsPromise;
+ }
 
  recordsPromise=(async()=>{
   const controller=new AbortController();
@@ -856,6 +1071,8 @@ function loadPoints(){
     prepared:preparedPoints.length
    });
 
+   restoreLastFrameCache();
+
    return preparedPoints;
 
   }finally{
@@ -872,15 +1089,667 @@ function loadPoints(){
  return recordsPromise;
 }
 
-/* 揺れ検知エンジン */
+/* ========================================================================
+ * 揺れ検知 (ShakeDetectionEngine 移植 / 近傍探索はグリッド)
+ * ====================================================================== */
 
-let shakeEvents=[];
-let shakeGridOrigin=null;
-let shakeInitialized=false;
-let shakeEventSequence=0;
+const DEG2RAD=Math.PI/180;
 
-/* 自動ズーム済みイベント */
-const focusedShakeEventIds=new Set();
+/* 2点間距離(km) ハバーサイン */
+function geoDistance(lat1,lon1,lat2,lon2){
+ const dLat=(lat2-lat1)*DEG2RAD;
+ const dLon=(lon2-lon1)*DEG2RAD;
+
+ const a=
+  Math.sin(dLat/2)**2+
+  Math.cos(lat1*DEG2RAD)*
+  Math.cos(lat2*DEG2RAD)*
+  Math.sin(dLon/2)**2;
+
+ return 6371*2*Math.asin(Math.min(1,Math.sqrt(a)));
+}
+
+/* 距離に基づく重み (近すぎ・遠すぎを下げる) */
+function distanceWeight(d){
+ if(d<=SD.PeakWeightDistance){
+  return d/SD.PeakWeightDistance;
+ }
+
+ return (SD.MaxSearchDistance-d)/
+  (SD.MaxSearchDistance-SD.PeakWeightDistance);
+}
+
+/* 震度 → レベル */
+function getLevel(intensity){
+ if(intensity===null||intensity===undefined)return LV_WEAKER;
+ if(intensity>=5)return 4;
+ if(intensity>=3)return 3;
+ if(intensity>=1)return 2;
+ if(intensity>=-1)return 1;
+ return 0;
+}
+
+/*
+ * グリッドによる近傍観測点の設定
+ * セルサイズ = 最大探索距離。3×3セルだけ走査する。
+ */
+function buildNearPoints(list){
+ for(const st of list){
+  st.near=[];
+ }
+
+ if(!list.length)return;
+
+ const maxD=SD.MaxSearchDistance;
+
+ let maxAbsLat=0;
+
+ for(const st of list){
+  const a=Math.abs(st.lat);
+  if(a>maxAbsLat)maxAbsLat=a;
+ }
+
+ const latCell=maxD/110.57;
+
+ const lonCell=
+  maxD/(111.32*Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD)))*1.02;
+
+ const KEY=4096;
+ const grid=new Map();
+
+ for(const st of list){
+  st.cx=Math.floor((st.lon+180)/lonCell);
+  st.cy=Math.floor((st.lat+90)/latCell);
+
+  const key=st.cx*KEY+st.cy;
+
+  let cell=grid.get(key);
+
+  if(!cell){
+   cell=[];
+   grid.set(key,cell);
+  }
+
+  cell.push(st);
+ }
+
+ for(const st of list){
+  const cands=[];
+
+  for(let dx=-1;dx<=1;dx++){
+   for(let dy=-1;dy<=1;dy++){
+    const cell=grid.get((st.cx+dx)*KEY+(st.cy+dy));
+
+    if(!cell)continue;
+
+    for(const other of cell){
+     if(other===st)continue;
+
+     const d=geoDistance(
+      st.lat,st.lon,
+      other.lat,other.lon
+     );
+
+     if(d<maxD){
+      cands.push({p:other,d});
+     }
+    }
+   }
+  }
+
+  cands.sort((a,b)=>a.d-b.d);
+
+  if(cands.length>SD.MaxNearPoints){
+   cands.length=SD.MaxNearPoints;
+  }
+
+  st.near=cands.map(c=>({
+   p:c.p,
+   distance:c.d,
+   weight:distanceWeight(c.d)
+  }));
+ }
+}
+
+/* 観測点の履歴を更新 */
+function updateShakePoint(st,intensity){
+ st.hist.push(intensity);
+
+ if(st.hist.length>SHAKE_HISTORY_LEN){
+  st.hist.shift();
+ }
+
+ st.latest=intensity;
+
+ const n=st.hist.length;
+
+ let sumAll=0;
+ let cntAll=0;
+ let sumPrev=0;
+ let cntPrev=0;
+ let allValid=true;
+
+ for(let k=0;k<n;k++){
+  const v=st.hist[k];
+
+  if(v===null){
+   allValid=false;
+   continue;
+  }
+
+  sumAll+=v;
+  cntAll++;
+
+  if(k<n-1){
+   sumPrev+=v;
+   cntPrev++;
+  }
+ }
+
+ st.avg=cntAll?sumAll/cntAll:0;
+
+ /* 直近の履歴平均に対する上昇量 */
+ st.diff=
+  (intensity!==null&&cntPrev)
+   ?intensity-sumPrev/cntPrev
+   :0;
+
+ st.hasValidHistory=
+  allValid&&n>=SHAKE_HISTORY_LEN;
+}
+
+/* 揺れイベント */
+class ShakeEvent{
+ constructor(time,point,seconds){
+  this.id=++shakeEventSeq;
+  this.createdAt=time;
+  this.points=new Set();
+  this.isConfirmed=false;
+  this.level=LV_WEAKER;
+
+  this.addPoint(point,time,seconds);
+ }
+
+ get pointCount(){
+  return this.points.size;
+ }
+
+ updateLevel(){
+  let lv=LV_WEAKER;
+
+  for(const p of this.points){
+   const l=getLevel(p.latest);
+   if(l>lv)lv=l;
+  }
+
+  this.level=lv;
+ }
+
+ addPoint(point,time,seconds){
+  this.points.add(point);
+
+  point.event=this;
+  point.eventedExpireAt=time+seconds*1000;
+
+  this.updateLevel();
+ }
+
+ removePoint(point){
+  this.points.delete(point);
+  this.updateLevel();
+ }
+
+ mergeEvent(other){
+  if(other===this)return;
+
+  for(const p of other.points){
+   this.points.add(p);
+   p.event=this;
+  }
+
+  other.points.clear();
+
+  if(other.isConfirmed){
+   this.isConfirmed=true;
+  }
+
+  this.updateLevel();
+ }
+
+ /* 2イベントのいずれかの観測点同士が distance(km) 未満か */
+ checkNearby(other,distance){
+  if(!this.points.size||!other.points.size)return false;
+
+  const a=this.bounds();
+  const b=other.bounds();
+
+  const padLat=distance/110.57;
+
+  const maxAbsLat=Math.max(
+   Math.abs(a.minLat),Math.abs(a.maxLat),
+   Math.abs(b.minLat),Math.abs(b.maxLat)
+  );
+
+  const padLon=
+   distance/(111.32*Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD)));
+
+  if(
+   a.maxLat+padLat<b.minLat||
+   b.maxLat+padLat<a.minLat||
+   a.maxLon+padLon<b.minLon||
+   b.maxLon+padLon<a.minLon
+  ){
+   return false;
+  }
+
+  for(const p of this.points){
+   for(const q of other.points){
+    if(
+     geoDistance(p.lat,p.lon,q.lat,q.lon)<distance
+    ){
+     return true;
+    }
+   }
+  }
+
+  return false;
+ }
+
+ bounds(){
+  let minLat=90,maxLat=-90,minLon=180,maxLon=-180;
+
+  for(const p of this.points){
+   if(p.lat<minLat)minLat=p.lat;
+   if(p.lat>maxLat)maxLat=p.lat;
+   if(p.lon<minLon)minLon=p.lon;
+   if(p.lon>maxLon)maxLon=p.lon;
+  }
+
+  return {minLat,maxLat,minLon,maxLon};
+ }
+}
+
+function removeShakeEvent(evt){
+ const idx=shakeEvents.indexOf(evt);
+
+ if(idx>=0){
+  shakeEvents.splice(idx,1);
+ }
+}
+
+function updateEventConfirmation(evt){
+ if(evt.isConfirmed)return;
+
+ if(
+  (evt.level<=LV_WEAKER&&
+   evt.pointCount>SD.WeakerConfirmPointCount)||
+  (evt.level===LV_WEAK&&
+   evt.pointCount>SD.WeakConfirmPointCount)||
+  evt.level>LV_WEAK
+ ){
+  evt.isConfirmed=true;
+ }
+}
+
+function resetShakeHistories(){
+ for(const st of stations){
+  st.hist=[];
+  st.latest=null;
+  st.avg=0;
+  st.diff=0;
+  st.hasValidHistory=false;
+  st.event=null;
+  st.eventedAt=0;
+  st.eventedExpireAt=0;
+  st.tmpDisabled=false;
+ }
+
+ shakeEvents=[];
+}
+
+function processShakeEvents(time){
+ /* イベントチェック・異常値除外 */
+ for(const point of stations){
+  const latest=point.latest;
+  const hasNear=point.near.length>0;
+
+  /* 異常値の排除 */
+  if(
+   latest!==null&&
+   point.diff<1&&
+   point.event===null&&
+   latest>=(hasNear?3:5)&&
+   Math.abs(point.avg-latest)<=1&&
+   (
+    point.tmpDisabled||
+    point.near.every(n=>
+     (latest-(n.p.latest===null?-3:n.p.latest))>=3
+    )
+   )
+  ){
+   if(!point.tmpDisabled){
+    console.log('異常値の判定により観測点を除外:',
+     point.code,latest,point.avg);
+   }
+
+   point.tmpDisabled=true;
+
+  }else if(latest!==null&&point.tmpDisabled){
+   console.log('異常値による除外を戻します:',
+    point.code,latest,point.avg);
+
+   point.tmpDisabled=false;
+  }
+
+  if(point.tmpDisabled)continue;
+
+  if(point.diff<SD.MinDetectionDiff){
+   /* 未来もしくは期限切れのイベントは離脱 */
+   const evt=point.event;
+
+   if(
+    evt&&
+    (point.eventedAt>time||point.eventedExpireAt<time)
+   ){
+    point.event=null;
+    evt.removePoint(point);
+
+    if(evt.pointCount<=0){
+     removeShakeEvent(evt);
+    }
+   }
+
+   continue;
+  }
+
+  /* 欠測の場合は戻る */
+  if(latest===null)continue;
+
+  /* 有効な近傍観測点の重み合計 */
+  let availableTotalWeight=0;
+
+  for(const n of point.near){
+   if(n.p.hasValidHistory){
+    availableTotalWeight+=n.weight;
+   }
+  }
+
+  /* 離島扱い (単独検知) */
+  if(availableTotalWeight<SD.IsolatedThreshold){
+   if(
+    point.diff>=SD.IsolatedDetectionDiff&&
+    point.event===null
+   ){
+    const level=getLevel(latest);
+
+    const evt=new ShakeEvent(
+     time,
+     point,
+     SD.Seconds[level]
+    );
+
+    evt.isConfirmed=level>LV_WEAK;
+
+    point.eventedAt=time;
+
+    shakeEvents.push(evt);
+   }
+
+   continue;
+  }
+
+  const events=[];
+
+  if(point.event)events.push(point.event);
+
+  /* 距離・震度上昇度重み付きスコア */
+  let score=0;
+  let penaltyScore=0;
+  let contributingPointCount=0;
+
+  for(const n of point.near){
+   const np=n.p;
+
+   if(np.tmpDisabled||!np.hasValidHistory)continue;
+
+   if(np.diff>=SD.MinDetectionDiff){
+    score+=n.weight*(np.diff-SD.ScoreIntensityOffset);
+    contributingPointCount++;
+
+    if(np.event)events.push(np.event);
+
+   }else{
+    penaltyScore+=n.weight*SD.NoChangePenaltyFactor;
+   }
+  }
+
+  const finalScore=score-penaltyScore;
+
+  const threshold=
+   availableTotalWeight*SD.ScoreThresholdRatio;
+
+  /* 寄与1点以下は単独ノイズの可能性 */
+  if(contributingPointCount<=1)continue;
+
+  if(finalScore<threshold)continue;
+
+  /* この時点で検知扱い */
+  point.eventedAt=time;
+
+  const uniqueEvents=[...new Set(events)];
+
+  const seconds=SD.Seconds[getLevel(latest)];
+
+  /* 複数件ある場合はマージ */
+  if(uniqueEvents.length>1){
+   uniqueEvents.sort((a,b)=>a.createdAt-b.createdAt);
+
+   const firstEvent=uniqueEvents[0];
+
+   for(const evt of uniqueEvents){
+    if(evt===firstEvent)continue;
+
+    firstEvent.mergeEvent(evt);
+    removeShakeEvent(evt);
+   }
+
+   if(point.event===firstEvent)continue;
+
+   firstEvent.addPoint(point,time,seconds);
+   updateEventConfirmation(firstEvent);
+
+   continue;
+  }
+
+  /* 1件の場合はイベントに追加 */
+  if(uniqueEvents.length===1){
+   uniqueEvents[0].addPoint(point,time,seconds);
+   updateEventConfirmation(uniqueEvents[0]);
+
+   continue;
+  }
+
+  /* 存在しなかった場合はイベント作成 */
+  if(point.event===null){
+   const evt=new ShakeEvent(time,point,seconds);
+
+   shakeEvents.push(evt);
+
+   updateEventConfirmation(evt);
+  }
+ }
+
+ /* レベルを最新化 */
+ for(const evt of shakeEvents){
+  evt.updateLevel();
+ }
+
+ /* イベントの距離統合 */
+ for(const evt of [...shakeEvents].sort(
+  (a,b)=>a.createdAt-b.createdAt
+ )){
+  if(!shakeEvents.includes(evt))continue;
+
+  const others=shakeEvents.filter(e=>
+   e!==evt&&evt.createdAt<=e.createdAt
+  );
+
+  for(const evt2 of others){
+   const mergeDistance=
+    SD.MergeDistance[Math.max(evt.level,evt2.level)];
+
+   if(!evt.checkNearby(evt2,mergeDistance))continue;
+
+   evt.mergeEvent(evt2);
+   removeShakeEvent(evt2);
+  }
+
+  updateEventConfirmation(evt);
+ }
+}
+
+/* 円ポリゴン生成 */
+function circlePolygon(lat,lon,radiusKm,props){
+ const steps=48;
+ const ring=[];
+
+ const dLat=radiusKm/110.57;
+
+ const dLon=
+  radiusKm/(111.32*Math.max(0.1,Math.cos(lat*DEG2RAD)));
+
+ for(let k=0;k<=steps;k++){
+  const t=k/steps*Math.PI*2;
+
+  ring.push([
+   lon+dLon*Math.cos(t),
+   lat+dLat*Math.sin(t)
+  ]);
+ }
+
+ return {
+  type:'Feature',
+  geometry:{
+   type:'Polygon',
+   coordinates:[ring]
+  },
+  properties:props
+ };
+}
+
+/* 検知結果を地図とパネルに反映 */
+function renderShake(){
+ const areas=[];
+ const pts=[];
+
+ let confirmed=0;
+
+ for(const evt of shakeEvents){
+  if(evt.pointCount<=0)continue;
+
+  const c=evt.isConfirmed?1:0;
+
+  if(c)confirmed++;
+
+  let sLat=0;
+  let sLon=0;
+  let n=0;
+
+  for(const p of evt.points){
+   sLat+=p.lat;
+   sLon+=p.lon;
+   n++;
+
+   pts.push({
+    type:'Feature',
+    geometry:p.geom,
+    properties:{c,l:evt.level}
+   });
+  }
+
+  const cLat=sLat/n;
+  const cLon=sLon/n;
+
+  let r=0;
+
+  for(const p of evt.points){
+   const d=geoDistance(cLat,cLon,p.lat,p.lon);
+   if(d>r)r=d;
+  }
+
+  r+=SHAKE_CIRCLE_PAD;
+
+  if(r<SHAKE_CIRCLE_MIN)r=SHAKE_CIRCLE_MIN;
+
+  areas.push(circlePolygon(cLat,cLon,r,{c,l:evt.level}));
+ }
+
+ if(map){
+  const areaSrc=map.getSource('shake-areas');
+  const ptSrc=map.getSource('shake-points');
+
+  if(areaSrc){
+   areaSrc.setData({
+    type:'FeatureCollection',
+    features:areas
+   });
+  }
+
+  if(ptSrc){
+   ptSrc.setData({
+    type:'FeatureCollection',
+    features:pts
+   });
+  }
+ }
+
+ const el=$('shakeInfo');
+ const total=areas.length;
+
+ el.classList.toggle('confirmed',confirmed>0);
+ el.classList.toggle('pending',total>0&&confirmed===0);
+
+ const label=el.querySelector('span:last-child');
+
+ if(!total){
+  setText(label,'揺れ検知 なし');
+ }else if(confirmed>0){
+  setText(label,`揺れ検知 ${total}件（確定 ${confirmed}）`);
+ }else{
+  setText(label,`揺れ検知 ${total}件（未確定）`);
+ }
+}
+
+/* 1フレーム分の検知処理 */
+function detectShake(ms){
+ if(!stations.length)return;
+
+ if(
+  lastShakeMs!==null&&
+  (ms<lastShakeMs||ms-lastShakeMs>SHAKE_GAP_RESET)
+ ){
+  resetShakeHistories();
+ }
+
+ lastShakeMs=ms;
+
+ for(const st of stations){
+  /* 保持中(未検出)の観測点は欠測として扱う */
+  const live=
+   st.valid&&
+   st.invalidSince===null&&
+   st.position!==null;
+
+  updateShakePoint(
+   st,
+   live?st.position*10-3:null
+  );
+ }
+
+ processShakeEvents(ms);
+
+ renderShake();
+}
 
 function prepareStations(width,height){
  if(
@@ -909,6 +1778,9 @@ function prepareStations(width,height){
     coordinates:[p.lon,p.lat]
    },
 
+   lat:p.lat,
+   lon:p.lon,
+
    name:p.name,
    region:p.region,
    code:p.code,
@@ -924,861 +1796,124 @@ function prepareStations(width,height){
    position:null,
    valid:false,
 
-   history:new Array(10).fill(null),
-   historyPosition:-1,
-   historyCount:0,
+   /* 未検出が始まった時刻 */
+   invalidSince:null,
 
-   intensityDiff:0,
-   intensityAverage:0,
-
+   /* 揺れ検知用 */
+   hist:[],
+   latest:null,
+   avg:0,
+   diff:0,
    hasValidHistory:false,
-   tmpDisabled:false,
-
+   near:[],
+   cx:0,
+   cy:0,
    event:null,
    eventedAt:0,
    eventedExpireAt:0,
-
-   nearPoints:null
+   tmpDisabled:false
   }));
 
- /*
-  画像サイズが変わった場合は、
-  近傍観測点と検知イベントを再構築する。
- */
- shakeInitialized=false;
- shakeEvents=[];
- shakeGridOrigin=null;
- focusedShakeEventIds.clear();
+ /* グリッドで近傍観測点を設定 */
+ buildNearPoints(stations);
 
- initializeShakeDetection();
+ shakeEvents=[];
+ lastShakeMs=null;
 
  forceUpdate=true;
 }
 
-function haversine(a,b){
- const R=6371;
- const rad=Math.PI/180;
+/*
+ * 観測点のGeoJSONを更新
+ */
+function updateStationSource(){
+ if(!map)return;
 
- const dLat=(b.lat-a.lat)*rad;
- const dLon=(b.lon-a.lon)*rad;
+ const source=map.getSource('stations');
 
- const lat1=a.lat*rad;
- const lat2=b.lat*rad;
+ if(!source)return;
 
- const x=
-  Math.sin(dLat/2)**2+
-  Math.cos(lat1)*Math.cos(lat2)*
-  Math.sin(dLon/2)**2;
+ const features=[];
+ let shown=0;
 
- return 2*R*Math.asin(Math.sqrt(x));
-}
+ for(const st of stations){
+  if(!st.valid)continue;
 
-function calculateDistanceWeight(distance){
- if(distance<=SHAKE.PEAK_DISTANCE){
-  return distance/SHAKE.PEAK_DISTANCE;
+  shown++;
+
+  features.push({
+   type:'Feature',
+   geometry:st.geom,
+   properties:{
+    i:st.i,
+    hex:st.hex
+   }
+  });
  }
 
- return (
-  SHAKE.MAX_DISTANCE-distance
- )/(
-  SHAKE.MAX_DISTANCE-SHAKE.PEAK_DISTANCE
+ source.setData({
+  type:'FeatureCollection',
+  features
+ });
+
+ setText(
+  $('shown'),
+  shown.toLocaleString()
  );
 }
-
-function initializeShakeDetection(){
- if(shakeInitialized)return;
- if(!stations.length)return;
-
- console.log('揺れ検知：近傍観測点計算開始');
-
- for(const point of stations){
-  const near=[];
-
-  for(const other of stations){
-   if(point===other)continue;
-
-   const distance=haversine(point,other);
-
-   if(distance>=SHAKE.MAX_DISTANCE)continue;
-
-   near.push({
-    point:other,
-    distance,
-    weight:calculateDistanceWeight(distance)
-   });
-  }
-
-  near.sort((a,b)=>a.distance-b.distance);
-
-  point.nearPoints=near.slice(
-   0,
-   SHAKE.MAX_NEAR_POINTS
-  );
- }
-
- shakeInitialized=true;
-
- console.log('揺れ検知：初期化完了',{
-  stations:stations.length
- });
-}
-
-/* =========================================
-   震度履歴・微弱変化検知
-========================================= */
 
 /*
- 変更点：
-
- ・過去10フレームの履歴を使用
- ・最新値と過去の最低値を比較
- ・上昇方向の変化を検出
- ・無効データは履歴の有効数に含めない
- ・有効な履歴が3フレーム蓄積するまで
-   周辺観測点の判定には使用しない
-
- これにより、サイト起動直後の履歴不足による
- 不安定な判定を抑制する。
-*/
-
-function updateIntensityHistory(point,intensity){
- const h=point.history;
-
- point.historyPosition=
-  (point.historyPosition+1)%10;
-
- h[point.historyPosition]=intensity;
-
- point.historyCount=Math.min(
-  point.historyCount+1,
-  10
- );
-
- const values=[];
-
- /*
-  リングバッファを古い順に読み出す。
+ * 3秒間の表示保持処理
+ *
+ * invalidSinceが設定された観測点だけを対象にする。
+ * 差分フレームに含まれていない観測点は変更しない。
  */
- const start=
-  (point.historyPosition-point.historyCount+1+10)%10;
+function expireHeldStations(){
+ if(!stations.length)return;
 
- for(let i=0;i<point.historyCount;i++){
-  const index=(start+i)%10;
-  const value=h[index];
+ const now=performance.now();
 
-  if(value!==null&&Number.isFinite(value)){
-   values.push(value);
-  }
- }
+ let changed=false;
 
- if(!values.length){
-  point.intensityDiff=0;
-  point.intensityAverage=0;
-  point.hasValidHistory=false;
-  return;
- }
-
- const latest=
-  intensity!==null&&Number.isFinite(intensity)
-   ?intensity
-   :null;
-
- /*
-  有効な値の平均。
-  無効データを0として扱わない。
- */
- let total=0;
-
- for(const value of values){
-  total+=value;
- }
-
- point.intensityAverage=total/values.length;
-
- /*
-  最新値が無効なら変化量を0にする。
- */
- if(latest===null){
-  point.intensityDiff=0;
-  point.hasValidHistory=values.length>=3;
-  return;
- }
-
- /*
-  最新値より前の履歴だけを比較対象にする。
- */
- const previous=values.slice(0,-1);
-
- if(!previous.length){
-  point.intensityDiff=0;
-  point.hasValidHistory=false;
-  return;
- }
-
- /*
-  過去の最低値から最新値への上昇量。
-  震度相当値が上昇した場合に正の値になる。
- */
- const baseline=Math.min(...previous);
-
- point.intensityDiff=Math.max(
-  0,
-  latest-baseline
- );
-
- /*
-  少なくとも3つの有効な値が必要。
- */
- point.hasValidHistory=values.length>=3;
-}
-
-/* イベントレベル */
-
-function getShakeLevel(intensity){
- if(intensity>4.5)return 4;
- if(intensity>2.5)return 3;
- if(intensity>0.5)return 2;
- if(intensity>-1)return 1;
-
- return 0;
-}
-
-function getExpireSeconds(level){
- return SHAKE.EXPIRE_SECONDS[level]||20;
-}
-
-function getMergeDistance(level){
- return SHAKE.MERGE_DISTANCE[level]||90;
-}
-
-/* イベント管理 */
-
-function createShakeEvent(point,time,isolated=false){
- const level=getShakeLevel(point.position);
-
- const evt={
-  id:++shakeEventSequence,
-  createdAt:time,
-  level,
-  points:[],
-  confirmed:isolated&&level>1
- };
-
- evt.points.push(point);
-
- point.event=evt;
- point.eventedAt=time;
-
- point.eventedExpireAt=
-  time+getExpireSeconds(level)*1000;
-
- shakeEvents.push(evt);
-
- updateEventConfirmation(evt);
-
- return evt;
-}
-
-function updateEventConfirmation(evt){
- if(evt.confirmed)return;
-
- if(
-  (evt.level<=0&&evt.points.length>SHAKE.WEAKER_CONFIRM)||
-  (evt.level===1&&evt.points.length>SHAKE.WEAK_CONFIRM)||
-  evt.level>1
- ){
-  evt.confirmed=true;
- }
-}
-
-function addEventPoint(evt,point,time){
- const level=getShakeLevel(point.position);
-
- if(
-  evt.level<level&&
-  evt.points.some(p=>getShakeLevel(p.position)>=level)
- ){
-  evt.level=level;
- }
-
- if(!evt.points.includes(point)){
-  evt.points.push(point);
- }
-
- point.event=evt;
- point.eventedAt=time;
-
- const expire=
-  time+getExpireSeconds(level)*1000;
-
- if(point.eventedExpireAt<expire){
-  point.eventedExpireAt=expire;
- }
-
- updateEventConfirmation(evt);
-}
-
-function removeEventPoint(point){
- const evt=point.event;
-
- if(!evt)return;
-
- point.event=null;
- point.eventedExpireAt=0;
-
- const index=evt.points.indexOf(point);
-
- if(index!==-1){
-  evt.points.splice(index,1);
- }
-
- if(evt.points.length===0){
-  const i=shakeEvents.indexOf(evt);
-
-  if(i!==-1){
-   shakeEvents.splice(i,1);
-  }
- }
-}
-
-function mergeEvents(target,source){
- for(const point of source.points){
-  if(!target.points.includes(point)){
-   target.points.push(point);
-  }
-
-  point.event=target;
- }
-
- if(source.level>target.level){
-  target.level=source.level;
- }
-
- if(source.confirmed){
-  target.confirmed=true;
- }
-
- const i=shakeEvents.indexOf(source);
-
- if(i!==-1){
-  shakeEvents.splice(i,1);
- }
-}
-
-function checkNearbyEvents(a,b,distance){
- for(const p1 of a.points){
-  for(const p2 of b.points){
-   if(haversine(p1,p2)<=distance){
-    return true;
-   }
-  }
- }
-
- return false;
-}
-
-/* 異常値の除外 */
-
-function checkAbnormalPoint(point){
- const latest=point.position;
-
- if(latest===null)return;
-
- const near=point.nearPoints;
-
- const condition=
-  point.intensityDiff<1&&
-  point.event===null&&
-  latest>=(near&&near.length?3:5)&&
-  Math.abs(
-   point.intensityAverage-latest
-  )<=1&&
-  (
-   point.tmpDisabled||
-   (
-    near?.every(np=>
-     latest-(np.point.position??-3)>=3
-    )??true
-   )
-  );
-
- if(condition){
-  point.tmpDisabled=true;
- }else if(point.tmpDisabled){
-  point.tmpDisabled=false;
- }
-}
-
-/* 検知スコア */
-
-function calculateDetection(point,time){
- const near=point.nearPoints;
-
- if(!near)return;
-
- if(!point.hasValidHistory)return;
-
- checkAbnormalPoint(point);
-
- if(point.tmpDisabled)return;
-
- /*
-  変化が小さい場合はイベントの期限処理を行う。
- */
- if(point.intensityDiff<SHAKE.MIN_DIFF){
-
+ for(const st of stations){
   if(
-   point.event&&
-   (
-    point.eventedAt>time||
-    point.eventedExpireAt<time
-   )
-  ){
-   removeEventPoint(point);
-  }
-
-  return;
- }
-
- if(point.position===null)return;
-
- const available=near
-  .filter(np=>np.point.hasValidHistory)
-  .reduce((sum,np)=>sum+np.weight,0);
-
- /* 離島・孤立観測点判定 */
-
- if(available<SHAKE.ISOLATED_THRESHOLD){
-
-  if(
-   point.intensityDiff>=SHAKE.ISOLATED_DIFF&&
-   point.event===null
-  ){
-   createShakeEvent(point,time,true);
-  }
-
-  return;
- }
-
- let score=0;
- let penalty=0;
- let contributing=0;
-
- const events=[];
-
- if(point.event){
-  events.push(point.event);
- }
-
- for(const np of near){
-  const p=np.point;
-
-  if(
-   p.tmpDisabled||
-   !p.hasValidHistory
+   !st.valid||
+   st.invalidSince===null
   ){
    continue;
   }
 
-  if(p.intensityDiff>=SHAKE.MIN_DIFF){
+  if(
+   now-st.invalidSince>=STATION_HOLD_TIME
+  ){
+   st.valid=false;
+   st.position=null;
+   st.invalidSince=null;
 
-   /*
-    固定の加算値を廃止し、
-    実際の変化量をスコアに使用する。
-   */
-   score+=np.weight*p.intensityDiff;
-
-   contributing++;
-
-   if(p.event){
-    events.push(p.event);
-   }
-
-  }else{
-
-   penalty+=np.weight*
-    SHAKE.NO_CHANGE_PENALTY;
+   changed=true;
   }
  }
 
- const finalScore=score-penalty;
- const threshold=available*SHAKE.SCORE_RATIO;
+ if(changed){
+  updateStationSource();
 
- /*
-  変化した観測点が2地点以下なら
-  周辺連動による確定判定は行わない。
+  saveLastFrameCache();
+
+  console.log('未検出観測点を非表示にしました');
+ }
+}
+
+/*
+ * 観測点保持タイマー
  */
- if(contributing<=1)return;
- if(finalScore<threshold)return;
+setInterval(
+ expireHeldStations,
+ STATION_CHECK_INTERVAL
+);
 
- point.eventedAt=time;
-
- const unique=[...new Set(events)];
-
- /* 複数イベントを統合 */
-
- if(unique.length>1){
-
-  unique.sort((a,b)=>a.createdAt-b.createdAt);
-
-  const first=unique[0];
-
-  for(const evt of unique){
-   if(evt===first)continue;
-
-   mergeEvents(first,evt);
-  }
-
-  if(point.event!==first){
-   addEventPoint(
-    first,
-    point,
-    time
-   );
-  }
-
-  return;
- }
-
- /* 既存イベントに追加 */
-
- if(unique.length===1){
-
-  addEventPoint(
-   unique[0],
-   point,
-   time
-  );
-
-  return;
- }
-
- /* 新規イベント */
-
- if(point.event===null){
-  createShakeEvent(point,time);
- }
-}
-
-/* イベント全体の処理 */
-
-function processShakeEvents(time){
- if(!shakeInitialized)return;
-
- for(const point of stations){
-  calculateDetection(point,time);
- }
-
- /* イベント同士の距離による統合 */
-
- for(const evt of [...shakeEvents].sort(
-  (a,b)=>a.createdAt-b.createdAt
- )){
-  if(!shakeEvents.includes(evt))continue;
-
-  for(const other of [...shakeEvents]){
-   if(
-    other===evt||
-    !shakeEvents.includes(other)||
-    evt.createdAt>other.createdAt
-   ){
-    continue;
-   }
-
-   const level=Math.max(evt.level,other.level);
-   const distance=getMergeDistance(level);
-
-   if(checkNearbyEvents(evt,other,distance)){
-    mergeEvents(evt,other);
-   }
-  }
- }
-}
-
-/* =========================================
-   新しく確定した検知エリアへ自動ズーム
-========================================= */
-
-function focusShakeEvent(evt){
- if(!map||!map.loaded())return;
- if(!evt||!evt.points.length)return;
-
- const coordinates=evt.points
-  .filter(point=>
-   point.geom&&
-   Array.isArray(point.geom.coordinates)
-  )
-  .map(point=>point.geom.coordinates);
-
- if(!coordinates.length)return;
-
- map.stop();
-
- /*
-  1観測点の場合は、その地点を中心に拡大。
+/*
+ * フレーム処理
  */
- if(coordinates.length===1){
-  map.flyTo({
-   center:coordinates[0],
-   zoom:SHAKE_FOCUS.SINGLE_ZOOM,
-   bearing:0,
-   pitch:0,
-   duration:SHAKE_FOCUS.DURATION,
-   essential:true
-  });
-
-  return;
- }
-
- /*
-  複数観測点の場合は、検知範囲全体を表示。
- */
- const bounds=new maplibregl.LngLatBounds();
-
- for(const coordinate of coordinates){
-  bounds.extend(coordinate);
- }
-
- map.fitBounds(bounds,{
-  padding:{
-   top:SHAKE_FOCUS.PADDING+75,
-   right:SHAKE_FOCUS.PADDING,
-   bottom:SHAKE_FOCUS.PADDING,
-   left:SHAKE_FOCUS.PADDING
-  },
-  maxZoom:SHAKE_FOCUS.MAX_ZOOM,
-  bearing:0,
-  pitch:0,
-  duration:SHAKE_FOCUS.DURATION,
-  essential:true
- });
-
- console.log('検知エリアへ自動ズーム',{
-  eventId:evt.id,
-  level:evt.level,
-  stations:coordinates.length
- });
-}
-
-function detectNewConfirmedEvents(){
- const newlyConfirmed=[];
-
- for(const evt of shakeEvents){
-  if(!evt.confirmed)continue;
-  if(focusedShakeEventIds.has(evt.id))continue;
-
-  focusedShakeEventIds.add(evt.id);
-  newlyConfirmed.push(evt);
- }
-
- if(!newlyConfirmed.length)return;
-
- /*
-  同時に複数確定した場合は、
-  強いイベントを優先して表示する。
- */
- newlyConfirmed.sort((a,b)=>
-  b.level-a.level||
-  b.createdAt-a.createdAt
- );
-
- focusShakeEvent(newlyConfirmed[0]);
-}
-
-/* 画像1フレームごとの履歴更新 */
-
-function updateShakeFrame(time){
- if(!shakeInitialized)return;
-
- for(const point of stations){
-  updateIntensityHistory(
-   point,
-   point.valid?point.position:null
-  );
- }
-
- processShakeEvents(time);
-
- /* 新規確定イベントを確認 */
- detectNewConfirmedEvents();
-
- drawShakeGrid();
-}
-
-/* =========================================
-   正方形グリッド表示
-========================================= */
-
-const shakeCanvas=$('shakeCanvas');
-const shakeCtx=shakeCanvas.getContext('2d',{
- alpha:true
-});
-
-let canvasWidth=0;
-let canvasHeight=0;
-
-function resizeShakeCanvas(){
- const rect=map.getContainer().getBoundingClientRect();
- const dpr=Math.min(window.devicePixelRatio||1,2);
-
- const width=Math.round(rect.width*dpr);
- const height=Math.round(rect.height*dpr);
-
- if(
-  shakeCanvas.width===width&&
-  shakeCanvas.height===height
- ){
-  return;
- }
-
- shakeCanvas.width=width;
- shakeCanvas.height=height;
-
- shakeCanvas.style.width=rect.width+'px';
- shakeCanvas.style.height=rect.height+'px';
-
- canvasWidth=rect.width;
- canvasHeight=rect.height;
-
- drawShakeGrid();
-}
-
-function drawShakeGrid(){
- if(!map||!map.loaded())return;
- if(!shakeCtx)return;
-
- const rect=map.getContainer().getBoundingClientRect();
-
- const dpr=Math.min(window.devicePixelRatio||1,2);
-
- const width=rect.width;
- const height=rect.height;
-
- if(
-  shakeCanvas.width!==Math.round(width*dpr)||
-  shakeCanvas.height!==Math.round(height*dpr)
- ){
-  shakeCanvas.width=Math.round(width*dpr);
-  shakeCanvas.height=Math.round(height*dpr);
- }
-
- shakeCtx.setTransform(
-  dpr,0,0,dpr,0,0
- );
-
- shakeCtx.clearRect(0,0,width,height);
-
- const confirmedPoints=[];
-
- for(const evt of shakeEvents){
-  if(!evt.confirmed)continue;
-
-  for(const point of evt.points){
-   if(
-    point.position===null||
-    !point.valid
-   )continue;
-
-   confirmedPoints.push(point);
-  }
- }
-
- if(!confirmedPoints.length){
-  shakeGridOrigin=null;
-  return;
- }
-
- if(!shakeGridOrigin){
-  shakeGridOrigin=confirmedPoints[0].geom.coordinates;
- }
-
- const origin=map.project(shakeGridOrigin);
-
- const gridCells=new Map();
-
- for(const point of confirmedPoints){
-  const pixel=map.project(
-   point.geom.coordinates
-  );
-
-  const relX=pixel.x-origin.x;
-  const relY=pixel.y-origin.y;
-
-  const cellX=Math.floor(
-   (relX+SHAKE.GRID_SIZE/2)/
-   SHAKE.GRID_SIZE
-  );
-
-  const cellY=Math.floor(
-   (relY+SHAKE.GRID_SIZE/2)/
-   SHAKE.GRID_SIZE
-  );
-
-  const key=cellX+','+cellY;
-
-  const level=getShakeLevel(point.position);
-
-  const current=gridCells.get(key);
-
-  if(!current||point.position>current.intensity){
-   gridCells.set(key,{
-    cellX,
-    cellY,
-    level,
-    intensity:point.position
-   });
-  }
- }
-
- const cells=[...gridCells.values()].sort(
-  (a,b)=>a.level-b.level
- );
-
- for(const cell of cells){
-  const x=
-   origin.x+
-   (cell.cellX-0.5)*SHAKE.GRID_SIZE;
-
-  const y=
-   origin.y+
-   (cell.cellY-0.5)*SHAKE.GRID_SIZE;
-
-  const color=SHAKE_COLORS[cell.level];
-
-  shakeCtx.save();
-
-  shakeCtx.strokeStyle=color;
-  shakeCtx.globalAlpha=0.82;
-  shakeCtx.lineWidth=1.6;
-
-  shakeCtx.strokeRect(
-   x,
-   y,
-   SHAKE.GRID_SIZE,
-   SHAKE.GRID_SIZE
-  );
-
-  shakeCtx.restore();
- }
-}
-
-/* 地図移動時も枠を再描画 */
-
-function setupShakeCanvas(){
- map.on('move',drawShakeGrid);
- map.on('zoom',drawShakeGrid);
- map.on('rotate',drawShakeGrid);
- map.on('resize',resizeShakeCanvas);
- map.on('moveend',drawShakeGrid);
- map.on('zoomend',drawShakeGrid);
-
- resizeShakeCanvas();
-}
-
-/* =========================================
-   WebSocket画像フレーム処理
-========================================= */
-
 function applyFrame(buf){
  if(buf.byteLength<22)return;
 
@@ -1804,11 +1939,7 @@ function applyFrame(buf){
  const clients=dv.getUint16(20,true);
 
  if(buf.byteLength!==22+count*6){
-  console.error(
-   'フレーム長が不正です',
-   buf.byteLength,
-   count
-  );
+  console.error('フレーム長が不正です',buf.byteLength,count);
   return;
  }
 
@@ -1829,12 +1960,11 @@ function applyFrame(buf){
 
  let changed=forceUpdate;
 
+ /*
+  * フルフレームでも一括削除しない。
+  * 各観測点の未検出通知を個別に処理する。
+  */
  if(flags&1){
-  for(const st of stations){
-   st.valid=false;
-   st.position=null;
-  }
-
   changed=true;
  }
 
@@ -1846,11 +1976,21 @@ function applyFrame(buf){
 
   if(!st)continue;
 
-  changed=true;
+  const valid=dv.getUint8(o+2);
 
-  if(!dv.getUint8(o+2)){
-   st.valid=false;
-   st.position=null;
+  /*
+   * 未検出の場合
+   * 最初の未検出時刻だけ記録し、
+   * 直前の正常な表示を保持する。
+   */
+  if(!valid){
+   if(
+    st.valid&&
+    st.invalidSince===null
+   ){
+    st.invalidSince=performance.now();
+   }
+
    continue;
   }
 
@@ -1858,85 +1998,80 @@ function applyFrame(buf){
   const g=dv.getUint8(o+4);
   const b=dv.getUint8(o+5);
 
-  st.r=r;
-  st.g=g;
-  st.b=b;
-
-  /*
-   HSV条件外の色も有効な観測データとして扱う。
-   colorToPosition()が-3を返す。
-  */
-
   const position=colorToPosition(
    rgbToHSV(r,g,b)
   );
 
+  /*
+   * 色が検出対象外の場合も
+   * 一時的な未検出として扱う。
+   */
+  if(position===null){
+   if(
+    st.valid&&
+    st.invalidSince===null
+   ){
+    st.invalidSince=performance.now();
+   }
+
+   continue;
+  }
+
+  /*
+   * 正常な色を検出した場合は即時更新
+   */
+  st.r=r;
+  st.g=g;
+  st.b=b;
+
   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
   st.position=position;
   st.valid=true;
- }
 
- let shown=0;
+  /*
+   * 再検出したので保持タイマーを解除
+   */
+  st.invalidSince=null;
 
- for(const st of stations){
-  if(st.valid)shown++;
- }
-
- setText(
-  $('shown'),
-  shown.toLocaleString()
- );
-
- /* 地図上の観測点 */
-
- if(changed&&map){
-  const source=map.getSource('stations');
-
-  if(source){
-   const features=[];
-
-   for(const st of stations){
-    if(!st.valid)continue;
-
-    features.push({
-     type:'Feature',
-     geometry:st.geom,
-     properties:{
-      i:st.i,
-      hex:st.hex
-     }
-    });
-   }
-
-   source.setData({
-    type:'FeatureCollection',
-    features
-   });
-
-   forceUpdate=false;
-  }
+  changed=true;
  }
 
  /*
-  初回表示の日本全体フィットを先に実行。
-  その後に検知イベントの自動ズームを実行する。
- */
+  * 保持時間を超えた観測点を処理
+  */
+ expireHeldStations();
+
+ if(changed&&map){
+  updateStationSource();
+  forceUpdate=false;
+ }
+
+ const shown=stations.filter(st=>st.valid).length;
+
  if(firstFit&&shown){
   firstFit=false;
   fitAll();
  }
 
- /* 揺れ検知 */
- updateShakeFrame(ms);
+ /*
+  * 揺れ検知
+  */
+ try{
+  detectShake(ms);
+ }catch(e){
+  console.error('揺れ検知エラー:',e);
+ }
 
  setText($('imgTime'),formatJST(ms));
 
  lastAppliedImageMs=ms;
-}
 
-/* =========================================
-   MapLibre
-========================================= */
+ lastImageCompletedPerf=performance.now();
+
+ updateImageTimeColor();
+
+ saveLastFrameCache();
+}
 
 function addSourceAndLayer(){
  if(!map.getSource('stations')){
@@ -1975,6 +2110,100 @@ function addSourceAndLayer(){
    }
   });
  }
+
+ /* 揺れ検知: イベント範囲 */
+ if(!map.getSource('shake-areas')){
+  map.addSource('shake-areas',{
+   type:'geojson',
+   data:{
+    type:'FeatureCollection',
+    features:[]
+   }
+  });
+ }
+
+ /* 揺れ検知: 検知観測点 */
+ if(!map.getSource('shake-points')){
+  map.addSource('shake-points',{
+   type:'geojson',
+   data:{
+    type:'FeatureCollection',
+    features:[]
+   }
+  });
+ }
+
+ if(!map.getLayer('shake-area-fill')){
+  map.addLayer({
+   id:'shake-area-fill',
+   type:'fill',
+   source:'shake-areas',
+   paint:{
+    'fill-color':[
+     'case',
+     ['==',['get','c'],1],
+     '#dc2626',
+     '#f59e0b'
+    ],
+    'fill-opacity':0.1
+   }
+  },'station-points');
+ }
+
+ if(!map.getLayer('shake-area-line-pending')){
+  map.addLayer({
+   id:'shake-area-line-pending',
+   type:'line',
+   source:'shake-areas',
+   filter:['==',['get','c'],0],
+   paint:{
+    'line-color':'#f59e0b',
+    'line-width':1.6,
+    'line-dasharray':[2,2]
+   }
+  },'station-points');
+ }
+
+ if(!map.getLayer('shake-area-line-confirmed')){
+  map.addLayer({
+   id:'shake-area-line-confirmed',
+   type:'line',
+   source:'shake-areas',
+   filter:['==',['get','c'],1],
+   paint:{
+    'line-color':'#dc2626',
+    'line-width':2.2
+   }
+  },'station-points');
+ }
+
+ if(!map.getLayer('shake-point-ring')){
+  map.addLayer({
+   id:'shake-point-ring',
+   type:'circle',
+   source:'shake-points',
+   paint:{
+    'circle-radius':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     2,3.2,
+     5,5.6,
+     8,7.0,
+     11,8.2
+    ],
+    'circle-color':'rgba(0,0,0,0)',
+    'circle-stroke-color':[
+     'case',
+     ['==',['get','c'],1],
+     '#dc2626',
+     '#f59e0b'
+    ],
+    'circle-stroke-width':1.4,
+    'circle-opacity':1
+   }
+  });
+ }
 }
 
 function fitAll(){
@@ -1988,14 +2217,18 @@ function fitAll(){
   if(
    !st.geom||
    !Array.isArray(st.geom.coordinates)
-  )continue;
+  ){
+   continue;
+  }
 
   const [lon,lat]=st.geom.coordinates;
 
   if(
    !Number.isFinite(lon)||
    !Number.isFinite(lat)
-  )continue;
+  ){
+   continue;
+  }
 
   bounds.extend([lon,lat]);
   hasValidPoint=true;
@@ -2017,7 +2250,6 @@ function fitAll(){
 }
 
 $('resetMapButton').addEventListener('click',()=>{
- map.stop();
  fitAll();
 });
 
@@ -2080,16 +2312,15 @@ window.addEventListener(
 map.on('load',()=>{
  addSourceAndLayer();
 
- setupShakeCanvas();
-
  fitAll();
 
  maintainClock();
+
  tickSyncTime();
 
  connectStream();
 });
-
 </script>
+
 </body>
 </html>
