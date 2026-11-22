@@ -151,13 +151,6 @@ html,body{
 #shakeInfo .wss-dot{
  background:#94a3b8;
 }
-#shakeInfo.pending{
- background:#fef3c7;
- color:#92400e;
-}
-#shakeInfo.pending .wss-dot{
- background:#f59e0b;
-}
 #shakeInfo.confirmed{
  background:#fee2e2;
  color:#991b1b;
@@ -1173,6 +1166,13 @@ function buildNearPoints(list){
 
  const maxD=SD.MaxSearchDistance;
 
+
+ /*
+  * 正方形グリッド
+  * メルカトル平面(x,y[km])に投影し、正方形セルに入れる。
+  * メルカトルは緯度φで距離が 1/cosφ 倍になるため、
+  * セル1辺 = 最大探索距離 / cos(最大緯度) として取りこぼしを防ぐ。
+  */
  let maxAbsLat=0;
 
  for(const st of list){
@@ -1180,17 +1180,18 @@ function buildNearPoints(list){
   if(a>maxAbsLat)maxAbsLat=a;
  }
 
- const latCell=maxD/110.57;
-
- const lonCell=
-  maxD/(111.32*Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD)))*1.02;
+ const cellSize=
+  maxD/Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD))*1.02;
 
  const KEY=4096;
  const grid=new Map();
 
  for(const st of list){
-  st.cx=Math.floor((st.lon+180)/lonCell);
-  st.cy=Math.floor((st.lat+90)/latCell);
+  st.gx=6371*st.lon*DEG2RAD;
+  st.gy=6371*Math.log(Math.tan(Math.PI/4+st.lat*DEG2RAD/2));
+
+  st.cx=Math.floor(st.gx/cellSize);
+  st.cy=Math.floor(st.gy/cellSize);
 
   const key=st.cx*KEY+st.cy;
 
@@ -1768,59 +1769,80 @@ function circlePolygon(lat,lon,radiusKm,props){
  };
 }
 
+/* 正方形グリッド (Webメルカトル座標上の正方形 = 画面上でも正方形) */
+const SHAKE_GRID_DEG = 0.2;
+
+function mercatorY(lat){
+ return Math.log(
+  Math.tan(Math.PI/4+lat*DEG2RAD/2)
+ )/DEG2RAD;
+}
+
+function mercatorLat(y){
+ return (
+  2*Math.atan(Math.exp(y*DEG2RAD))-Math.PI/2
+ )/DEG2RAD;
+}
+
+function gridCellPolygon(cx,cy,props){
+ const x0=cx*SHAKE_GRID_DEG;
+ const x1=x0+SHAKE_GRID_DEG;
+ const lat0=mercatorLat(cy*SHAKE_GRID_DEG);
+ const lat1=mercatorLat((cy+1)*SHAKE_GRID_DEG);
+
+ return {
+  type:'Feature',
+  geometry:{
+   type:'Polygon',
+   coordinates:[[
+    [x0,lat0],
+    [x1,lat0],
+    [x1,lat1],
+    [x0,lat1],
+    [x0,lat0]
+   ]]
+  },
+  properties:props
+ };
+}
+
 /* 検知結果を地図とパネルに反映 */
 function renderShake(){
  const areas=[];
- const pts=[];
+ const cells=new Map();
 
- let confirmed=0;
  const shownEvents=[];
 
  for(const evt of shakeEvents){
   /* 未確定イベントは生活振動などの可能性があるため表示しない */
   if(evt.pointCount<=0||!evt.isConfirmed)continue;
 
-  const c=1;
-
-  confirmed++;
   shownEvents.push(evt);
 
-  let sLat=0;
-  let sLon=0;
-  let n=0;
-
   for(const p of evt.points){
-   sLat+=p.lat;
-   sLon+=p.lon;
-   n++;
+   /* 正方形グリッドのセルに集約 (セルごとに最大レベル) */
+   const cx=Math.floor(p.lon/SHAKE_GRID_DEG);
+   const cy=Math.floor(mercatorY(p.lat)/SHAKE_GRID_DEG);
+   const key=cx+','+cy;
 
-   pts.push({
-    type:'Feature',
-    geometry:p.geom,
-    properties:{c,l:evt.level}
-   });
+   const lv=Math.max(getLevel(p.latest),evt.isConfirmed?LV_WEAK:0);
+
+   const cell=cells.get(key);
+
+   if(!cell){
+    cells.set(key,{cx,cy,l:lv});
+   }else if(lv>cell.l){
+    cell.l=lv;
+   }
   }
+ }
 
-  const cLat=sLat/n;
-  const cLon=sLon/n;
-
-  let r=0;
-
-  for(const p of evt.points){
-   const d=geoDistance(cLat,cLon,p.lat,p.lon);
-   if(d>r)r=d;
-  }
-
-  r+=SHAKE_CIRCLE_PAD;
-
-  if(r<SHAKE_CIRCLE_MIN)r=SHAKE_CIRCLE_MIN;
-
-  areas.push(circlePolygon(cLat,cLon,r,{c,l:evt.level}));
+ for(const cell of cells.values()){
+  areas.push(gridCellPolygon(cell.cx,cell.cy,{l:cell.l}));
  }
 
  if(map){
   const areaSrc=map.getSource('shake-areas');
-  const ptSrc=map.getSource('shake-points');
 
   if(areaSrc){
    areaSrc.setData({
@@ -1828,31 +1850,21 @@ function renderShake(){
     features:areas
    });
   }
-
-  if(ptSrc){
-   ptSrc.setData({
-    type:'FeatureCollection',
-    features:pts
-   });
-  }
  }
 
  updateShakeFocus(shownEvents);
 
  const el=$('shakeInfo');
- const total=areas.length;
+ const total=shownEvents.length;
 
- el.classList.toggle('confirmed',confirmed>0);
- el.classList.toggle('pending',total>0&&confirmed===0);
+ el.classList.toggle('confirmed',total>0);
 
  const label=el.querySelector('span:last-child');
 
  if(!total){
   setText(label,'揺れ検知 なし');
- }else if(confirmed>0){
-  setText(label,`揺れ検知 ${total}件（確定 ${confirmed}）`);
  }else{
-  setText(label,`揺れ検知 ${total}件（未確定）`);
+  setText(label,`揺れ検知 ${total}件`);
  }
 }
 
@@ -2373,17 +2385,6 @@ function addSourceAndLayer(){
   });
  }
 
- /* 揺れ検知: 検知観測点 */
- if(!map.getSource('shake-points')){
-  map.addSource('shake-points',{
-   type:'geojson',
-   data:{
-    type:'FeatureCollection',
-    features:[]
-   }
-  });
- }
-
  if(!map.getLayer('shake-area-fill')){
   map.addLayer({
    id:'shake-area-fill',
@@ -2391,70 +2392,42 @@ function addSourceAndLayer(){
    source:'shake-areas',
    paint:{
     'fill-color':[
-     'case',
-     ['==',['get','c'],1],
-     '#dc2626',
+     'match',
+     ['get','l'],
+     0,'#facc15',
+     1,'#f59e0b',
+     2,'#f97316',
+     3,'#ef4444',
+     4,'#b91c1c',
      '#f59e0b'
     ],
-    'fill-opacity':0.1
+    'fill-opacity':0.38
    }
   },'station-points');
  }
 
- if(!map.getLayer('shake-area-line-pending')){
+ if(!map.getLayer('shake-area-line')){
   map.addLayer({
-   id:'shake-area-line-pending',
+   id:'shake-area-line',
    type:'line',
    source:'shake-areas',
-   filter:['==',['get','c'],0],
    paint:{
-    'line-color':'#f59e0b',
-    'line-width':1.6,
-    'line-dasharray':[2,2]
+    'line-color':[
+     'match',
+     ['get','l'],
+     0,'#ca8a04',
+     1,'#d97706',
+     2,'#ea580c',
+     3,'#dc2626',
+     4,'#7f1d1d',
+     '#d97706'
+    ],
+    'line-width':1,
+    'line-opacity':0.9
    }
   },'station-points');
  }
 
- if(!map.getLayer('shake-area-line-confirmed')){
-  map.addLayer({
-   id:'shake-area-line-confirmed',
-   type:'line',
-   source:'shake-areas',
-   filter:['==',['get','c'],1],
-   paint:{
-    'line-color':'#dc2626',
-    'line-width':2.2
-   }
-  },'station-points');
- }
-
- if(!map.getLayer('shake-point-ring')){
-  map.addLayer({
-   id:'shake-point-ring',
-   type:'circle',
-   source:'shake-points',
-   paint:{
-    'circle-radius':[
-     'interpolate',
-     ['linear'],
-     ['zoom'],
-     2,3.2,
-     5,5.6,
-     8,7.0,
-     11,8.2
-    ],
-    'circle-color':'rgba(0,0,0,0)',
-    'circle-stroke-color':[
-     'case',
-     ['==',['get','c'],1],
-     '#dc2626',
-     '#f59e0b'
-    ],
-    'circle-stroke-width':1.4,
-    'circle-opacity':1
-   }
-  });
- }
 }
 
 function fitAll(){
