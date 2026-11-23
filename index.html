@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -320,11 +319,11 @@ const SHAKE_MIN_VALID = 5;
 
 const SHAKE_COLD_BASELINE = -0.5;
 
-/* 揺れ終了基準 */
-const SHAKE_END_INTENSITY = -1.5;
-
-/* 終了判定の連続フレーム数 */
-const SHAKE_END_PERSIST_FRAMES = 2;
+/*
+ * -1.5は色分け専用。
+ * 揺れ検知・イベント終了条件には使用しない。
+ */
+const SHAKE_COLOR_MIN_INTENSITY = -1.5;
 
 /* 揺れの色分け基準 */
 const SHAKE_YELLOW_INTENSITY = 0.5;
@@ -1213,13 +1212,25 @@ function distanceWeight(d){
  return 0.65*(1-ratio);
 }
 
-/* 震度相当値によるイベントレベル */
+/*
+ * 震度相当値によるイベントレベル。
+ *
+ * -1.5はここでは使用しない。
+ * イベントレベルは従来の5段階基準で判定する。
+ */
 function getLevel(intensity){
- if(intensity===null||intensity===undefined)return LV_WEAKER;
+ if(
+  intensity===null||
+  intensity===undefined||
+  !Number.isFinite(intensity)
+ ){
+  return LV_WEAKER;
+ }
 
- if(intensity>=SHAKE_RED_INTENSITY)return 3;
- if(intensity>=SHAKE_YELLOW_INTENSITY)return 2;
- if(intensity>=SHAKE_END_INTENSITY)return 1;
+ if(intensity>4.5)return 4;
+ if(intensity>2.5)return 3;
+ if(intensity>0.5)return 2;
+ if(intensity>-1.0)return 1;
 
  return 0;
 }
@@ -1404,7 +1415,9 @@ function updateShakePoint(st,intensity){
  }
 
  /*
-  * 履歴不足時は絶対値による初期判定。
+  * 履歴不足時は従来の初期判定。
+  *
+  * -1.5による検知制限は設けない。
   */
  if(n<SHAKE_MIN_VALID||previous.length<4){
 
@@ -1416,10 +1429,10 @@ function updateShakePoint(st,intensity){
       SHAKE_BASE_MAX
      );
 
-  st.diff=
-   intensity>=SHAKE_END_INTENSITY
-    ?Math.max(0,intensity-baseline)
-    :0;
+  st.diff=Math.max(
+   0,
+   intensity-baseline
+  );
 
   st.noise=0;
   st.threshold=SD.MinDetectionDiff;
@@ -1616,7 +1629,6 @@ function resetShakeHistories(){
   st.tmpDisabled=false;
   st.hits=0;
   st.lastHitMs=null;
-  st.endHits=0;
  }
 
  shakeEvents=[];
@@ -1688,43 +1700,11 @@ function processShakeEvents(time,prevTime){
   }
 
   /*
-   * 揺れ終了判定。
-   * 終了基準を2フレーム連続で下回った場合に終了。
+   * -1.5によるイベント終了判定は行わない。
+   *
+   * イベントの終了は、下の既存の
+   * eventedExpireAtによる時間管理を使用する。
    */
-  if(point.event){
-
-   if(
-    latest!==null&&
-    latest<SHAKE_END_INTENSITY
-   ){
-    point.endHits=(point.endHits||0)+1;
-
-   }else{
-    point.endHits=0;
-   }
-
-   if(point.endHits>=SHAKE_END_PERSIST_FRAMES){
-
-    const evt=point.event;
-
-    point.event=null;
-    point.eventedAt=0;
-    point.eventedExpireAt=0;
-
-    point.hits=0;
-    point.lastHitMs=null;
-    point.endHits=0;
-
-    evt.removePoint(point);
-
-    if(evt.pointCount<=0){
-     removeShakeEvent(evt);
-    }
-   }
-
-  }else{
-   point.endHits=0;
-  }
 
   if(point.tmpDisabled)continue;
 
@@ -1853,6 +1833,13 @@ function processShakeEvents(time,prevTime){
 
     contributingPointCount++;
 
+    /*
+     * 近傍観測点が既存イベントに属していれば、
+     * そのイベントを統合候補に加える。
+     *
+     * 周辺観測点の震度が-1.5以上かどうかではなく、
+     * 従来の差分・スコア条件で判定する。
+     */
     if(np.event){
      events.push(np.event);
     }
@@ -2049,8 +2036,22 @@ function circlePolygon(lat,lon,radiusKm,props){
  };
 }
 
+/*
+ * 色分け。
+ *
+ * -1.5は色分け処理の中だけで使用する。
+ * 検知・イベント継続・終了には影響しない。
+ */
 function shakeColor(intensity){
- if(intensity===null||intensity===undefined){
+ if(
+  intensity===null||
+  intensity===undefined||
+  !Number.isFinite(intensity)
+ ){
+  return SHAKE_COLOR_WEAK;
+ }
+
+ if(intensity<SHAKE_COLOR_MIN_INTENSITY){
   return SHAKE_COLOR_WEAK;
  }
 
@@ -2434,7 +2435,6 @@ function prepareStations(width,height){
 
    hits:0,
    lastHitMs:null,
-   endHits:0,
 
    cx:0,
    cy:0,
