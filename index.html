@@ -147,9 +147,15 @@ html,body{
 .wss-status.connected .wss-dot{
  background:#168447;
 }
-/* 揺れ検知ステータス */
 #shakeInfo .wss-dot{
  background:#94a3b8;
+}
+#shakeInfo.pending{
+ background:#fef3c7;
+ color:#92400e;
+}
+#shakeInfo.pending .wss-dot{
+ background:#f59e0b;
 }
 #shakeInfo.confirmed{
  background:#fee2e2;
@@ -258,10 +264,7 @@ const HIDDEN_DISCONNECT = 60000;
 
 const IMAGE_LAG_LIMIT = 3000;
 
-/* 観測点の表示保持時間 */
 const STATION_HOLD_TIME = 3000;
-
-/* 保持時間の確認間隔 */
 const STATION_CHECK_INTERVAL = 250;
 
 const LAST_FRAME_CACHE_KEY = 'EQ_RTS_LAST_FRAME_V1';
@@ -281,20 +284,24 @@ const MAP_PADDING = {
  left:35
 };
 
-/* ========== 揺れ検知パラメータ (ShakeDetectionParameters 相当) ========== */
+/* ========== 揺れ検知パラメータ ========== */
+
 const SD = {
  MaxSearchDistance:60.0,
  PeakWeightDistance:14.0,
+
  IsolatedThreshold:1,
- IsolatedDetectionDiff:1.4,
- ScoreThresholdRatio:0.333333,
+ IsolatedDetectionDiff:1.8,
+
+ ScoreThresholdRatio:0.50,
  ScoreIntensityOffset:-0.8,
  MinDetectionDiff:0.2,
- NoChangePenaltyFactor:0.25,
+ NoChangePenaltyFactor:0.35,
  MaxNearPoints:50,
 
- /* index = レベル (0:Weaker 1:Weak 2:Medium 3:Strong 4:Stronger) */
- MergeDistance:[90,130,180,250,250],
+ /* イベント統合距離 */
+ MergeDistance:[60,90,120,160,200],
+
  Seconds:[20,30,40,70,80],
 
  WeakerConfirmPointCount:4,
@@ -304,31 +311,34 @@ const SD = {
 const LV_WEAKER = 0;
 const LV_WEAK = 1;
 
-/* 震度履歴の長さ(フレーム数 ≒ 秒) */
+/* 震度履歴 */
 const SHAKE_HISTORY_LEN = 10;
-
-/* フレーム間隔がこれ以上空いたら履歴をリセット */
 const SHAKE_GAP_RESET = 15000;
-
-/* 履歴が有効とみなす最小有効サンプル数 */
 const SHAKE_MIN_VALID = 5;
 
-/*
- * 起動直後(履歴不足)用の基準震度。
- * 開く前から揺れていた場合、上昇量が取れないため
- * 「この震度を平常時」とみなして絶対値から上昇量を求める。
- */
 const SHAKE_COLD_BASELINE = -0.5;
 
-/* 生活振動対策 */
-/* 近傍で上昇している観測点がこの数以上ないと検知しない */
-const SHAKE_MIN_CONTRIB = 3;
-/* 同じ観測点が連続してこのフレーム数、検知条件を満たす必要がある */
-const SHAKE_PERSIST_FRAMES = 2;
-/* 震度1以上でも観測点がこの数未満なら確定しない */
+/* 揺れ終了基準 */
+const SHAKE_END_INTENSITY = -1.5;
+
+/* 揺れの色分け基準 */
+const SHAKE_YELLOW_INTENSITY = 0.5;
+const SHAKE_RED_INTENSITY = 2.5;
+
+const SHAKE_COLOR_WEAK = '#16a34a';
+const SHAKE_COLOR_MEDIUM = '#eab308';
+const SHAKE_COLOR_STRONG = '#dc2626';
+
+/* 空間的な検知条件 */
+const SHAKE_MIN_CONTRIB = 4;
+
+/* 連続成立条件 */
+const SHAKE_PERSIST_FRAMES = 3;
+
+/* 確定に必要な観測点数 */
 const SHAKE_MIN_CONFIRM_POINTS = 3;
 
-/* 観測点ごとの平常時震度(ゆっくり追従・localStorageに保存) */
+/* 平常時震度 */
 const SHAKE_BASE_KEY = 'EQ_RTS_SHAKE_BASE_V1';
 const SHAKE_BASE_ALPHA = 0.01;
 const SHAKE_BASE_MARGIN = 0.3;
@@ -337,11 +347,14 @@ const SHAKE_BASE_MAX = 0.5;
 /* 自動ズーム */
 const SHAKE_FOCUS_INTERVAL = 3000;
 const SHAKE_USER_PAUSE = 15000;
-const SHAKE_RETURN_DELAY = 15000;
+
+/* 検知終了後の地図復帰時間 */
+const SHAKE_RETURN_DELAY = 2000;
+
 const SHAKE_FOCUS_MAX_ZOOM = 7.5;
 const SHAKE_FOCUS_MARGIN_DEG = 0.25;
 
-/* イベント円の余白(km)と最小半径(km) */
+/* イベント円 */
 const SHAKE_CIRCLE_PAD = 8;
 const SHAKE_CIRCLE_MIN = 12;
 
@@ -363,7 +376,6 @@ let lastImageCompletedPerf = null;
 
 let lastFrameCacheRestored = false;
 
-/* 揺れ検知の状態 */
 let shakeEvents = [];
 let shakeEventSeq = 0;
 let lastShakeMs = null;
@@ -501,6 +513,7 @@ function restoreLastFrameCache(){
 
   for(const st of stations){
    st.valid=false;
+   st.shakeValid=false;
    st.position=null;
    st.invalidSince=null;
   }
@@ -543,6 +556,10 @@ function restoreLastFrameCache(){
    st.hex='#'+HEX[r]+HEX[g]+HEX[b];
    st.position=position;
    st.valid=true;
+
+   /* キャッシュは検知用の新鮮なデータではない */
+   st.shakeValid=false;
+
    st.invalidSince=null;
   }
 
@@ -1114,12 +1131,11 @@ function loadPoints(){
 }
 
 /* ========================================================================
- * 揺れ検知 (ShakeDetectionEngine 移植 / 近傍探索はグリッド)
+ * 揺れ検知エンジン
  * ====================================================================== */
 
 const DEG2RAD=Math.PI/180;
 
-/* 2点間距離(km) ハバーサイン */
 function geoDistance(lat1,lon1,lat2,lon2){
  const dLat=(lat2-lat1)*DEG2RAD;
  const dLon=(lon2-lon1)*DEG2RAD;
@@ -1133,7 +1149,41 @@ function geoDistance(lat1,lon1,lat2,lon2){
  return 6371*2*Math.asin(Math.min(1,Math.sqrt(a)));
 }
 
-/* 距離に基づく重み (近すぎ・遠すぎを下げる) */
+/* 中央値 */
+function median(values){
+ if(!values.length)return 0;
+
+ const sorted=values.slice().sort((a,b)=>a-b);
+ const mid=Math.floor(sorted.length/2);
+
+ return sorted.length%2
+  ?sorted[mid]
+  :(sorted[mid-1]+sorted[mid])/2;
+}
+
+/* 外れ値に強いばらつき評価 */
+function calculateMAD(values,center){
+ if(!values.length)return 0;
+
+ const deviations=values.map(
+  v=>Math.abs(v-center)
+ );
+
+ return median(deviations);
+}
+
+/* 観測点ごとの動的検知しきい値 */
+function getPointThreshold(st){
+ const noise=Number.isFinite(st.noise)
+  ?st.noise
+  :0;
+
+ return Math.max(
+  SD.MinDetectionDiff,
+  0.25+noise*2.5
+ );
+}
+
 function distanceWeight(d){
  if(d<=SD.PeakWeightDistance){
   return d/SD.PeakWeightDistance;
@@ -1143,20 +1193,18 @@ function distanceWeight(d){
   (SD.MaxSearchDistance-SD.PeakWeightDistance);
 }
 
-/* 震度 → レベル */
+/* 震度相当値によるイベントレベル */
 function getLevel(intensity){
  if(intensity===null||intensity===undefined)return LV_WEAKER;
- if(intensity>=5)return 4;
- if(intensity>=3)return 3;
- if(intensity>=1)return 2;
- if(intensity>=-1)return 1;
+
+ if(intensity>=SHAKE_RED_INTENSITY)return 3;
+ if(intensity>=SHAKE_YELLOW_INTENSITY)return 2;
+ if(intensity>=SHAKE_END_INTENSITY)return 1;
+
  return 0;
 }
 
-/*
- * グリッドによる近傍観測点の設定
- * セルサイズ = 最大探索距離。3×3セルだけ走査する。
- */
+/* グリッドによる近傍観測点の設定 */
 function buildNearPoints(list){
  for(const st of list){
   st.near=[];
@@ -1166,13 +1214,6 @@ function buildNearPoints(list){
 
  const maxD=SD.MaxSearchDistance;
 
-
- /*
-  * 正方形グリッド
-  * メルカトル平面(x,y[km])に投影し、正方形セルに入れる。
-  * メルカトルは緯度φで距離が 1/cosφ 倍になるため、
-  * セル1辺 = 最大探索距離 / cos(最大緯度) として取りこぼしを防ぐ。
-  */
  let maxAbsLat=0;
 
  for(const st of list){
@@ -1180,18 +1221,17 @@ function buildNearPoints(list){
   if(a>maxAbsLat)maxAbsLat=a;
  }
 
- const cellSize=
-  maxD/Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD))*1.02;
+ const latCell=maxD/110.57;
+
+ const lonCell=
+  maxD/(111.32*Math.max(0.1,Math.cos(maxAbsLat*DEG2RAD)))*1.02;
 
  const KEY=4096;
  const grid=new Map();
 
  for(const st of list){
-  st.gx=6371*st.lon*DEG2RAD;
-  st.gy=6371*Math.log(Math.tan(Math.PI/4+st.lat*DEG2RAD/2));
-
-  st.cx=Math.floor(st.gx/cellSize);
-  st.cy=Math.floor(st.gy/cellSize);
+  st.cx=Math.floor((st.lon+180)/lonCell);
+  st.cy=Math.floor((st.lat+90)/latCell);
 
   const key=st.cx*KEY+st.cy;
 
@@ -1243,7 +1283,7 @@ function buildNearPoints(list){
  }
 }
 
-/* 平常時震度の復元・保存 */
+/* 平常時震度の復元 */
 function loadShakeBaselines(){
  try{
   const raw=localStorage.getItem(SHAKE_BASE_KEY);
@@ -1295,9 +1335,14 @@ function saveShakeBaselines(){
 
 setInterval(saveShakeBaselines,30000);
 
-/* 観測点の履歴を更新 */
+/*
+ * 観測点の履歴を更新
+ *
+ * 過去履歴の中央値を使い、
+ * 一時的な外れ値に影響されにくくする。
+ */
 function updateShakePoint(st,intensity){
- /* 平常時震度の更新 (検知中・揺れ中は更新しない) */
+
  if(
   intensity!==null&&
   st.event===null&&
@@ -1310,6 +1355,10 @@ function updateShakePoint(st,intensity){
   }
  }
 
+ const previous=st.hist.filter(
+  v=>v!==null&&Number.isFinite(v)
+ );
+
  st.hist.push(intensity);
 
  if(st.hist.length>SHAKE_HISTORY_LEN){
@@ -1318,57 +1367,71 @@ function updateShakePoint(st,intensity){
 
  st.latest=intensity;
 
- const n=st.hist.length;
+ const validValues=st.hist.filter(
+  v=>v!==null&&Number.isFinite(v)
+ );
 
- let sumAll=0;
- let cntAll=0;
- let sumPrev=0;
- let cntPrev=0;
- let allValid=true;
+ const n=validValues.length;
 
- for(let k=0;k<n;k++){
-  const v=st.hist[k];
+ st.avg=n?median(validValues):0;
 
-  if(v===null){
-   allValid=false;
-   continue;
-  }
-
-  sumAll+=v;
-  cntAll++;
-
-  if(k<n-1){
-   sumPrev+=v;
-   cntPrev++;
-  }
+ if(intensity===null){
+  st.diff=0;
+  st.noise=0;
+  st.threshold=SD.MinDetectionDiff;
+  st.hasValidHistory=false;
+  return;
  }
 
- st.avg=cntAll?sumAll/cntAll:0;
+ /*
+  * 履歴不足時は絶対値による初期判定。
+  */
+ if(n<SHAKE_MIN_VALID||previous.length<4){
 
- /* 履歴不足(起動直後・再接続直後)は絶対値で判定 */
- if(cntAll<SHAKE_MIN_VALID){
+  const baseline=
+   st.base===null
+    ?SHAKE_COLD_BASELINE
+    :Math.min(
+      st.base+SHAKE_BASE_MARGIN,
+      SHAKE_BASE_MAX
+     );
+
   st.diff=
-   intensity!==null
-    ?Math.max(0,intensity-(
-      st.base===null
-       ?SHAKE_COLD_BASELINE
-       :Math.min(st.base+SHAKE_BASE_MARGIN,SHAKE_BASE_MAX)
-     ))
+   intensity>=SHAKE_END_INTENSITY
+    ?Math.max(0,intensity-baseline)
     :0;
 
-  st.hasValidHistory=intensity!==null;
+  st.noise=0;
+  st.threshold=SD.MinDetectionDiff;
+  st.hasValidHistory=true;
 
   return;
  }
 
- /* 直近の履歴平均に対する上昇量 */
- st.diff=
-  (intensity!==null&&cntPrev)
-   ?intensity-sumPrev/cntPrev
-   :0;
+ /*
+  * 過去サンプルの中央値とMADを計算。
+  */
+ const previousMedian=median(previous);
 
- st.hasValidHistory=
-  intensity!==null&&cntAll>=SHAKE_MIN_VALID;
+ const mad=calculateMAD(
+  previous,
+  previousMedian
+ );
+
+ st.noise=mad;
+
+ /*
+  * 現在値と過去の中央値の差。
+  */
+ st.diff=intensity-previousMedian;
+
+ /*
+  * 観測点ごとのノイズ量に応じて
+  * 検知しきい値を変更する。
+  */
+ st.threshold=getPointThreshold(st);
+
+ st.hasValidHistory=true;
 }
 
 /* 揺れイベント */
@@ -1382,7 +1445,12 @@ class ShakeEvent{
 
   this.addPoint(point,time,seconds);
 
-  console.log('揺れ検知 イベント発生:',this.id,point.code,point.latest);
+  console.log(
+   '揺れ検知 イベント発生:',
+   this.id,
+   point.code,
+   point.latest
+  );
  }
 
  get pointCount(){
@@ -1431,7 +1499,6 @@ class ShakeEvent{
   this.updateLevel();
  }
 
- /* 2イベントのいずれかの観測点同士が distance(km) 未満か */
  checkNearby(other,distance){
   if(!this.points.size||!other.points.size)return false;
 
@@ -1492,18 +1559,28 @@ function removeShakeEvent(evt){
  }
 }
 
+/* イベント確定判定 */
 function updateEventConfirmation(evt){
  if(evt.isConfirmed)return;
 
+ const count=evt.pointCount;
+
  if(
   (evt.level<=LV_WEAKER&&
-   evt.pointCount>SD.WeakerConfirmPointCount)||
+   count>SD.WeakerConfirmPointCount)||
   (evt.level===LV_WEAK&&
-   evt.pointCount>SD.WeakConfirmPointCount)||
+   count>SD.WeakConfirmPointCount)||
   (evt.level>LV_WEAK&&
-   evt.pointCount>=SHAKE_MIN_CONFIRM_POINTS)
+   count>=SHAKE_MIN_CONFIRM_POINTS)
  ){
   evt.isConfirmed=true;
+
+  console.log(
+   '揺れ検知 確定:',
+   evt.id,
+   '観測点数:',
+   count
+  );
  }
 }
 
@@ -1513,6 +1590,8 @@ function resetShakeHistories(){
   st.latest=null;
   st.avg=0;
   st.diff=0;
+  st.noise=0;
+  st.threshold=SD.MinDetectionDiff;
   st.hasValidHistory=false;
   st.event=null;
   st.eventedAt=0;
@@ -1525,13 +1604,33 @@ function resetShakeHistories(){
  shakeEvents=[];
 }
 
+/* 連続成立判定 */
+function updateCandidatePersistence(point,time,prevTime){
+ if(
+  prevTime!==null&&
+  point.lastHitMs===prevTime
+ ){
+  point.hits++;
+ }else{
+  point.hits=1;
+ }
+
+ point.lastHitMs=time;
+
+ return point.hits>=SHAKE_PERSIST_FRAMES;
+}
+
+/* 揺れイベント処理 */
 function processShakeEvents(time,prevTime){
- /* イベントチェック・異常値除外 */
+
  for(const point of stations){
+
   const latest=point.latest;
   const hasNear=point.near.length>0;
 
-  /* 異常値の排除 */
+  /*
+   * 異常値の排除
+   */
   if(
    latest!==null&&
    point.diff<1&&
@@ -1546,28 +1645,75 @@ function processShakeEvents(time,prevTime){
    )
   ){
    if(!point.tmpDisabled){
-    console.log('異常値の判定により観測点を除外:',
-     point.code,latest,point.avg);
+    console.log(
+     '異常値の判定により観測点を除外:',
+     point.code,
+     latest,
+     point.avg
+    );
    }
 
    point.tmpDisabled=true;
+   point.hits=0;
+   point.lastHitMs=null;
 
   }else if(latest!==null&&point.tmpDisabled){
-   console.log('異常値による除外を戻します:',
-    point.code,latest,point.avg);
+
+   console.log(
+    '異常値による除外を戻します:',
+    point.code,
+    latest,
+    point.avg
+   );
 
    point.tmpDisabled=false;
   }
 
+  /*
+   * 揺れ終了判定。
+   *
+   * 上昇量(diff)の大小に関係なく、
+   * 最新値が終了基準を下回ったらイベントから除外する。
+   */
+  if(
+   point.event&&
+   latest!==null&&
+   latest<SHAKE_END_INTENSITY
+  ){
+   const evt=point.event;
+
+   point.event=null;
+   point.eventedAt=0;
+   point.eventedExpireAt=0;
+
+   point.hits=0;
+   point.lastHitMs=null;
+
+   evt.removePoint(point);
+
+   if(evt.pointCount<=0){
+    removeShakeEvent(evt);
+   }
+  }
+
   if(point.tmpDisabled)continue;
 
-  if(point.diff<SD.MinDetectionDiff){
-   /* 未来もしくは期限切れのイベントは離脱 */
+  /*
+   * 上昇量が不足する場合は候補をリセット。
+   */
+  if(point.diff<point.threshold){
+
+   point.hits=0;
+   point.lastHitMs=null;
+
    const evt=point.event;
 
    if(
     evt&&
-    (point.eventedAt>time||point.eventedExpireAt<time)
+    (
+     point.eventedAt>time||
+     point.eventedExpireAt<time
+    )
    ){
     point.event=null;
     evt.removePoint(point);
@@ -1580,10 +1726,11 @@ function processShakeEvents(time,prevTime){
    continue;
   }
 
-  /* 欠測の場合は戻る */
   if(latest===null)continue;
 
-  /* 有効な近傍観測点の重み合計 */
+  /*
+   * 有効な近傍観測点の重み合計。
+   */
   let availableTotalWeight=0;
 
   for(const n of point.near){
@@ -1592,25 +1739,46 @@ function processShakeEvents(time,prevTime){
    }
   }
 
-  /* 離島扱い (単独検知) */
+  /*
+   * 離島・孤立観測点。
+   *
+   * 単独観測点だけでは確定しない。
+   * 連続成立した場合に未確定イベントとして保持する。
+   */
   if(availableTotalWeight<SD.IsolatedThreshold){
+
    if(
     point.diff>=SD.IsolatedDetectionDiff&&
     point.event===null
    ){
-    const level=getLevel(latest);
-
-    const evt=new ShakeEvent(
-     time,
+    const persistent=updateCandidatePersistence(
      point,
-     SD.Seconds[level]
+     time,
+     prevTime
     );
 
-    evt.isConfirmed=level>LV_WEAK;
+    if(persistent){
+     const level=getLevel(latest);
 
-    point.eventedAt=time;
+     const evt=new ShakeEvent(
+      time,
+      point,
+      SD.Seconds[level]
+     );
 
-    shakeEvents.push(evt);
+     /*
+      * 孤立観測点のイベントは自動確定させない。
+      */
+     evt.isConfirmed=false;
+
+     point.eventedAt=time;
+
+     shakeEvents.push(evt);
+    }
+
+   }else if(point.event===null){
+    point.hits=0;
+    point.lastHitMs=null;
    }
 
    continue;
@@ -1620,50 +1788,81 @@ function processShakeEvents(time,prevTime){
 
   if(point.event)events.push(point.event);
 
-  /* 距離・震度上昇度重み付きスコア */
+  /*
+   * 距離・震度上昇量・ノイズ水準を利用したスコア。
+   */
   let score=0;
   let penaltyScore=0;
   let contributingPointCount=0;
 
   for(const n of point.near){
+
    const np=n.p;
 
-   if(np.tmpDisabled||!np.hasValidHistory)continue;
+   if(
+    np.tmpDisabled||
+    !np.hasValidHistory
+   ){
+    continue;
+   }
 
-   if(np.diff>=SD.MinDetectionDiff){
-    score+=n.weight*(np.diff-SD.ScoreIntensityOffset);
+   const neighborThreshold=
+    np.threshold||SD.MinDetectionDiff;
+
+   if(np.diff>=neighborThreshold){
+
+    score+=
+     n.weight*
+     (np.diff-SD.ScoreIntensityOffset);
+
     contributingPointCount++;
 
-    if(np.event)events.push(np.event);
+    if(np.event){
+     events.push(np.event);
+    }
 
    }else{
-    penaltyScore+=n.weight*SD.NoChangePenaltyFactor;
+
+    penaltyScore+=
+     n.weight*
+     SD.NoChangePenaltyFactor;
    }
   }
 
   const finalScore=score-penaltyScore;
 
   const threshold=
-   availableTotalWeight*SD.ScoreThresholdRatio;
+   availableTotalWeight*
+   SD.ScoreThresholdRatio;
 
-  /* 寄与が少ない場合は単独ノイズ(生活振動など)の可能性 */
-  if(contributingPointCount<SHAKE_MIN_CONTRIB)continue;
-
-  if(finalScore<threshold)continue;
-
-  /* 一瞬だけの上昇(車・ドア等)を除外: 連続フレームで成立が必要 */
-  if(
-   prevTime!==null&&
-   point.lastHitMs===prevTime
-  ){
-   point.hits++;
-  }else{
-   point.hits=1;
+  /*
+   * 近傍の上昇観測点が不足する場合は除外。
+   */
+  if(contributingPointCount<SHAKE_MIN_CONTRIB){
+   point.hits=0;
+   point.lastHitMs=null;
+   continue;
   }
 
-  point.lastHitMs=time;
+  /*
+   * 周辺の上昇量が弱い場合は除外。
+   */
+  if(finalScore<threshold){
+   point.hits=0;
+   point.lastHitMs=null;
+   continue;
+  }
 
-  if(point.hits<SHAKE_PERSIST_FRAMES)continue;
+  /*
+   * 複数フレームで条件が連続成立する必要がある。
+   */
+  const persistent=updateCandidatePersistence(
+   point,
+   time,
+   prevTime
+  );
+
+  if(!persistent)continue;
 
   /* この時点で検知扱い */
   point.eventedAt=time;
@@ -1672,13 +1871,19 @@ function processShakeEvents(time,prevTime){
 
   const seconds=SD.Seconds[getLevel(latest)];
 
-  /* 複数件ある場合はマージ */
+  /*
+   * 複数イベントを統合。
+   */
   if(uniqueEvents.length>1){
-   uniqueEvents.sort((a,b)=>a.createdAt-b.createdAt);
+
+   uniqueEvents.sort(
+    (a,b)=>a.createdAt-b.createdAt
+   );
 
    const firstEvent=uniqueEvents[0];
 
    for(const evt of uniqueEvents){
+
     if(evt===firstEvent)continue;
 
     firstEvent.mergeEvent(evt);
@@ -1687,23 +1892,43 @@ function processShakeEvents(time,prevTime){
 
    if(point.event===firstEvent)continue;
 
-   firstEvent.addPoint(point,time,seconds);
+   firstEvent.addPoint(
+    point,
+    time,
+    seconds
+   );
+
    updateEventConfirmation(firstEvent);
 
    continue;
   }
 
-  /* 1件の場合はイベントに追加 */
+  /*
+   * 既存イベントに追加。
+   */
   if(uniqueEvents.length===1){
-   uniqueEvents[0].addPoint(point,time,seconds);
+
+   uniqueEvents[0].addPoint(
+    point,
+    time,
+    seconds
+   );
+
    updateEventConfirmation(uniqueEvents[0]);
 
    continue;
   }
 
-  /* 存在しなかった場合はイベント作成 */
+  /*
+   * 新しいイベントを作成。
+   */
   if(point.event===null){
-   const evt=new ShakeEvent(time,point,seconds);
+
+   const evt=new ShakeEvent(
+    time,
+    point,
+    seconds
+   );
 
    shakeEvents.push(evt);
 
@@ -1711,15 +1936,20 @@ function processShakeEvents(time,prevTime){
   }
  }
 
- /* レベルを最新化 */
+ /*
+  * イベントレベルを最新化。
+  */
  for(const evt of shakeEvents){
   evt.updateLevel();
  }
 
- /* イベントの距離統合 */
+ /*
+  * イベントの距離統合。
+  */
  for(const evt of [...shakeEvents].sort(
   (a,b)=>a.createdAt-b.createdAt
- )){
+  )){
+
   if(!shakeEvents.includes(evt))continue;
 
   const others=shakeEvents.filter(e=>
@@ -1727,10 +1957,15 @@ function processShakeEvents(time,prevTime){
   );
 
   for(const evt2 of others){
-   const mergeDistance=
-    SD.MergeDistance[Math.max(evt.level,evt2.level)];
 
-   if(!evt.checkNearby(evt2,mergeDistance))continue;
+   const mergeDistance=
+    SD.MergeDistance[
+     Math.max(evt.level,evt2.level)
+    ];
+
+   if(!evt.checkNearby(evt2,mergeDistance)){
+    continue;
+   }
 
    evt.mergeEvent(evt2);
    removeShakeEvent(evt2);
@@ -1769,80 +2004,109 @@ function circlePolygon(lat,lon,radiusKm,props){
  };
 }
 
-/* 正方形グリッド (Webメルカトル座標上の正方形 = 画面上でも正方形) */
-const SHAKE_GRID_DEG = 0.5;
+function shakeColor(intensity){
+ if(intensity===null||intensity===undefined){
+  return SHAKE_COLOR_WEAK;
+ }
 
-function mercatorY(lat){
- return Math.log(
-  Math.tan(Math.PI/4+lat*DEG2RAD/2)
- )/DEG2RAD;
-}
+ if(intensity>=SHAKE_RED_INTENSITY){
+  return SHAKE_COLOR_STRONG;
+ }
 
-function mercatorLat(y){
- return (
-  2*Math.atan(Math.exp(y*DEG2RAD))-Math.PI/2
- )/DEG2RAD;
-}
+ if(intensity>=SHAKE_YELLOW_INTENSITY){
+  return SHAKE_COLOR_MEDIUM;
+ }
 
-function gridCellPolygon(cx,cy,props){
- const x0=cx*SHAKE_GRID_DEG;
- const x1=x0+SHAKE_GRID_DEG;
- const lat0=mercatorLat(cy*SHAKE_GRID_DEG);
- const lat1=mercatorLat((cy+1)*SHAKE_GRID_DEG);
-
- return {
-  type:'Feature',
-  geometry:{
-   type:'Polygon',
-   coordinates:[[
-    [x0,lat0],
-    [x1,lat0],
-    [x1,lat1],
-    [x0,lat1],
-    [x0,lat0]
-   ]]
-  },
-  properties:props
- };
+ return SHAKE_COLOR_WEAK;
 }
 
 /* 検知結果を地図とパネルに反映 */
 function renderShake(){
  const areas=[];
- const cells=new Map();
+ const pts=[];
 
+ let confirmed=0;
  const shownEvents=[];
 
  for(const evt of shakeEvents){
-  /* 未確定イベントは生活振動などの可能性があるため表示しない */
-  if(evt.pointCount<=0||!evt.isConfirmed)continue;
 
+  if(evt.pointCount<=0||!evt.isConfirmed){
+   continue;
+  }
+
+  const c=1;
+
+  confirmed++;
   shownEvents.push(evt);
 
+  let sLat=0;
+  let sLon=0;
+  let n=0;
+
+  let maxIntensity=-Infinity;
+
   for(const p of evt.points){
-   /* 正方形グリッドのセルに集約 (セルごとに最大レベル) */
-   const cx=Math.floor(p.lon/SHAKE_GRID_DEG);
-   const cy=Math.floor(mercatorY(p.lat)/SHAKE_GRID_DEG);
-   const key=cx+','+cy;
 
-   const lv=Math.max(getLevel(p.latest),evt.isConfirmed?LV_WEAK:0);
+   sLat+=p.lat;
+   sLon+=p.lon;
+   n++;
 
-   const cell=cells.get(key);
+   pts.push({
+    type:'Feature',
+    geometry:p.geom,
+    properties:{
+     c,
+     l:evt.level,
+     hex:shakeColor(p.latest)
+    }
+   });
 
-   if(!cell){
-    cells.set(key,{cx,cy,l:lv});
-   }else if(lv>cell.l){
-    cell.l=lv;
+   if(
+    p.latest!==null&&
+    p.latest>maxIntensity
+   ){
+    maxIntensity=p.latest;
    }
   }
- }
 
- for(const cell of cells.values()){
-  areas.push(gridCellPolygon(cell.cx,cell.cy,{l:cell.l}));
+  const cLat=sLat/n;
+  const cLon=sLon/n;
+
+  let r=0;
+
+  for(const p of evt.points){
+   const d=geoDistance(
+    cLat,cLon,
+    p.lat,p.lon
+   );
+
+   if(d>r)r=d;
+  }
+
+  r+=SHAKE_CIRCLE_PAD;
+
+  if(r<SHAKE_CIRCLE_MIN){
+   r=SHAKE_CIRCLE_MIN;
+  }
+
+  areas.push(circlePolygon(
+   cLat,
+   cLon,
+   r,
+   {
+    c,
+    l:evt.level,
+    hex:shakeColor(
+     maxIntensity===-Infinity?null:maxIntensity
+    )
+   }
+  ));
  }
 
  if(map){
+
   const areaSrc=map.getSource('shake-areas');
+  const ptSrc=map.getSource('shake-points');
 
   if(areaSrc){
    areaSrc.setData({
@@ -1850,21 +2114,40 @@ function renderShake(){
     features:areas
    });
   }
+
+  if(ptSrc){
+   ptSrc.setData({
+    type:'FeatureCollection',
+    features:pts
+   });
+  }
  }
 
  updateShakeFocus(shownEvents);
 
  const el=$('shakeInfo');
- const total=shownEvents.length;
+ const total=areas.length;
 
- el.classList.toggle('confirmed',total>0);
+ el.classList.toggle('confirmed',confirmed>0);
+ el.classList.toggle(
+  'pending',
+  total>0&&confirmed===0
+ );
 
  const label=el.querySelector('span:last-child');
 
  if(!total){
   setText(label,'揺れ検知 なし');
+ }else if(confirmed>0){
+  setText(
+   label,
+   `揺れ検知 ${total}件（確定 ${confirmed}）`
+  );
  }else{
-  setText(label,`揺れ検知 ${total}件`);
+  setText(
+   label,
+   `揺れ検知 ${total}件（未確定）`
+  );
  }
 }
 
@@ -1881,16 +2164,18 @@ function updateShakeFocus(evts){
 
  const now=performance.now();
 
- /* 揺れが無くなったら一定時間後に全体表示へ戻す */
  if(!evts.length){
+
   shakeFocusIds=new Set();
   shakeFocusBounds=null;
 
   if(shakeFocused){
+
    if(shakeClearSince===null){
     shakeClearSince=now;
 
    }else if(now-shakeClearSince>=SHAKE_RETURN_DELAY){
+
     shakeFocused=false;
     shakeClearSince=null;
 
@@ -1911,11 +2196,15 @@ function updateShakeFocus(evts){
  const ids=new Set();
 
  for(const evt of evts){
+
   ids.add(evt.id);
 
-  if(!shakeFocusIds.has(evt.id))hasNew=true;
+  if(!shakeFocusIds.has(evt.id)){
+   hasNew=true;
+  }
 
   for(const p of evt.points){
+
    if(p.lat<minLat)minLat=p.lat;
    if(p.lat>maxLat)maxLat=p.lat;
    if(p.lon<minLon)minLon=p.lon;
@@ -1936,7 +2225,6 @@ function updateShakeFocus(evts){
 
  if(!hasNew&&!grew)return;
 
- /* 新規イベント以外は、手動操作中・短時間の連続移動を避ける */
  if(
   !hasNew&&
   (
@@ -1947,7 +2235,13 @@ function updateShakeFocus(evts){
   return;
  }
 
- shakeFocusBounds={minLat,maxLat,minLon,maxLon};
+ shakeFocusBounds={
+  minLat,
+  maxLat,
+  minLon,
+  maxLon
+ };
+
  shakeFocusPerf=now;
  shakeFocused=true;
 
@@ -1983,7 +2277,10 @@ function detectShake(ms){
 
  if(
   lastShakeMs!==null&&
-  (ms<lastShakeMs||ms-lastShakeMs>SHAKE_GAP_RESET)
+  (
+   ms<lastShakeMs||
+   ms-lastShakeMs>SHAKE_GAP_RESET
+  )
  ){
   resetShakeHistories();
  }
@@ -1993,9 +2290,12 @@ function detectShake(ms){
  lastShakeMs=ms;
 
  for(const st of stations){
-  /* 保持中(一時未検出)の観測点も直前の値で継続 */
+
+  /*
+   * 表示保持中の古い観測値は検知に使用しない。
+   */
   const live=
-   st.valid&&
+   st.shakeValid&&
    st.position!==null;
 
   updateShakePoint(
@@ -2054,28 +2354,37 @@ function prepareStations(width,height){
    position:null,
    valid:false,
 
-   /* 未検出が始まった時刻 */
+   /* 表示用の保持状態 */
    invalidSince:null,
+
+   /* 検知用の有効状態 */
+   shakeValid:false,
 
    /* 揺れ検知用 */
    hist:[],
    latest:null,
    avg:0,
    diff:0,
+   noise:0,
+   threshold:SD.MinDetectionDiff,
    hasValidHistory:false,
+
    near:[],
    base:null,
+
    hits:0,
    lastHitMs:null,
+
    cx:0,
    cy:0,
+
    event:null,
    eventedAt:0,
    eventedExpireAt:0,
+
    tmpDisabled:false
   }));
 
- /* グリッドで近傍観測点を設定 */
  buildNearPoints(stations);
 
  loadShakeBaselines();
@@ -2086,9 +2395,7 @@ function prepareStations(width,height){
  forceUpdate=true;
 }
 
-/*
- * 観測点のGeoJSONを更新
- */
+/* 観測点のGeoJSONを更新 */
 function updateStationSource(){
  if(!map)return;
 
@@ -2100,6 +2407,7 @@ function updateStationSource(){
  let shown=0;
 
  for(const st of stations){
+
   if(!st.valid)continue;
 
   shown++;
@@ -2125,12 +2433,7 @@ function updateStationSource(){
  );
 }
 
-/*
- * 3秒間の表示保持処理
- *
- * invalidSinceが設定された観測点だけを対象にする。
- * 差分フレームに含まれていない観測点は変更しない。
- */
+/* 3秒間の表示保持処理 */
 function expireHeldStations(){
  if(!stations.length)return;
 
@@ -2139,6 +2442,7 @@ function expireHeldStations(){
  let changed=false;
 
  for(const st of stations){
+
   if(
    !st.valid||
    st.invalidSince===null
@@ -2158,6 +2462,7 @@ function expireHeldStations(){
  }
 
  if(changed){
+
   updateStationSource();
 
   saveLastFrameCache();
@@ -2166,17 +2471,12 @@ function expireHeldStations(){
  }
 }
 
-/*
- * 観測点保持タイマー
- */
 setInterval(
  expireHeldStations,
  STATION_CHECK_INTERVAL
 );
 
-/*
- * フレーム処理
- */
+/* フレーム処理 */
 function applyFrame(buf){
  if(buf.byteLength<22)return;
 
@@ -2202,7 +2502,12 @@ function applyFrame(buf){
  const clients=dv.getUint16(20,true);
 
  if(buf.byteLength!==22+count*6){
-  console.error('フレーム長が不正です',buf.byteLength,count);
+  console.error(
+   'フレーム長が不正です',
+   buf.byteLength,
+   count
+  );
+
   return;
  }
 
@@ -2216,17 +2521,17 @@ function applyFrame(buf){
    total,
    stations.length
   );
+
   return;
  }
 
- setText($('imageSize'),`${w} × ${h}px`);
+ setText(
+  $('imageSize'),
+  `${w} × ${h}px`
+ );
 
  let changed=forceUpdate;
 
- /*
-  * フルフレームでも一括削除しない。
-  * 各観測点の未検出通知を個別に処理する。
-  */
  if(flags&1){
   changed=true;
  }
@@ -2234,6 +2539,7 @@ function applyFrame(buf){
  let o=22;
 
  for(let k=0;k<count;k++,o+=6){
+
   const i=dv.getUint16(o,true);
   const st=stations[i];
 
@@ -2242,11 +2548,13 @@ function applyFrame(buf){
   const valid=dv.getUint8(o+2);
 
   /*
-   * 未検出の場合
-   * 最初の未検出時刻だけ記録し、
-   * 直前の正常な表示を保持する。
+   * 未検出の場合。
+   * 表示は保持するが、揺れ検知では無効にする。
    */
   if(!valid){
+
+   st.shakeValid=false;
+
    if(
     st.valid&&
     st.invalidSince===null
@@ -2265,11 +2573,10 @@ function applyFrame(buf){
    rgbToHSV(r,g,b)
   );
 
-  /*
-   * 色が検出対象外の場合も
-   * 一時的な未検出として扱う。
-   */
   if(position===null){
+
+   st.shakeValid=false;
+
    if(
     st.valid&&
     st.invalidSince===null
@@ -2280,28 +2587,21 @@ function applyFrame(buf){
    continue;
   }
 
-  /*
-   * 正常な色を検出した場合は即時更新
-   */
   st.r=r;
   st.g=g;
   st.b=b;
 
   st.hex='#'+HEX[r]+HEX[g]+HEX[b];
   st.position=position;
-  st.valid=true;
 
-  /*
-   * 再検出したので保持タイマーを解除
-   */
+  st.valid=true;
+  st.shakeValid=true;
+
   st.invalidSince=null;
 
   changed=true;
  }
 
- /*
-  * 保持時間を超えた観測点を処理
-  */
  expireHeldStations();
 
  if(changed&&map){
@@ -2325,7 +2625,10 @@ function applyFrame(buf){
   console.error('揺れ検知エラー:',e);
  }
 
- setText($('imgTime'),formatJST(ms));
+ setText(
+  $('imgTime'),
+  formatJST(ms)
+ );
 
  lastAppliedImageMs=ms;
 
@@ -2374,7 +2677,6 @@ function addSourceAndLayer(){
   });
  }
 
- /* 揺れ検知: イベント範囲 */
  if(!map.getSource('shake-areas')){
   map.addSource('shake-areas',{
    type:'geojson',
@@ -2385,28 +2687,77 @@ function addSourceAndLayer(){
   });
  }
 
- if(!map.getLayer('shake-area-line')){
+ if(!map.getSource('shake-points')){
+  map.addSource('shake-points',{
+   type:'geojson',
+   data:{
+    type:'FeatureCollection',
+    features:[]
+   }
+  });
+ }
+
+ if(!map.getLayer('shake-area-fill')){
   map.addLayer({
-   id:'shake-area-line',
-   type:'line',
+   id:'shake-area-fill',
+   type:'fill',
    source:'shake-areas',
    paint:{
-    'line-color':[
-     'match',
-     ['get','l'],
-     0,'#ca8a04',
-     1,'#d97706',
-     2,'#ea580c',
-     3,'#dc2626',
-     4,'#7f1d1d',
-     '#d97706'
-    ],
-    'line-width':2,
-    'line-opacity':1
+    'fill-color':['get','hex'],
+    'fill-opacity':0.12
    }
   },'station-points');
  }
 
+ if(!map.getLayer('shake-area-line-pending')){
+  map.addLayer({
+   id:'shake-area-line-pending',
+   type:'line',
+   source:'shake-areas',
+   filter:['==',['get','c'],0],
+   paint:{
+    'line-color':['get','hex'],
+    'line-width':1.6,
+    'line-dasharray':[2,2]
+   }
+  },'station-points');
+ }
+
+ if(!map.getLayer('shake-area-line-confirmed')){
+  map.addLayer({
+   id:'shake-area-line-confirmed',
+   type:'line',
+   source:'shake-areas',
+   filter:['==',['get','c'],1],
+   paint:{
+    'line-color':['get','hex'],
+    'line-width':2.2
+   }
+  },'station-points');
+ }
+
+ if(!map.getLayer('shake-point-ring')){
+  map.addLayer({
+   id:'shake-point-ring',
+   type:'circle',
+   source:'shake-points',
+   paint:{
+    'circle-radius':[
+     'interpolate',
+     ['linear'],
+     ['zoom'],
+     2,3.2,
+     5,5.6,
+     8,7.0,
+     11,8.2
+    ],
+    'circle-color':'rgba(0,0,0,0)',
+    'circle-stroke-color':['get','hex'],
+    'circle-stroke-width':1.4,
+    'circle-opacity':1
+   }
+  });
+ }
 }
 
 function fitAll(){
@@ -2417,6 +2768,7 @@ function fitAll(){
  let hasValidPoint=false;
 
  for(const st of stations){
+
   if(
    !st.geom||
    !Array.isArray(st.geom.coordinates)
@@ -2477,19 +2829,26 @@ map.on('error',e=>{
  console.error('MapLibre:',e.error||e);
 });
 
-/* 手動操作を検知 (プログラム移動には originalEvent が無い) */
-for(const t of ['dragstart','zoomstart','rotatestart','pitchstart']){
+/* 手動操作を検知 */
+for(const t of [
+ 'dragstart',
+ 'zoomstart',
+ 'rotatestart',
+ 'pitchstart'
+]){
  map.on(t,e=>{
   if(e&&e.originalEvent){
    userMovedPerf=performance.now();
   }
- });
+ }
+ );
 }
 
 document.addEventListener(
  'visibilitychange',
  ()=>{
   if(document.hidden){
+
    clearTimeout(hiddenTimer);
 
    hiddenTimer=setTimeout(()=>{
@@ -2505,6 +2864,7 @@ document.addEventListener(
    },HIDDEN_DISCONNECT);
 
   }else{
+
    clearTimeout(hiddenTimer);
 
    wsWanted=true;
