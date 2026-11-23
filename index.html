@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -290,8 +291,9 @@ const SD = {
  MaxSearchDistance:60.0,
  PeakWeightDistance:14.0,
 
+ /* 有効近傍観測点が少ない場合の孤立判定 */
  IsolatedThreshold:1,
- IsolatedDetectionDiff:1.8,
+ IsolatedDetectionDiff:0.6,
 
  ScoreThresholdRatio:0.50,
  ScoreIntensityOffset:-0.8,
@@ -304,7 +306,7 @@ const SD = {
 
  Seconds:[20,30,40,70,80],
 
- WeakerConfirmPointCount:4,
+ WeakerConfirmPointCount:3,
  WeakConfirmPointCount:3
 };
 
@@ -320,6 +322,9 @@ const SHAKE_COLD_BASELINE = -0.5;
 
 /* 揺れ終了基準 */
 const SHAKE_END_INTENSITY = -1.5;
+
+/* 終了判定の連続フレーム数 */
+const SHAKE_END_PERSIST_FRAMES = 2;
 
 /* 揺れの色分け基準 */
 const SHAKE_YELLOW_INTENSITY = 0.5;
@@ -1184,13 +1189,28 @@ function getPointThreshold(st){
  );
 }
 
+/*
+ * 距離重み。
+ *
+ * 近い観測点ほど大きな重みを与える。
+ * PeakWeightDistanceを境に緩やかに減衰させる。
+ * 距離0kmでも重みが0にならないようにする。
+ */
 function distanceWeight(d){
- if(d<=SD.PeakWeightDistance){
-  return d/SD.PeakWeightDistance;
+ if(d<0||d>=SD.MaxSearchDistance){
+  return 0;
  }
 
- return (SD.MaxSearchDistance-d)/
+ if(d<=SD.PeakWeightDistance){
+  return 1-
+   0.35*(d/SD.PeakWeightDistance);
+ }
+
+ const ratio=
+  (d-SD.PeakWeightDistance)/
   (SD.MaxSearchDistance-SD.PeakWeightDistance);
+
+ return 0.65*(1-ratio);
 }
 
 /* 震度相当値によるイベントレベル */
@@ -1565,14 +1585,11 @@ function updateEventConfirmation(evt){
 
  const count=evt.pointCount;
 
- if(
-  (evt.level<=LV_WEAKER&&
-   count>SD.WeakerConfirmPointCount)||
-  (evt.level===LV_WEAK&&
-   count>SD.WeakConfirmPointCount)||
-  (evt.level>LV_WEAK&&
-   count>=SHAKE_MIN_CONFIRM_POINTS)
- ){
+ /*
+  * 弱い揺れも強い揺れも、
+  * 3観測点以上で確定可能にする。
+  */
+ if(count>=SHAKE_MIN_CONFIRM_POINTS){
   evt.isConfirmed=true;
 
   console.log(
@@ -1599,6 +1616,7 @@ function resetShakeHistories(){
   st.tmpDisabled=false;
   st.hits=0;
   st.lastHitMs=null;
+  st.endHits=0;
  }
 
  shakeEvents=[];
@@ -1671,29 +1689,41 @@ function processShakeEvents(time,prevTime){
 
   /*
    * 揺れ終了判定。
-   *
-   * 上昇量(diff)の大小に関係なく、
-   * 最新値が終了基準を下回ったらイベントから除外する。
+   * 終了基準を2フレーム連続で下回った場合に終了。
    */
-  if(
-   point.event&&
-   latest!==null&&
-   latest<SHAKE_END_INTENSITY
-  ){
-   const evt=point.event;
+  if(point.event){
 
-   point.event=null;
-   point.eventedAt=0;
-   point.eventedExpireAt=0;
+   if(
+    latest!==null&&
+    latest<SHAKE_END_INTENSITY
+   ){
+    point.endHits=(point.endHits||0)+1;
 
-   point.hits=0;
-   point.lastHitMs=null;
-
-   evt.removePoint(point);
-
-   if(evt.pointCount<=0){
-    removeShakeEvent(evt);
+   }else{
+    point.endHits=0;
    }
+
+   if(point.endHits>=SHAKE_END_PERSIST_FRAMES){
+
+    const evt=point.event;
+
+    point.event=null;
+    point.eventedAt=0;
+    point.eventedExpireAt=0;
+
+    point.hits=0;
+    point.lastHitMs=null;
+    point.endHits=0;
+
+    evt.removePoint(point);
+
+    if(evt.pointCount<=0){
+     removeShakeEvent(evt);
+    }
+   }
+
+  }else{
+   point.endHits=0;
   }
 
   if(point.tmpDisabled)continue;
@@ -1729,23 +1759,28 @@ function processShakeEvents(time,prevTime){
   if(latest===null)continue;
 
   /*
-   * 有効な近傍観測点の重み合計。
+   * 有効な近傍観測点数と重み合計を別々に計算。
    */
   let availableTotalWeight=0;
+  let availableNearCount=0;
 
   for(const n of point.near){
-   if(n.p.hasValidHistory){
+   if(
+    n.p.hasValidHistory&&
+    !n.p.tmpDisabled
+   ){
     availableTotalWeight+=n.weight;
+    availableNearCount++;
    }
   }
 
   /*
-   * 離島・孤立観測点。
+   * 有効な近傍観測点が少ない地域では
+   * 孤立・疎な観測点用の判定を使う。
    *
-   * 単独観測点だけでは確定しない。
-   * 連続成立した場合に未確定イベントとして保持する。
+   * 重み合計が小さいだけで孤立扱いしない。
    */
-  if(availableTotalWeight<SD.IsolatedThreshold){
+  if(availableNearCount<SD.IsolatedThreshold){
 
    if(
     point.diff>=SD.IsolatedDetectionDiff&&
@@ -1767,7 +1802,8 @@ function processShakeEvents(time,prevTime){
      );
 
      /*
-      * 孤立観測点のイベントは自動確定させない。
+      * 孤立観測点のイベントは、
+      * 周辺イベントと統合されるまで未確定。
       */
      evt.isConfirmed=false;
 
@@ -1836,9 +1872,18 @@ function processShakeEvents(time,prevTime){
    SD.ScoreThresholdRatio;
 
   /*
-   * 近傍の上昇観測点が不足する場合は除外。
+   * 有効近傍観測点数に応じて必要な寄与数を調整。
+   * 観測点が少ない地域で4点必須にならないようにする。
    */
-  if(contributingPointCount<SHAKE_MIN_CONTRIB){
+  const requiredContrib=Math.min(
+   SHAKE_MIN_CONTRIB,
+   Math.max(
+    1,
+    Math.ceil(availableNearCount*0.25)
+   )
+  );
+
+  if(contributingPointCount<requiredContrib){
    point.hits=0;
    point.lastHitMs=null;
    continue;
@@ -2026,18 +2071,24 @@ function renderShake(){
  const pts=[];
 
  let confirmed=0;
+ let pending=0;
+
  const shownEvents=[];
 
  for(const evt of shakeEvents){
 
-  if(evt.pointCount<=0||!evt.isConfirmed){
+  if(evt.pointCount<=0){
    continue;
   }
 
-  const c=1;
+  const c=evt.isConfirmed?1:0;
 
-  confirmed++;
-  shownEvents.push(evt);
+  if(evt.isConfirmed){
+   confirmed++;
+   shownEvents.push(evt);
+  }else{
+   pending++;
+  }
 
   let sLat=0;
   let sLon=0;
@@ -2068,6 +2119,8 @@ function renderShake(){
     maxIntensity=p.latest;
    }
   }
+
+  if(!n)continue;
 
   const cLat=sLat/n;
   const cLon=sLon/n;
@@ -2126,27 +2179,34 @@ function renderShake(){
  updateShakeFocus(shownEvents);
 
  const el=$('shakeInfo');
- const total=areas.length;
 
  el.classList.toggle('confirmed',confirmed>0);
  el.classList.toggle(
   'pending',
-  total>0&&confirmed===0
+  pending>0&&confirmed===0
  );
 
  const label=el.querySelector('span:last-child');
 
- if(!total){
+ if(!confirmed&&!pending){
   setText(label,'揺れ検知 なし');
+
+ }else if(confirmed>0&&pending>0){
+  setText(
+   label,
+   `揺れ検知 ${confirmed}件確定・${pending}件未確定`
+  );
+
  }else if(confirmed>0){
   setText(
    label,
-   `揺れ検知 ${total}件（確定 ${confirmed}）`
+   `揺れ検知 ${confirmed}件（確定）`
   );
+
  }else{
   setText(
    label,
-   `揺れ検知 ${total}件（未確定）`
+   `揺れ検知 ${pending}件（未確定）`
   );
  }
 }
@@ -2374,6 +2434,7 @@ function prepareStations(width,height){
 
    hits:0,
    lastHitMs:null,
+   endHits:0,
 
    cx:0,
    cy:0,
@@ -2704,7 +2765,12 @@ function addSourceAndLayer(){
    source:'shake-areas',
    paint:{
     'fill-color':['get','hex'],
-    'fill-opacity':0.12
+    'fill-opacity':[
+     'case',
+     ['==',['get','c'],1],
+     0.12,
+     0.05
+    ]
    }
   },'station-points');
  }
