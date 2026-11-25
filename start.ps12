@@ -1,0 +1,68 @@
+
+$ErrorActionPreference = "Stop"
+
+# Serverフォルダを取得
+$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# Node.jsの確認
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Node.jsがインストールされていません。" -ForegroundColor Red
+    Read-Host "Enterキーで終了"
+    exit 1
+}
+
+# npmの確認
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Write-Host "npmが見つかりません。" -ForegroundColor Red
+    Read-Host "Enterキーで終了"
+    exit 1
+}
+
+# 作業フォルダへ移動
+Set-Location $Root
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "       EQ-RTS Server 起動処理" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# 必要なパッケージを確認
+if (-not (Test-Path (Join-Path $Root "node_modules\ws"))) {
+
+    Write-Host ""
+    Write-Host "必要なパッケージをインストールしています..." -ForegroundColor Yellow
+
+    & npm.cmd install
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "パッケージのインストールに失敗しました。" -ForegroundColor Red
+        Read-Host "Enterキーで終了"
+        exit 1
+    }
+}
+
+# Serverファイル確認
+if (-not (Test-Path (Join-Path $Root "server.js"))) {
+    Write-Host "server.jsが見つかりません。" -ForegroundColor Red
+    Read-Host "Enterキーで終了"
+    exit 1
+}
+
+Write-Host ""
+Write-Host "Serverを起動しています..." -ForegroundColor Green
+Write-Host "URL: http://127.0.0.1:8787" -ForegroundColor Cyan
+Write-Host "終了するには Ctrl + C を押してください。" -ForegroundColor Yellow
+Write-Host "========================================" -ForegroundColor Cyan
+
+# Server起動
+try {
+    & node.exe (Join-Path $Root "server.js")
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Serverが異常終了しました。" -ForegroundColor Red
+    }
+}
+finally {
+    Set-Location $Root
+    Write-Host ""
+    Write-Host "Serverを終了しました。" -ForegroundColor Yellow
+}
